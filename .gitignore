@@ -1,0 +1,33 @@
+# Learn folder specific ignores
+.antigravitycli/
+.gemini/
+
+# Visual Studio / C# Ignores
+## Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Re]leasePublic/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+bbin/
+bin/
+obj/
+
+## Visual Studio Cache/Configurations
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+
+# Node / Web Ignores
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS Ignores
+.DS_Store
+Thumbs.db

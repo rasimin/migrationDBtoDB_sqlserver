@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DbMigrator.NET - Premium Control Panel</title>
+    <meta name="description" content="Dynamic Metadata-Driven SQL Server Database Migration Tool — kelola migrasi data dan objek DDL antar database secara visual.">
+    <link rel="stylesheet" href="style.css?v=3.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+<div class="app-container">
+    <!-- ================================================================ -->
+    <!-- HEADER -->
+    <!-- ================================================================ -->
+    <header>
+        <div class="brand">
+            <div class="brand-icon">
+                <i class="fa-solid fa-server"></i>
+            </div>
+            <div class="brand-name">
+                <h1>DbMigrator.NET</h1>
+                <p>Dynamic Metadata-Driven Database Migration Tool</p>
+            </div>
+        </div>
+        <div class="server-badge">
+            <span class="dot"></span>
+            <span>Server Config: <strong>RASIMIN\MSSQLSERVER2022</strong></span>
+        </div>
+    </header>
+
+    <!-- ================================================================ -->
+    <!-- MAIN CONTENT — Single Layout (satu dashboard, tidak ada top-tabs)-->
+    <!-- ================================================================ -->
+    <div class="dashboard-grid">
+
+        <!-- ============================================================ -->
+        <!-- LEFT PANEL: Unified Job List + Form                          -->
+        <!-- ============================================================ -->
+        <div class="panel-card">
+            <div class="panel-title">
+                <i class="fa-solid fa-gears"></i>
+                <span>Migration Jobs</span>
+            </div>
+
+            <!-- Job List (Loaded Dynamically) -->
+            <div id="job-list-container">
+                <p style="color: var(--text-muted); font-size: 0.9rem;">Memuat daftar job...</p>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                <button class="btn btn-secondary" onclick="openNewJobForm()" style="flex: 1; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                    <i class="fa-solid fa-plus"></i> Buat Job Baru
+                </button>
+                <button class="btn btn-secondary" onclick="triggerImport()" style="flex: 1; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                    <i class="fa-solid fa-file-import"></i> Impor JSON
+                </button>
+            </div>
+            <input type="file" id="import-file-input" style="display: none;" accept=".json" onchange="importJsonFile(event)">
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- RIGHT PANEL: Job Editor                                       -->
+        <!-- ============================================================ -->
+        <div style="display: flex; flex-direction: column; gap: 2rem;">
+
+            <!-- Real-Time Progress Panel (visible only when migration running) -->
+            <div class="panel-card progress-panel" id="active-runner-panel" style="display: none;">
+                <div class="runner-header">
+                    <div class="panel-title" style="border: none; margin: 0; padding: 0;">
+                        <i class="fa-solid fa-circle-play" style="color: var(--accent-teal);"></i>
+                        <span>Proses Migrasi Data Berjalan</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <button class="btn btn-danger" id="btn-cancel-migration" onclick="cancelMigration()"
+                            style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem; display: none; background: var(--color-error); border: none; border-radius: 6px; cursor: pointer; color: white;">
+                            <i class="fa-solid fa-ban"></i> Batalkan Migrasi
+                        </button>
+                        <div class="status-indicator">
+                            <span style="color: var(--accent-teal);" id="runner-status-text">RUNNING</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="progress-list" id="runner-progress-list"></div>
+                <div class="console-box" id="console-logs">
+                    <div class="console-line info">[System] Menghubungkan ke signal server...</div>
+                </div>
+            </div>
+
+            <!-- ========================================================= -->
+            <!-- JOB EDITOR PANEL (visible when a job is selected)          -->
+            <!-- ========================================================= -->
+            <div class="panel-card" id="job-editor-panel" style="display: none;">
+
+                <!-- Job Header -->
+                <div class="table-mapping-header" style="margin-bottom: 0; padding-bottom: 0.75rem; border-bottom: none;">
+                    <div class="panel-title" style="border: none; margin: 0; padding: 0;">
+                        <i class="fa-solid fa-database"></i>
+                        <span id="active-job-title">Migration Job</span>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button class="btn btn-secondary" onclick="exportActiveJob()" style="width: auto; padding: 0.45rem 0.9rem; font-size: 0.82rem;" title="Ekspor konfigurasi job ke JSON">
+                            <i class="fa-solid fa-file-export"></i> Ekspor
+                        </button>
+                        <button class="btn btn-secondary" onclick="editActiveJob()" style="width: auto; padding: 0.45rem 0.9rem; font-size: 0.82rem;" title="Edit konfigurasi job ini">
+                            <i class="fa-solid fa-pen-to-square"></i> Edit Job
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ===================================================== -->
+                <!-- SIDEBAR TABS LAYOUT: Left Book-style Tabs | Right Content -->
+                <!-- ===================================================== -->
+                <div class="job-editor-layout" style="display: flex; gap: 1.5rem; margin-top: 1rem; border-top: 1px solid var(--border-flat); padding-top: 1rem;">
+                    
+                    <!-- Left Sidebar (Book Tabs) -->
+                    <div class="job-book-tabs" style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.5rem; border-right: 1px solid var(--border-flat); padding-right: 1rem;">
+                        <button id="inner-tab-data" onclick="switchInnerTab('data')" class="book-tab active">
+                            <i class="fa-solid fa-database"></i> Data Migration
+                        </button>
+                        <button id="inner-tab-object" onclick="switchInnerTab('object')" class="book-tab">
+                            <i class="fa-solid fa-cubes"></i> Object Migration
+                        </button>
+                    </div>
+
+                    <!-- Right Content Pane -->
+                    <div class="job-book-content" style="flex: 1; min-width: 0;">
+                        <!-- ===================================================== -->
+                        <!-- INNER CONTENT: DATA MIGRATION                          -->
+                        <!-- ===================================================== -->
+                        <div id="inner-content-data" style="margin-top: 0;">
+
+                            <!-- Data Migration Action Buttons -->
+                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap;">
+                                <button class="btn btn-primary" onclick="runMigrationJob()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-play"></i> Jalankan Migrasi Data
+                                </button>
+                                <button class="btn btn-secondary" onclick="openNewTableMappingForm()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-plus"></i> Tambah Tabel
+                                </button>
+                            </div>
+
+                            <!-- Sub-Tabs: Konfigurasi Pemetaan | Histori Migrasi -->
+                            <div class="tab-navigation" style="display: flex; gap: 1rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 0.6rem; margin-bottom: 1.25rem;">
+                                <button class="tab-btn active" id="tab-mapping" onclick="switchTab('mapping')"
+                                    style="background: none; border: none; color: var(--accent-teal); border-bottom: 2px solid var(--accent-teal); padding: 0.45rem 0.9rem; cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-sliders"></i> Konfigurasi Pemetaan
+                                </button>
+                                <button class="tab-btn" id="tab-history" onclick="switchTab('history')"
+                                    style="background: none; border: none; color: var(--text-muted); padding: 0.45rem 0.9rem; cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-clock-rotate-left"></i> Histori Migrasi
+                                </button>
+                            </div>
+
+                            <!-- Table Mappings List -->
+                            <div class="table-list" id="table-list-container">
+                                <!-- Loaded Dynamically -->
+                            </div>
+
+                            <!-- History Tab Content -->
+                            <div id="history-container" style="display: none;">
+                                <!-- Stats Cards -->
+                                <div class="stats-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                                    <div style="background: var(--bg-app); border: 1px solid var(--border-flat); border-radius: 6px; padding: 1rem; text-align: center;">
+                                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Total Eksekusi Job</div>
+                                        <div id="stat-total-jobs" style="font-size: 1.5rem; font-weight: 700; color: #ffffff;">0</div>
+                                    </div>
+                                    <div style="background: var(--bg-app); border: 1px solid var(--border-flat); border-radius: 6px; padding: 1rem; text-align: center;">
+                                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Kumulatif Baris Sukses</div>
+                                        <div id="stat-success-rows" style="font-size: 1.5rem; font-weight: 700; color: var(--accent-teal);">0</div>
+                                    </div>
+                                    <div style="background: var(--bg-app); border: 1px solid var(--border-flat); border-radius: 6px; padding: 1rem; text-align: center;">
+                                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Tingkat Keberhasilan</div>
+                                        <div id="stat-success-rate" style="font-size: 1.5rem; font-weight: 700; color: var(--accent-indigo);">0%</div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
+                                    <button class="btn btn-secondary" onclick="loadHistoryLogs()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.8rem;">
+                                        <i class="fa-solid fa-rotate"></i> Refresh Logs
+                                    </button>
+                                </div>
+                                <div class="mapper-table-wrapper" style="overflow-x: auto; background: #07090d; border-radius: 6px; border: 1px solid var(--border-flat);">
+                                    <table class="mapper-table" style="margin-bottom: 0;">
+                                        <thead>
+                                            <tr>
+                                                <th>Nama Tabel</th><th>Waktu Mulai</th><th>Durasi</th>
+                                                <th>Total Baris</th><th>Baris Termigrasi</th><th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="history-log-tbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ===================================================== -->
+                        <!-- INNER CONTENT: OBJECT MIGRATION                        -->
+                        <!-- ===================================================== -->
+                        <div id="inner-content-object" style="display: none; margin-top: 0;">
+
+                            <!-- Object Migration Action Buttons -->
+                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap;">
+                                <button class="btn btn-primary" onclick="runObjMigration()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-play"></i> Jalankan Migrasi Objek
+                                </button>
+                                <button class="btn btn-secondary" onclick="openObjScannerModal()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-magnifying-glass-chart"></i> Scan Objek
+                                </button>
+                                <button class="btn btn-secondary" onclick="openObjNativeSqlModal()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-terminal"></i> Native SQL
+                                </button>
+                            </div>
+
+                            <!-- Object Sub-Tabs: Daftar Objek | Log Eksekusi -->
+                            <div style="display: flex; gap: 1rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 0.6rem; margin-bottom: 1.25rem;">
+                                <button class="tab-btn active" id="obj-tab-items" onclick="switchObjTab('items')"
+                                    style="background: none; border: none; color: var(--accent-teal); border-bottom: 2px solid var(--accent-teal); padding: 0.45rem 0.9rem; cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-list-check"></i> Daftar Objek
+                                </button>
+                                <button class="tab-btn" id="obj-tab-logs" onclick="switchObjTab('logs')"
+                                    style="background: none; border: none; color: var(--text-muted); padding: 0.45rem 0.9rem; cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-clock-rotate-left"></i> Log Eksekusi
+                                </button>
+                            </div>
+
+                            <!-- Object Items List -->
+                            <div id="obj-items-container" class="table-list">
+                                <!-- Loaded dynamically -->
+                            </div>
+
+                            <!-- Object Logs -->
+                            <div id="obj-logs-container" style="display: none;">
+                                <div class="mapper-table-wrapper" style="overflow-x: auto; background: #07090d; border-radius: 6px; border: 1px solid var(--border-flat);">
+                                    <table class="mapper-table" style="margin-bottom: 0;">
+                                        <thead>
+                                            <tr>
+                                                <th>Objek</th><th>Aksi</th><th>Status</th><th>Waktu</th><th>Error</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="obj-logs-tbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+            </div><!-- end job-editor-panel -->
+
+            <!-- Welcome Panel (saat tidak ada job yang dipilih) -->
+            <div class="panel-card" id="welcome-panel" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4rem 2rem; text-align: center;">
+                <i class="fa-solid fa-network-wired" style="font-size: 4rem; color: var(--text-dark); margin-bottom: 1.5rem;"></i>
+                <h3 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">Selamat Datang di DbMigrator</h3>
+                <p style="color: var(--text-muted); max-width: 480px; font-size: 0.95rem; line-height: 1.6;">
+                    Pilih <strong>Migration Job</strong> di panel kiri untuk mulai mengelola migrasi.<br>
+                    Setiap job memiliki tab <strong>Data Migration</strong> dan <strong>Object Migration</strong> yang menggunakan connection yang sama.
+                </p>
+                <button class="btn btn-secondary" onclick="openNewJobForm()" style="margin-top: 1.5rem; width: auto; padding: 0.6rem 1.5rem; font-size: 0.9rem;">
+                    <i class="fa-solid fa-plus"></i> Buat Job Pertama
+                </button>
+            </div>
+
+        </div><!-- end right panel -->
+
+    </div><!-- end dashboard-grid -->
+
+</div><!-- end app-container -->
+
+
+<!-- ============================================================================
+     MODAL: TABLE MAPPING FORM
+     ============================================================================ -->
+<div class="modal-overlay" id="table-mapping-modal">
+    <div class="modal-content" style="max-width: 550px;">
+        <div class="modal-header">
+            <h3 id="table-modal-title">Pemetaan Tabel Baru</h3>
+            <button class="close-btn" onclick="closeTableMappingModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="table-mapping-id" value="0">
+            <div class="form-group">
+                <label for="source-table-select">Nama Tabel Asal (Source Table)</label>
+                <select id="source-table-select" class="form-control">
+                    <!-- Options loaded dynamically -->
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="target-table-select">Nama Tabel Tujuan (Target Table)</label>
+                <select id="target-table-select" class="form-control">
+                    <!-- Options loaded dynamically -->
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="execution-order">Urutan Eksekusi (Execution Order)</label>
+                <input type="number" id="execution-order" class="form-control" value="1" min="1">
+                <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.25rem;">
+                    Angka lebih kecil akan dieksekusi lebih dulu (misal: Tabel Induk = 1, Tabel Anak = 2).
+                </small>
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
+                <input type="checkbox" id="truncate-target" style="width: 18px; height: 18px; cursor: pointer;">
+                <label for="truncate-target" style="margin: 0; cursor: pointer;">Kosongkan tabel tujuan sebelum migrasi (Truncate/Delete)</label>
+            </div>
+            <div class="form-group" style="margin-top: 1rem;">
+                <label for="table-post-migration-script">Post-Migration SQL Script (Table-Level)</label>
+                <textarea id="table-post-migration-script" class="form-control" placeholder="Contoh: ALTER INDEX ALL ON TargetCustomers REBUILD;" style="font-family: Consolas, monospace; min-height: 80px;"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeTableMappingModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="saveTableMapping()" style="width: auto;">Simpan</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: COLUMN MAPPING DESIGNER
+     ============================================================================ -->
+<div class="modal-overlay" id="column-mapping-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div>
+                <h3 id="column-modal-title">Desainer Kolom Dinamis</h3>
+                <p id="column-modal-subtitle" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;"></p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <button class="btn-icon" id="btn-maximize-modal" onclick="toggleMaximizeColumnModal()" title="Perbesar Layar" style="margin: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass);">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+                <button class="close-btn" onclick="closeColumnMappingModal()" style="margin: 0;">&times;</button>
+            </div>
+        </div>
+        <div class="modal-body" style="padding: 1rem 2rem;">
+            <div style="background: rgba(255,255,255,0.02); padding: 1rem; border-radius: 12px; margin-bottom: 1.5rem; border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.9rem; color: var(--text-muted);"><i class="fa-solid fa-circle-info"></i> Petakan kolom database target di bawah. Gunakan opsi untuk membuat mapping dinamis.</span>
+                <button class="btn btn-secondary" onclick="autoMapColumns()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.8rem;">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Auto Map (Nama Sama)
+                </button>
+            </div>
+            <div class="mapper-table-wrapper" style="max-height: 480px; overflow-y: auto; overflow-x: auto;">
+                <table class="mapper-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 250px;">Kolom Database Tujuan</th>
+                            <th style="width: 150px;">Tipe Pemetaan</th>
+                            <th>Detail Konfigurasi Mapping</th>
+                        </tr>
+                    </thead>
+                    <tbody id="column-mapper-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeColumnMappingModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="saveColumnMappings()" style="width: auto;">
+                <i class="fa-solid fa-floppy-disk"></i> Simpan Semua Kolom
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: GENERATED SP VIEWER
+     ============================================================================ -->
+<div class="modal-overlay" id="sp-generator-modal">
+    <div class="modal-content" style="max-width: 850px; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3 id="sp-modal-title">Generated Stored Procedure</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">SQL Script untuk eksekusi migrasi manual di SQL Server Management Studio.</p>
+            </div>
+            <button class="close-btn" onclick="closeSpGeneratorModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <span style="font-size: 0.85rem; color: var(--accent-teal);"><i class="fa-solid fa-code"></i> Salin script SQL Server di bawah dan jalankan di SSMS.</span>
+                <button class="btn btn-secondary" onclick="copySpScript()" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                    <i class="fa-solid fa-copy"></i> Copy to Clipboard
+                </button>
+            </div>
+            <textarea id="sp-sql-textarea" class="form-control" readonly style="font-family: 'Consolas', 'Courier New', monospace; font-size: 0.85rem; height: 380px; background: #07090d; border: 1px solid var(--border-flat); color: #22c55e; resize: none; padding: 1.25rem; white-space: pre; overflow-x: auto;"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="closeSpGeneratorModal()" style="width: auto;">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: OBJECT SCANNER (Scan & Select Objects from Source DB)
+     ============================================================================ -->
+<div class="modal-overlay" id="obj-scanner-modal">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <div>
+                <h3>Scan Objek Database</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Pilih objek dari Source DB untuk ditambahkan ke daftar migrasi.</p>
+            </div>
+            <button class="close-btn" onclick="closeObjScannerModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1rem 2rem;">
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                <button class="btn btn-secondary obj-filter-btn active" onclick="filterScanResults('ALL')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">Semua</button>
+                <button class="btn btn-secondary obj-filter-btn" onclick="filterScanResults('TABLE')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">Table</button>
+                <button class="btn btn-secondary obj-filter-btn" onclick="filterScanResults('PROCEDURE')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">SP</button>
+                <button class="btn btn-secondary obj-filter-btn" onclick="filterScanResults('FUNCTION')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">Function</button>
+                <button class="btn btn-secondary obj-filter-btn" onclick="filterScanResults('VIEW')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">View</button>
+                <div style="flex: 1;"></div>
+                <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--text-muted); cursor: pointer;">
+                    <input type="checkbox" id="obj-scan-select-all" onchange="toggleAllScanItems(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
+                    Pilih Semua
+                </label>
+            </div>
+            <div id="obj-scan-results" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.35rem;">
+                <p style="color: var(--text-muted); text-align: center; padding: 2rem;">Klik "Scan" untuk memindai objek dari Source DB...</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="startObjScan()" style="width: auto;"><i class="fa-solid fa-radar"></i> Scan Ulang</button>
+            <button class="btn btn-primary" onclick="addSelectedScanItems()" style="width: auto;"><i class="fa-solid fa-plus"></i> Tambah yang Dipilih</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: NATIVE SQL EDITOR
+     ============================================================================ -->
+<div class="modal-overlay" id="obj-native-sql-modal">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <div>
+                <h3>Native SQL Script</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Tulis script SQL yang akan dieksekusi langsung di Target DB (ALTER TABLE, CREATE INDEX, dll).</p>
+            </div>
+            <button class="close-btn" onclick="closeObjNativeSqlModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <div class="form-group">
+                <label for="native-sql-name">Nama Identifikasi</label>
+                <input type="text" id="native-sql-name" class="form-control" placeholder="Contoh: Add Index on CustomerNIK">
+            </div>
+            <div class="form-group">
+                <label for="native-sql-script">Script SQL</label>
+                <textarea id="native-sql-script" class="form-control" placeholder="Contoh: ALTER TABLE dbo.Customers ADD Email NVARCHAR(255) NULL;&#10;CREATE INDEX IX_Customer_NIK ON dbo.Customers(NIK);" style="font-family: Consolas, monospace; min-height: 200px; font-size: 0.85rem;"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeObjNativeSqlModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="addNativeSqlItem()" style="width: auto;"><i class="fa-solid fa-plus"></i> Tambah ke Daftar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: BACKUP VERSION VIEWER
+     ============================================================================ -->
+<div class="modal-overlay" id="obj-backup-modal">
+    <div class="modal-content" style="max-width: 850px; border-color: var(--accent-purple);">
+        <div class="modal-header">
+            <div>
+                <h3 id="obj-backup-modal-title">Backup Versions</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Histori backup objek berversi. Klik download untuk mengunduh file .sql.</p>
+            </div>
+            <button class="close-btn" onclick="closeObjBackupModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <div id="obj-backup-list" style="display: flex; flex-direction: column; gap: 1rem;">
+                <p style="color: var(--text-muted); text-align: center;">Memuat backup...</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="closeObjBackupModal()" style="width: auto;">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: CONNECTION STRING BUILDER ← BARU
+     ============================================================================ -->
+<div class="modal-overlay" id="conn-builder-modal">
+    <div class="modal-content" style="max-width: 540px; border-color: rgba(139,92,246,0.4);">
+        <div class="modal-header">
+            <div>
+                <h3 style="display: flex; align-items: center; gap: 0.6rem;">
+                    <i class="fa-solid fa-wrench" style="color: var(--accent-purple, #8b5cf6);"></i>
+                    Connection String Builder
+                </h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Konfigurasi koneksi SQL Server — connection string dihasilkan otomatis</p>
+            </div>
+            <button class="close-btn" onclick="closeConnBuilder()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem;">
+
+            <!-- Server & Database -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label for="cb-server" style="font-size: 0.85rem;">Server Name</label>
+                    <input type="text" id="cb-server" class="form-control" placeholder="RASIMIN\MSSQLSERVER2022" oninput="updateConnPreview()" style="font-family: Consolas, monospace; font-size: 0.85rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label for="cb-database" style="font-size: 0.85rem;">Database Name</label>
+                    <input type="text" id="cb-database" class="form-control" placeholder="MyDatabase" oninput="updateConnPreview()" style="font-family: Consolas, monospace; font-size: 0.85rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label for="cb-username" style="font-size: 0.85rem;">Username</label>
+                    <input type="text" id="cb-username" class="form-control" placeholder="sa" oninput="updateConnPreview()" autocomplete="off" style="font-family: Consolas, monospace; font-size: 0.85rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label for="cb-password" style="font-size: 0.85rem;">Password</label>
+                    <div style="position: relative;">
+                        <input type="password" id="cb-password" class="form-control" placeholder="••••••••" oninput="updateConnPreview()" autocomplete="new-password" style="font-family: Consolas, monospace; font-size: 0.85rem; padding-right: 2.5rem;">
+                        <button onclick="togglePasswordVisibility()" title="Tampilkan/sembunyikan password" id="btn-toggle-pwd"
+                            style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; padding: 0;">
+                            <i class="fa-solid fa-eye" id="pwd-eye-icon"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Options -->
+            <div style="display: flex; gap: 1.5rem; padding: 0.65rem 0.85rem; background: var(--bg-app); border: 1px solid var(--border-flat); border-radius: 6px; margin-bottom: 0.85rem;">
+                <label style="display: flex; align-items: center; gap: 0.45rem; cursor: pointer; font-size: 0.82rem; color: var(--text-muted);">
+                    <input type="checkbox" id="cb-trust-cert" checked onchange="updateConnPreview()" style="width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent-teal);">
+                    TrustServerCertificate=True
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.45rem; cursor: pointer; font-size: 0.82rem; color: var(--text-muted);">
+                    <input type="checkbox" id="cb-encrypt" onchange="updateConnPreview()" style="width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent-teal);">
+                    Encrypt=True
+                </label>
+            </div>
+
+            <!-- Preview -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 0.4rem;">
+                    <span>Preview Connection String</span>
+                    <span style="font-size: 0.72rem; color: var(--accent-teal); font-style: italic;">Realtime ✦</span>
+                </label>
+                <textarea id="cb-preview" class="form-control" readonly rows="3"
+                    style="font-family: Consolas, monospace; font-size: 0.8rem; background: #07090d; color: var(--accent-teal); border: 1px solid var(--border-flat); resize: none; padding: 0.65rem 0.85rem; letter-spacing: 0.01em;"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary btn-test-conn" onclick="testConnBuilderConn()" style="width: auto; margin-right: auto;">
+                <i class="fa-solid fa-plug"></i> Test Connection
+            </button>
+            <button class="btn btn-secondary" onclick="closeConnBuilder()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="applyConnBuilder()" style="width: auto;">
+                <i class="fa-solid fa-check"></i> OK — Gunakan
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: JOB CONFIGURATION (Tambah / Edit Job)
+     ============================================================================ -->
+<div class="modal-overlay" id="job-form-modal">
+    <div class="modal-content" style="max-width: 650px;">
+        <div class="modal-header">
+            <h3 id="job-form-title">Tambah Job Baru</h3>
+            <button class="close-btn" onclick="closeJobForm()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <input type="hidden" id="job-id" value="0">
+
+            <!-- Nama Job -->
+            <div class="form-group">
+                <label for="job-name">Nama Job</label>
+                <input type="text" id="job-name" class="form-control" placeholder="Contoh: Migrasi Transaksi Core Banking">
+            </div>
+
+            <!-- Source Connection String -->
+            <div class="form-group">
+                <label>Source Database Connection String</label>
+                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                    <textarea id="source-conn" class="form-control" placeholder="Server=RASIMIN\MSSQLSERVER2022;Database=SourceDB;User Id=sa;Password=..." style="flex: 1; min-height: 64px;"></textarea>
+                    <button onclick="openConnBuilder('source')" title="Buka Connection String Builder"
+                        style="flex-shrink: 0; background: var(--bg-input); border: 1px solid var(--border-flat); color: var(--accent-purple); border-radius: 6px; padding: 0.55rem 0.65rem; cursor: pointer; font-size: 0.9rem; transition: var(--transition-fast);"
+                        onmouseover="this.style.borderColor='var(--accent-purple)'" onmouseout="this.style.borderColor='var(--border-flat)'">
+                        <i class="fa-solid fa-wrench"></i>
+                    </button>
+                </div>
+                <button class="btn btn-secondary" id="btn-test-source" onclick="testConnection('source')"
+                    style="margin-top: 0.5rem; width: auto; font-size: 0.8rem; background: rgba(79,70,229,0.1); color: #a5b4fc; border: 1px solid rgba(79,70,229,0.3); padding: 6px 12px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem;">
+                    <i class="fa-solid fa-plug"></i> Test Connection
+                </button>
+            </div>
+
+            <!-- Target Connection String -->
+            <div class="form-group">
+                <label>Target Database Connection String</label>
+                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                    <textarea id="target-conn" class="form-control" placeholder="Server=RASIMIN\MSSQLSERVER2022;Database=TargetDB;User Id=sa;Password=..." style="flex: 1; min-height: 64px;"></textarea>
+                    <button onclick="openConnBuilder('target')" title="Buka Connection String Builder"
+                        style="flex-shrink: 0; background: var(--bg-input); border: 1px solid var(--border-flat); color: var(--accent-purple); border-radius: 6px; padding: 0.55rem 0.65rem; cursor: pointer; font-size: 0.9rem; transition: var(--transition-fast);"
+                        onmouseover="this.style.borderColor='var(--accent-purple)'" onmouseout="this.style.borderColor='var(--border-flat)'">
+                        <i class="fa-solid fa-wrench"></i>
+                    </button>
+                </div>
+                <button class="btn btn-secondary" id="btn-test-target" onclick="testConnection('target')"
+                    style="margin-top: 0.5rem; width: auto; font-size: 0.8rem; background: rgba(79,70,229,0.1); color: #a5b4fc; border: 1px solid rgba(79,70,229,0.3); padding: 6px 12px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem;">
+                    <i class="fa-solid fa-plug"></i> Test Connection
+                </button>
+            </div>
+
+            <!-- Post-Migration Script -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="post-migration-script">Post-Migration SQL Script <span style="font-size:0.75rem; color: var(--text-muted);">(Opsional, dieksekusi setelah semua tabel selesai)</span></label>
+                <textarea id="post-migration-script" class="form-control" placeholder="Contoh: UPDATE TargetCustomers SET PunyaSaldo = 1;" style="font-family: Consolas, monospace; min-height: 70px; font-size: 0.82rem;"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeJobForm()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="saveJob()" style="width: auto;">
+                <i class="fa-solid fa-floppy-disk"></i> Simpan
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- SignalR CDN & Application Script -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
+<script src="app.js?v=3.0"></script>
+
+</body>
+</html>
