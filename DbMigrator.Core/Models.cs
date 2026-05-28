@@ -27,6 +27,7 @@ namespace DbMigrator.Core
         public string NativeSqlScript { get; set; }
         public List<ColumnMapping> Columns { get; set; } = new List<ColumnMapping>();
         public string PostMigrationScript { get; set; }
+        public string WhereClause { get; set; }
         public string LastStatus { get; set; } = "Pending"; // Pending, InProgress, Completed, Failed
         public string LastErrorMessage { get; set; }
         public DateTime? LastRunAt { get; set; }

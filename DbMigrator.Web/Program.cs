@@ -175,6 +175,14 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
             ALTER TABLE dbo.TableMappings ADD NativeSqlScript NVARCHAR(MAX) NULL;
         END
 
+        IF NOT EXISTS (
+            SELECT * FROM sys.columns
+            WHERE object_id = OBJECT_ID('dbo.TableMappings') AND name = 'WhereClause'
+        )
+        BEGIN
+            ALTER TABLE dbo.TableMappings ADD WhereClause NVARCHAR(MAX) NULL;
+        END
+
         -- ================================================================
         -- OBJECT MIGRATION TABLES (DDL Migrator) - Unified Connection
         -- ObjectMigrationItems & Logs langsung FK ke dbo.MigrationJobs
@@ -443,7 +451,8 @@ app.MapPost("/api/mappings/tables", async ([FromBody] TableMapping mapping, ICon
             UPDATE dbo.TableMappings 
             SET SourceTableName = @SourceTableName, TargetTableName = @TargetTableName, 
                 ExecutionOrder = @ExecutionOrder, TruncateTarget = @TruncateTarget, IsEnabled = @IsEnabled,
-                PostMigrationScript = @PostMigrationScript, MappingMode = @MappingMode, NativeSqlScript = @NativeSqlScript
+                PostMigrationScript = @PostMigrationScript, MappingMode = @MappingMode, NativeSqlScript = @NativeSqlScript,
+                WhereClause = @WhereClause
             WHERE Id = @Id", mapping);
         return Results.Ok(mapping);
     }
@@ -458,8 +467,8 @@ app.MapPost("/api/mappings/tables", async ([FromBody] TableMapping mapping, ICon
         }
 
         int newId = await conn.QuerySingleAsync<int>(@"
-            INSERT INTO dbo.TableMappings (JobId, SourceTableName, TargetTableName, ExecutionOrder, TruncateTarget, IsEnabled, PostMigrationScript, MappingMode, NativeSqlScript)
-            VALUES (@JobId, @SourceTableName, @TargetTableName, @ExecutionOrder, @TruncateTarget, @IsEnabled, @PostMigrationScript, @MappingMode, @NativeSqlScript);
+            INSERT INTO dbo.TableMappings (JobId, SourceTableName, TargetTableName, ExecutionOrder, TruncateTarget, IsEnabled, PostMigrationScript, MappingMode, NativeSqlScript, WhereClause)
+            VALUES (@JobId, @SourceTableName, @TargetTableName, @ExecutionOrder, @TruncateTarget, @IsEnabled, @PostMigrationScript, @MappingMode, @NativeSqlScript, @WhereClause);
             SELECT CAST(SCOPE_IDENTITY() as int);", mapping);
         mapping.Id = newId;
         return Results.Created($"/api/mappings/tables/{newId}", mapping);
@@ -593,9 +602,10 @@ app.MapGet("/api/mappings/tables/{id:int}/generate-sp", async (int id, IConfigur
     {
         targetColsList.Add($"[{col.TargetColumnName}]");
 
+        string projection = "NULL";
         if (col.MappingType.Equals("Direct", StringComparison.OrdinalIgnoreCase))
         {
-            selectProjections.Add($"Source.[{col.SourceColumnName}]");
+            projection = $"Source.[{col.SourceColumnName}]";
         }
         else if (col.MappingType.Equals("Constant", StringComparison.OrdinalIgnoreCase))
         {
@@ -603,22 +613,65 @@ app.MapGet("/api/mappings/tables/{id:int}/generate-sp", async (int id, IConfigur
             string sqlVal = val.Replace("'", "''");
             if (decimal.TryParse(val, out _))
             {
-                selectProjections.Add(sqlVal);
+                projection = sqlVal;
             }
             else
             {
-                selectProjections.Add($"'{sqlVal}'");
+                projection = $"'{sqlVal}'";
             }
         }
         else if (col.MappingType.Equals("Expression", StringComparison.OrdinalIgnoreCase))
         {
-            selectProjections.Add($"({col.ExpressionSQL})");
+            projection = $"({col.ExpressionSQL})";
         }
         else if (col.MappingType.Equals("Lookup", StringComparison.OrdinalIgnoreCase))
         {
             string lookupTableFq = FormatQualifiedTableName(targetDb, col.LookupTable);
-            selectProjections.Add($"(SELECT [{col.LookupValueColumn}] FROM {lookupTableFq} WHERE [{col.LookupKeyColumn}] = Source.[{col.SourceColumnName}])");
+            projection = $"(SELECT [{col.LookupValueColumn}] FROM {lookupTableFq} WHERE [{col.LookupKeyColumn}] = Source.[{col.SourceColumnName}])";
         }
+
+        // Apply "If Null" strategy in generated SQL Stored Procedure
+        if (!string.IsNullOrWhiteSpace(col.IfNullAction) && !col.IfNullAction.Equals("Null", StringComparison.OrdinalIgnoreCase))
+        {
+            string action = col.IfNullAction.Trim();
+            string param = col.IfNullParam ?? "";
+            string fallback = "NULL";
+
+            if (action.Equals("GetDate", StringComparison.OrdinalIgnoreCase))
+            {
+                fallback = "GETDATE()";
+            }
+            else if (action.Equals("Constant", StringComparison.OrdinalIgnoreCase))
+            {
+                string sqlVal = param.Replace("'", "''");
+                if (decimal.TryParse(param, out _))
+                {
+                    fallback = sqlVal;
+                }
+                else
+                {
+                    fallback = $"'{sqlVal}'";
+                }
+            }
+            else if (action.Equals("RandomNumber", StringComparison.OrdinalIgnoreCase))
+            {
+                int len = int.TryParse(param, out var l) ? Math.Max(1, l) : 8;
+                fallback = $"LEFT(CAST(ABS(CHECKSUM(NEWID())) AS VARCHAR(50)), {len})";
+            }
+            else if (action.Equals("RandomLetters", StringComparison.OrdinalIgnoreCase) || action.Equals("RandomAlphanumeric", StringComparison.OrdinalIgnoreCase))
+            {
+                int len = int.TryParse(param, out var l) ? Math.Max(1, l) : 8;
+                fallback = $"LEFT(REPLACE(CAST(NEWID() AS VARCHAR(36)), '-', ''), {len})";
+            }
+            else if (action.Equals("Expression", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(param))
+            {
+                fallback = $"({param})";
+            }
+
+            projection = $"ISNULL({projection}, {fallback})";
+        }
+
+        selectProjections.Add(projection);
     }
 
     string spName = $"sp_Migrate_{tableMap.TargetTableName.Replace("[", "").Replace("]", "").Replace(".", "_")}";
@@ -649,7 +702,18 @@ app.MapGet("/api/mappings/tables/{id:int}/generate-sp", async (int id, IConfigur
     sb.AppendLine("        )");
     sb.AppendLine("        SELECT ");
     sb.AppendLine($"            {string.Join(",\n            ", selectProjections)}");
-    sb.AppendLine($"        FROM {sourceTableFq} AS Source;");
+    sb.Append($"        FROM {sourceTableFq} AS Source");
+
+    if (!string.IsNullOrWhiteSpace(tableMap.WhereClause))
+    {
+        var where = tableMap.WhereClause.Trim();
+        if (!where.StartsWith("WHERE", StringComparison.OrdinalIgnoreCase))
+        {
+            where = "WHERE " + where;
+        }
+        sb.Append($" {where}");
+    }
+    sb.AppendLine(";");
     sb.AppendLine();
 
     if (!string.IsNullOrWhiteSpace(tableMap.PostMigrationScript))
@@ -839,6 +903,7 @@ app.MapGet("/api/jobs/{id:int}/export", async (int id, IConfiguration config) =>
             PostMigrationScript = t.PostMigrationScript,
             MappingMode = t.MappingMode,
             NativeSqlScript = t.NativeSqlScript,
+            WhereClause = t.WhereClause,
             Columns = columns.Select(c => new ExportColumnMappingDto
             {
                 SourceColumnName = c.SourceColumnName,
@@ -848,7 +913,9 @@ app.MapGet("/api/jobs/{id:int}/export", async (int id, IConfiguration config) =>
                 LookupTable = c.LookupTable,
                 LookupKeyColumn = c.LookupKeyColumn,
                 LookupValueColumn = c.LookupValueColumn,
-                ExpressionSQL = c.ExpressionSQL
+                ExpressionSQL = c.ExpressionSQL,
+                IfNullAction = c.IfNullAction,
+                IfNullParam = c.IfNullParam
             }).ToList()
         };
         export.TableMappings.Add(tDto);
@@ -894,10 +961,10 @@ app.MapPost("/api/jobs/import", async ([FromBody] ExportJobDto import, IConfigur
         foreach (var t in import.TableMappings)
         {
             int newTableMappingId = await conn.QuerySingleAsync<int>(@"
-                INSERT INTO dbo.TableMappings (JobId, SourceTableName, TargetTableName, ExecutionOrder, TruncateTarget, IsEnabled, PostMigrationScript, MappingMode, NativeSqlScript)
-                VALUES (@JobId, @SourceTableName, @TargetTableName, @ExecutionOrder, @TruncateTarget, @IsEnabled, @PostMigrationScript, @MappingMode, @NativeSqlScript);
+                INSERT INTO dbo.TableMappings (JobId, SourceTableName, TargetTableName, ExecutionOrder, TruncateTarget, IsEnabled, PostMigrationScript, MappingMode, NativeSqlScript, WhereClause)
+                VALUES (@JobId, @SourceTableName, @TargetTableName, @ExecutionOrder, @TruncateTarget, @IsEnabled, @PostMigrationScript, @MappingMode, @NativeSqlScript, @WhereClause);
                 SELECT CAST(SCOPE_IDENTITY() as int);",
-                new { JobId = newJobId, SourceTableName = t.SourceTableName, TargetTableName = t.TargetTableName, ExecutionOrder = t.ExecutionOrder, TruncateTarget = t.TruncateTarget, IsEnabled = t.IsEnabled, PostMigrationScript = t.PostMigrationScript, MappingMode = string.IsNullOrWhiteSpace(t.MappingMode) ? "TABLE" : t.MappingMode, NativeSqlScript = t.NativeSqlScript },
+                new { JobId = newJobId, SourceTableName = t.SourceTableName, TargetTableName = t.TargetTableName, ExecutionOrder = t.ExecutionOrder, TruncateTarget = t.TruncateTarget, IsEnabled = t.IsEnabled, PostMigrationScript = t.PostMigrationScript, MappingMode = string.IsNullOrWhiteSpace(t.MappingMode) ? "TABLE" : t.MappingMode, NativeSqlScript = t.NativeSqlScript, WhereClause = t.WhereClause },
                 transaction);
 
             foreach (var c in t.Columns)
@@ -2023,6 +2090,7 @@ public class ExportTableMappingDto
     public string MappingMode { get; set; }
     public string NativeSqlScript { get; set; }
     public string PostMigrationScript { get; set; }
+    public string WhereClause { get; set; }
     public List<ExportColumnMappingDto> Columns { get; set; } = new();
 }
 

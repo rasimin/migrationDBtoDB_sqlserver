@@ -388,7 +388,17 @@ namespace DbMigrator.Core
                     }
 
                     // D. Hitung Total Baris di Tabel Source
-                    using (var countCmd = new SqlCommand($"SELECT COUNT(*) FROM {EscapeTableName(tableMap.SourceTableName)}", sourceConn))
+                    string countQuery = $"SELECT COUNT(*) FROM {EscapeTableName(tableMap.SourceTableName)} AS Source";
+                    if (!string.IsNullOrWhiteSpace(tableMap.WhereClause))
+                    {
+                        var where = tableMap.WhereClause.Trim();
+                        if (!where.StartsWith("WHERE", StringComparison.OrdinalIgnoreCase))
+                        {
+                            where = "WHERE " + where;
+                        }
+                        countQuery += " " + where;
+                    }
+                    using (var countCmd = new SqlCommand(countQuery, sourceConn))
                     {
                         totalRows = Convert.ToInt32(await countCmd.ExecuteScalarAsync(cancellationToken));
                     }
@@ -436,6 +446,16 @@ namespace DbMigrator.Core
                     // Jika tidak ada proyeksi kolom, ambil semua
                     string selectColumns = selectProjections.Count > 0 ? string.Join(", ", selectProjections) : "*";
                     string selectQuery = $"SELECT {selectColumns} FROM {EscapeTableName(tableMap.SourceTableName)} AS Source";
+
+                    if (!string.IsNullOrWhiteSpace(tableMap.WhereClause))
+                    {
+                        var where = tableMap.WhereClause.Trim();
+                        if (!where.StartsWith("WHERE", StringComparison.OrdinalIgnoreCase))
+                        {
+                            where = "WHERE " + where;
+                        }
+                        selectQuery += " " + where;
+                    }
 
                     // F. Siapkan Struktur DataTable Target untuk Batching & SqlBulkCopy
                     var targetSchemaTable = new DataTable();

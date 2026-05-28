@@ -651,7 +651,7 @@ function renderTableMappings(mappings, isFilterActive) {
                     <button class="btn-icon" onclick="openColumnMappingModal(${map.Id || map.id}, '${map.SourceTableName || map.sourceTableName}', '${map.TargetTableName || map.targetTableName}')" title="Petakan Kolom Dinamis">
                         <i class="fa-solid fa-sliders"></i>
                     </button>
-                    <button class="btn-icon" onclick="editTableMapping(${map.Id || map.id}, '${map.SourceTableName || map.sourceTableName}', '${map.TargetTableName || map.targetTableName}', ${map.ExecutionOrder || map.executionOrder}, ${map.TruncateTarget || map.truncateTarget || false}, '${(map.PostMigrationScript || map.postMigrationScript || '').replace(/'/g, "\\'")}')" title="Edit Pemetaan Tabel">
+                    <button class="btn-icon" onclick="editTableMapping(${map.Id || map.id})" title="Edit Pemetaan Tabel">
                         <i class="fa-solid fa-pen-to-square"></i>
                     </button>
                     <button class="btn-icon delete" onclick="deleteTableMapping(${map.Id || map.id})" title="Hapus Pemetaan">
@@ -804,21 +804,30 @@ function openNewTableMappingForm() {
     if (document.getElementById('table-post-migration-script')) {
         document.getElementById('table-post-migration-script').value = '';
     }
+    if (document.getElementById('table-where-clause')) {
+        document.getElementById('table-where-clause').value = '';
+    }
     document.getElementById('table-modal-title').innerText = 'Pemetaan Tabel Baru';
 
     document.getElementById('table-mapping-modal').classList.add('active');
 }
 
-function editTableMapping(id, sourceTable, targetTable, order, truncate, postScript) {
+function editTableMapping(id) {
+    const map = dataMappingsCache.find(m => (m.Id || m.id) === id);
+    if (!map) return;
+
     populateTableDatalists();
 
     document.getElementById('table-mapping-id').value = id;
-    document.getElementById('source-table-select').value = sourceTable || '';
-    document.getElementById('target-table-select').value = targetTable || '';
-    document.getElementById('execution-order').value = order;
-    document.getElementById('truncate-target').checked = truncate;
+    document.getElementById('source-table-select').value = map.SourceTableName || map.sourceTableName || '';
+    document.getElementById('target-table-select').value = map.TargetTableName || map.targetTableName || '';
+    document.getElementById('execution-order').value = map.ExecutionOrder || map.executionOrder || 1;
+    document.getElementById('truncate-target').checked = map.TruncateTarget || map.truncateTarget || false;
     if (document.getElementById('table-post-migration-script')) {
-        document.getElementById('table-post-migration-script').value = postScript || '';
+        document.getElementById('table-post-migration-script').value = map.PostMigrationScript || map.postMigrationScript || '';
+    }
+    if (document.getElementById('table-where-clause')) {
+        document.getElementById('table-where-clause').value = map.WhereClause || map.whereClause || '';
     }
     document.getElementById('table-modal-title').innerText = 'Edit Pemetaan Tabel';
 
@@ -1020,6 +1029,7 @@ async function saveTableMapping() {
     const order = parseInt(document.getElementById('execution-order').value);
     const truncate = document.getElementById('truncate-target').checked;
     const postScript = document.getElementById('table-post-migration-script') ? document.getElementById('table-post-migration-script').value.trim() : null;
+    const whereClause = document.getElementById('table-where-clause') ? document.getElementById('table-where-clause').value.trim() : null;
 
     if (!sourceTable || !targetTable) {
         alert("Harap pilih tabel asal dan tujuan!");
@@ -1046,7 +1056,8 @@ async function saveTableMapping() {
         IsEnabled: true,
         MappingMode: 'TABLE',
         NativeSqlScript: null,
-        PostMigrationScript: postScript
+        PostMigrationScript: postScript,
+        WhereClause: whereClause || null
     };
 
     try {

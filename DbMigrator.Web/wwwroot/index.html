@@ -547,6 +547,13 @@
                 <label for="table-post-migration-script">Post-Migration SQL Script (Table-Level)</label>
                 <textarea id="table-post-migration-script" class="form-control" placeholder="Contoh: ALTER INDEX ALL ON TargetCustomers REBUILD;" style="font-family: Consolas, monospace; min-height: 80px;"></textarea>
             </div>
+            <div class="form-group" style="margin-top: 1rem;">
+                <label for="table-where-clause">Filter Kueri Asal (WHERE Clause - Opsional)</label>
+                <textarea id="table-where-clause" class="form-control" placeholder="Contoh: IDCustomer IN (SELECT idcustomer FROM TCustomer)" style="font-family: Consolas, monospace; min-height: 60px;"></textarea>
+                <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.25rem;">
+                    Gunakan syntax SQL Server. Anda bisa langsung menulis kondisinya saja (WHERE akan ditambahkan otomatis jika tidak ada).
+                </small>
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeTableMappingModal()" style="width: auto;">Batal</button>
