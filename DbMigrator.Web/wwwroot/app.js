@@ -785,7 +785,15 @@ function openNewTableMappingForm() {
     document.getElementById('table-mapping-id').value = 0;
     document.getElementById('source-table-select').value = sourceTables[0] || '';
     document.getElementById('target-table-select').value = targetTables[0] || '';
-    document.getElementById('execution-order').value = 1;
+    
+    // hitung urutan eksekusi terakhir + 1 agar selalu di akhir secara default
+    let nextOrder = 1;
+    if (dataMappingsCache && dataMappingsCache.length > 0) {
+        const orders = dataMappingsCache.map(m => parseInt(m.ExecutionOrder || m.executionOrder || 0));
+        nextOrder = Math.max(...orders, 0) + 1;
+    }
+    document.getElementById('execution-order').value = nextOrder;
+
     document.getElementById('truncate-target').checked = false;
     if (document.getElementById('table-post-migration-script')) {
         document.getElementById('table-post-migration-script').value = '';
@@ -871,11 +879,18 @@ async function addDataNativeSqlItem() {
         return;
     }
 
+    // hitung urutan eksekusi terakhir + 1 agar selalu di akhir secara default
+    let nextOrder = 1;
+    if (dataMappingsCache && dataMappingsCache.length > 0) {
+        const orders = dataMappingsCache.map(m => parseInt(m.ExecutionOrder || m.executionOrder || 0));
+        nextOrder = Math.max(...orders, 0) + 1;
+    }
+
     const payload = {
         JobId: activeJob.Id || activeJob.id,
         SourceTableName: '[NATIVE_SQL]',
         TargetTableName: name,
-        ExecutionOrder: 99,
+        ExecutionOrder: nextOrder,
         TruncateTarget: false,
         IsEnabled: true,
         MappingMode: 'NATIVE_SQL',
@@ -2190,12 +2205,19 @@ async function addNativeSqlItem() {
         return;
     }
 
+    // hitung urutan eksekusi terakhir + 1 agar selalu di akhir secara default
+    let nextOrder = 1;
+    if (objItemsCache && objItemsCache.length > 0) {
+        const orders = objItemsCache.map(m => parseInt(m.ExecutionOrder || m.executionOrder || 0));
+        nextOrder = Math.max(...orders, 0) + 1;
+    }
+
     const payload = {
         JobId: activeJob.Id || activeJob.id,
         ObjectName: name,
         ObjectType: 'NATIVE_SQL',
         NativeSqlScript: script,
-        ExecutionOrder: 99,
+        ExecutionOrder: nextOrder,
         IsEnabled: true
     };
 

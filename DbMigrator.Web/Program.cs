@@ -449,6 +449,14 @@ app.MapPost("/api/mappings/tables", async ([FromBody] TableMapping mapping, ICon
     }
     else
     {
+        // Tentukan urutan eksekusi terakhir + 1 jika tidak diisi atau <= 0
+        if (mapping.ExecutionOrder <= 0)
+        {
+            var maxOrder = await conn.QueryFirstOrDefaultAsync<int?>(
+                "SELECT MAX(ExecutionOrder) FROM dbo.TableMappings WHERE JobId = @JobId", new { JobId = mapping.JobId });
+            mapping.ExecutionOrder = (maxOrder ?? 0) + 1;
+        }
+
         int newId = await conn.QuerySingleAsync<int>(@"
             INSERT INTO dbo.TableMappings (JobId, SourceTableName, TargetTableName, ExecutionOrder, TruncateTarget, IsEnabled, PostMigrationScript, MappingMode, NativeSqlScript)
             VALUES (@JobId, @SourceTableName, @TargetTableName, @ExecutionOrder, @TruncateTarget, @IsEnabled, @PostMigrationScript, @MappingMode, @NativeSqlScript);
@@ -1046,6 +1054,14 @@ app.MapPost("/api/obj-items", async ([FromBody] ObjectMigrationItem item, IConfi
     }
     else
     {
+        // Tentukan urutan eksekusi terakhir + 1 jika tidak diisi atau <= 0
+        if (item.ExecutionOrder <= 0)
+        {
+            var maxOrder = await conn.QueryFirstOrDefaultAsync<int?>(
+                "SELECT MAX(ExecutionOrder) FROM dbo.ObjectMigrationItems WHERE JobId = @JobId", new { JobId = item.JobId });
+            item.ExecutionOrder = (maxOrder ?? 0) + 1;
+        }
+
         int newId = await conn.QuerySingleAsync<int>(@"
             INSERT INTO dbo.ObjectMigrationItems (JobId, ObjectName, ObjectType, NativeSqlScript, ExecutionOrder, IsEnabled)
             VALUES (@JobId, @ObjectName, @ObjectType, @NativeSqlScript, @ExecutionOrder, @IsEnabled);
