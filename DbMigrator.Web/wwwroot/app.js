@@ -136,6 +136,9 @@ function initSignalR() {
         } else if (progress.Status === 'Failed') {
             logLine.className = 'console-line error';
             logLine.innerText = `[${new Date().toLocaleTimeString()}] ERROR: Tabel ${progress.TableName} gagal! Detail: ${progress.ErrorMessage}`;
+            
+            // Refresh table mapping view untuk memperbarui logs/tampilan jika gagal agar langsung muncul di grid
+            if (activeJob) loadTableMappings(activeJob.Id || activeJob.id);
         }
 
         logsBox.appendChild(logLine);
@@ -185,6 +188,9 @@ function initSignalR() {
         document.getElementById('runner-status-text').innerText = 'FAILED';
         document.getElementById('runner-status-text').style.color = 'var(--color-error)';
         document.getElementById('btn-cancel-migration').style.display = 'none';
+
+        // Refresh table mapping view untuk memperbarui logs/tampilan jika terjadi error fatal
+        if (activeJob) loadTableMappings(activeJob.Id || activeJob.id);
     });
 
     // Re-join active job group on automatic reconnection
@@ -1051,8 +1057,17 @@ async function saveTableMapping() {
         });
 
         if (res.ok) {
+            const savedMapping = await res.json();
             closeTableMappingModal();
             loadTableMappings(activeJob.Id || activeJob.id);
+
+            // Jika ini penambahan tabel baru (id === 0), otomatis buka form mapping kolom
+            if (id === 0 && savedMapping && (savedMapping.Id || savedMapping.id)) {
+                const newMappingId = savedMapping.Id || savedMapping.id;
+                setTimeout(() => {
+                    openColumnMappingModal(newMappingId, savedMapping.SourceTableName || savedMapping.sourceTableName, savedMapping.TargetTableName || savedMapping.targetTableName);
+                }, 400); // Tunggu sedikit agar modal tutup selesai
+            }
         } else {
             const errText = await res.text();
             alert("Gagal menyimpan pemetaan tabel: " + errText);
