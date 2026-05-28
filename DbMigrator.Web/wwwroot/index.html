@@ -125,6 +125,10 @@
                             <i class="fa-solid fa-cubes"></i>
                             <span>Object Migration</span>
                         </button>
+                        <button id="inner-tab-clean" onclick="switchInnerTab('clean')" class="book-tab" title="Clean Target Table" aria-label="Clean Target Table">
+                            <i class="fa-solid fa-broom"></i>
+                            <span>Clean Target Table</span>
+                        </button>
                     </div>
 
                     <!-- Right Content Pane -->
@@ -144,6 +148,9 @@
                                 </button>
                                 <button class="btn btn-secondary" onclick="openDataNativeSqlModal()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">
                                     <i class="fa-solid fa-terminal"></i> Native SQL
+                                </button>
+                                <button class="btn btn-secondary" onclick="resetDataStatuses()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; color: #fb7185; border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.05);" title="Reset Status semua pemetaan ke Pending">
+                                    <i class="fa-solid fa-undo"></i> Reset Status
                                 </button>
                             </div>
 
@@ -216,6 +223,9 @@
                                 <button class="btn btn-secondary" onclick="openObjNativeSqlModal()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">
                                     <i class="fa-solid fa-terminal"></i> Native SQL
                                 </button>
+                                <button class="btn btn-secondary" onclick="resetObjStatuses()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; color: #fb7185; border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.05);" title="Reset Status semua objek ke Pending">
+                                    <i class="fa-solid fa-undo"></i> Reset Status
+                                </button>
                             </div>
 
                             <!-- Object Sub-Tabs: Daftar Objek | Log Eksekusi -->
@@ -247,6 +257,78 @@
                                         <tbody id="obj-logs-tbody"></tbody>
                                     </table>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- ===================================================== -->
+                        <!-- INNER CONTENT: CLEAN TARGET TABLE                      -->
+                        <!-- ===================================================== -->
+                        <div id="inner-content-clean" style="display: none; margin-top: 0;">
+                            
+                            <!-- Real-Time Connection Info Card -->
+                            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-flat); border-radius: 8px; padding: 0.85rem 1.25rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                                    <i class="fa-solid fa-database" style="color: var(--accent-indigo);"></i>
+                                    <span>Source Database:</span>
+                                    <strong id="clean-source-db-text" style="color: #ffffff;">-</strong>
+                                </div>
+                                <div style="font-size: 1rem; color: var(--text-muted);"><i class="fa-solid fa-right-long"></i></div>
+                                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                                    <i class="fa-solid fa-server" style="color: var(--accent-teal);"></i>
+                                    <span>Target Database:</span>
+                                    <strong id="clean-target-db-text" style="color: #ffffff;">-</strong>
+                                </div>
+                            </div>
+
+                            <!-- Input Form: Autocomplete + TextArea -->
+                            <div style="background: rgba(255, 255, 255, 0.02); padding: 1.25rem; border-radius: 8px; border: 1px solid var(--border-flat); margin-bottom: 1.5rem;">
+                                <h4 style="font-size: 0.9rem; font-weight: 600; margin-top: 0; margin-bottom: 0.85rem; color: #ffffff;">Tambah Tabel ke Daftar Pembersih</h4>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                                    <div class="form-group" style="margin-bottom: 0; position: relative;">
+                                        <label for="clean-table-select" style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.4rem; display: block;">Pilih Tabel Tunggal (Autocomplete)</label>
+                                        <div style="position: relative;">
+                                            <input type="text" id="clean-table-select" class="form-control" placeholder="Cari & pilih tabel target..." autocomplete="off" style="padding-right: 2rem;">
+                                            <button type="button" data-table-input="clean-table-select" style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0;">
+                                                <i class="fa-solid fa-chevron-down"></i>
+                                            </button>
+                                            <div id="clean-table-options" class="table-autocomplete"></div>
+                                        </div>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label for="clean-bulk-textarea" style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.4rem; display: block;">Atau Tambah Massal (Pisahkan dengan Koma)</label>
+                                        <textarea id="clean-bulk-textarea" class="form-control" placeholder="Contoh: TableA, TableB, TableC" style="min-height: 38px; height: 38px; padding: 0.5rem 0.75rem; font-family: Consolas, monospace; font-size: 0.85rem; resize: none;"></textarea>
+                                    </div>
+                                </div>
+                                <div style="display: flex; justify-content: flex-end;">
+                                    <button class="btn btn-secondary" onclick="addCleanTables()" style="width: auto; padding: 0.55rem 1.25rem; font-size: 0.85rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);">
+                                        <i class="fa-solid fa-plus"></i> Tambah ke Daftar Pembersih
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Action Buttons Bar -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <button class="btn btn-danger" onclick="runAllClean()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem; background: var(--color-error); border: none;">
+                                        <i class="fa-solid fa-broom"></i> Bersihkan Semua Tabel
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="generateCleanSpScript()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; border-color: var(--accent-teal); color: var(--accent-teal); background: rgba(0,173,181,0.05);">
+                                        <i class="fa-solid fa-file-code"></i> Generate Clean SP
+                                    </button>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <button class="btn btn-secondary" onclick="resetCleanStatuses()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; color: #fb7185; border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.05);" title="Reset Status semua tabel ke Pending">
+                                        <i class="fa-solid fa-undo"></i> Reset Status
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="if (activeJob) loadCleanTables(activeJob.Id || activeJob.id)" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;" title="Refresh daftar status">
+                                        <i class="fa-solid fa-arrows-rotate"></i> Refresh Status
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- List of Clean Target Tables -->
+                            <div id="clean-tables-container" class="table-list">
+                                <!-- Loaded dynamically -->
                             </div>
                         </div>
                     </div>

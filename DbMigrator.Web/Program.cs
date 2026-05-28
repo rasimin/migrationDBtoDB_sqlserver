@@ -249,6 +249,35 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
                 ErrorMessage NVARCHAR(MAX) NULL
             );
         END
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CleanTargetTables')
+        BEGIN
+            CREATE TABLE dbo.CleanTargetTables (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                JobId INT NOT NULL REFERENCES dbo.MigrationJobs(Id) ON DELETE CASCADE,
+                TableName NVARCHAR(255) NOT NULL,
+                ExecutionOrder INT NOT NULL DEFAULT 1,
+                LastStatus NVARCHAR(50) NOT NULL DEFAULT 'Pending',
+                LastErrorMessage NVARCHAR(MAX) NULL,
+                LastCleanedAt DATETIME NULL
+            );
+        END
+
+        -- Ensure TableMappings has status columns
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TableMappings') AND name = 'LastStatus')
+        BEGIN
+            ALTER TABLE dbo.TableMappings ADD LastStatus NVARCHAR(50) NOT NULL DEFAULT 'Pending';
+            ALTER TABLE dbo.TableMappings ADD LastErrorMessage NVARCHAR(MAX) NULL;
+            ALTER TABLE dbo.TableMappings ADD LastRunAt DATETIME NULL;
+        END
+
+        -- Ensure ObjectMigrationItems has status columns
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ObjectMigrationItems') AND name = 'LastStatus')
+        BEGIN
+            ALTER TABLE dbo.ObjectMigrationItems ADD LastStatus NVARCHAR(50) NOT NULL DEFAULT 'Pending';
+            ALTER TABLE dbo.ObjectMigrationItems ADD LastErrorMessage NVARCHAR(MAX) NULL;
+            ALTER TABLE dbo.ObjectMigrationItems ADD LastRunAt DATETIME NULL;
+        END
     ");
 }
 
@@ -691,7 +720,7 @@ app.MapGet("/api/db/columns", async ([FromQuery] int jobId, [FromQuery] string d
 });
 
 // 11. RUN MIGRATION JOB (BACKGROUND PROCESS WITH REAL-TIME SIGNALR BROADCAST)
-app.MapPost("/api/jobs/{id:int}/run", (int id, IConfiguration config, IHubContext<MigrationHub> hubContext, IHostApplicationLifetime appLifetime) =>
+app.MapPost("/api/jobs/{id:int}/run", (int id, [FromQuery] int? mappingId, IConfiguration config, IHubContext<MigrationHub> hubContext, IHostApplicationLifetime appLifetime) =>
 {
     var configDbStr = config.GetConnectionString("ConfigDb");
     
@@ -722,7 +751,7 @@ app.MapPost("/api/jobs/{id:int}/run", (int id, IConfiguration config, IHubContex
                     Status = status,
                     ErrorMessage = error
                 }).GetAwaiter().GetResult();
-            }, token);
+            }, token, mappingId);
         }
         catch (Exception ex)
         {
@@ -1075,7 +1104,7 @@ app.MapGet("/api/jobs/{id:int}/obj-logs", async (int id, IConfiguration config) 
 });
 
 // OBJ-RUN. RUN OBJECT MIGRATION JOB (pakai MigrationJob connection)
-app.MapPost("/api/jobs/{id:int}/obj-run", async (int id, IConfiguration config) =>
+app.MapPost("/api/jobs/{id:int}/obj-run", async (int id, [FromQuery] int? itemId, IConfiguration config) =>
 {
     var configDbStr = config.GetConnectionString("ConfigDb");
 
@@ -1087,9 +1116,19 @@ app.MapPost("/api/jobs/{id:int}/obj-run", async (int id, IConfiguration config) 
         "SELECT * FROM dbo.MigrationJobs WHERE Id = @Id", new { Id = id });
     if (job == null) return Results.NotFound("Job tidak ditemukan.");
 
-    var items = (await configConn.QueryAsync<ObjectMigrationItem>(
-        "SELECT * FROM dbo.ObjectMigrationItems WHERE JobId = @JobId AND IsEnabled = 1 ORDER BY ExecutionOrder ASC",
-        new { JobId = id })).ToList();
+    List<ObjectMigrationItem> items;
+    if (itemId.HasValue)
+    {
+        items = (await configConn.QueryAsync<ObjectMigrationItem>(
+            "SELECT * FROM dbo.ObjectMigrationItems WHERE Id = @Id AND JobId = @JobId AND IsEnabled = 1",
+            new { Id = itemId.Value, JobId = id })).ToList();
+    }
+    else
+    {
+        items = (await configConn.QueryAsync<ObjectMigrationItem>(
+            "SELECT * FROM dbo.ObjectMigrationItems WHERE JobId = @JobId AND IsEnabled = 1 ORDER BY ExecutionOrder ASC",
+            new { JobId = id })).ToList();
+    }
 
     if (items.Count == 0) return Results.BadRequest("Tidak ada objek aktif untuk dimigrasi.");
 
@@ -1097,8 +1136,21 @@ app.MapPost("/api/jobs/{id:int}/obj-run", async (int id, IConfiguration config) 
 
     foreach (var item in items)
     {
+        // Done-Skipping Check (hanya jika eksekusi massal / bukan single play)
+        if (!itemId.HasValue && string.Equals(item.LastStatus, "Completed", StringComparison.OrdinalIgnoreCase))
+        {
+            results.Add(new { ObjectName = item.ObjectName, Status = "Completed", Message = "Skipped (Already migrated)" });
+            continue;
+        }
+
         try
         {
+            // Set status to InProgress
+            await configConn.ExecuteAsync(@"
+                UPDATE dbo.ObjectMigrationItems
+                SET LastStatus = 'InProgress', LastErrorMessage = NULL
+                WHERE Id = @Id", new { Id = item.Id });
+
             if (item.ObjectType == "NATIVE_SQL")
             {
                 using var targetConn = new SqlConnection(job.TargetConnectionString);
@@ -1132,6 +1184,12 @@ app.MapPost("/api/jobs/{id:int}/obj-run", async (int id, IConfiguration config) 
                 await MigrateCodeObject(configConn, job, item, id);
                 results.Add(new { ObjectName = item.ObjectName, Status = "Completed", Message = $"{item.ObjectType} migrated." });
             }
+
+            // Update to Completed
+            await configConn.ExecuteAsync(@"
+                UPDATE dbo.ObjectMigrationItems
+                SET LastStatus = 'Completed', LastErrorMessage = NULL, LastRunAt = GETDATE()
+                WHERE Id = @Id", new { Id = item.Id });
         }
         catch (Exception ex)
         {
@@ -1139,6 +1197,13 @@ app.MapPost("/api/jobs/{id:int}/obj-run", async (int id, IConfiguration config) 
                 INSERT INTO dbo.ObjectMigrationLogs (JobId, ObjectName, Action, Status, ErrorMessage)
                 VALUES (@JobId, @ObjectName, @Action, 'Failed', @ErrorMessage)",
                 new { JobId = id, ObjectName = item.ObjectName, Action = item.ObjectType, ErrorMessage = ex.Message });
+
+            // Update to Failed
+            await configConn.ExecuteAsync(@"
+                UPDATE dbo.ObjectMigrationItems
+                SET LastStatus = 'Failed', LastErrorMessage = @Error, LastRunAt = GETDATE()
+                WHERE Id = @Id", new { Error = ex.Message, Id = item.Id });
+
             results.Add(new { ObjectName = item.ObjectName, Status = "Failed", Message = ex.Message });
         }
     }
@@ -1146,7 +1211,375 @@ app.MapPost("/api/jobs/{id:int}/obj-run", async (int id, IConfiguration config) 
     return Results.Ok(new { Message = "Migrasi objek selesai.", Results = results });
 });
 
+// ============================================================================
+// CLEAN TARGET TABLE API ENDPOINTS
+// ============================================================================
+
+// 1. GET ALL CLEAN TABLES FOR JOB
+app.MapGet("/api/jobs/{jobId:int}/clean-tables", async (int jobId, IConfiguration config) =>
+{
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var tables = await conn.QueryAsync<CleanTargetTable>(
+        "SELECT * FROM dbo.CleanTargetTables WHERE JobId = @JobId ORDER BY ExecutionOrder ASC", new { JobId = jobId });
+    return Results.Ok(tables);
+});
+
+// 2. ADD CLEAN TABLES (SUPPORT COMMA-SEPARATED BULK)
+app.MapPost("/api/jobs/{jobId:int}/clean-tables", async (int jobId, [FromBody] CleanTableRequest request, IConfiguration config) =>
+{
+    if (request == null || string.IsNullOrWhiteSpace(request.TableNames))
+    {
+        return Results.BadRequest("Nama tabel tidak boleh kosong.");
+    }
+
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    await conn.OpenAsync();
+
+    var tableNames = request.TableNames
+        .Split(new[] { ',', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+        .Select(t => t.Trim())
+        .Where(t => !string.IsNullOrEmpty(t))
+        .ToList();
+
+    if (tableNames.Count == 0)
+    {
+        return Results.BadRequest("Nama tabel tidak valid.");
+    }
+
+    var addedTables = new List<string>();
+    var skippedTables = new List<string>();
+
+    using var transaction = conn.BeginTransaction();
+    try
+    {
+        // Ambil order terakhir
+        int maxOrder = await conn.QueryFirstOrDefaultAsync<int>(
+            "SELECT ISNULL(MAX(ExecutionOrder), 0) FROM dbo.CleanTargetTables WHERE JobId = @JobId", 
+            new { JobId = jobId }, transaction);
+
+        foreach (var tableName in tableNames)
+        {
+            // Cek apakah sudah terdaftar
+            var exists = await conn.QueryFirstOrDefaultAsync<int?>(
+                "SELECT TOP 1 Id FROM dbo.CleanTargetTables WHERE JobId = @JobId AND TableName = @TableName",
+                new { JobId = jobId, TableName = tableName }, transaction);
+
+            if (exists != null)
+            {
+                skippedTables.Add(tableName);
+                continue;
+            }
+
+            maxOrder++;
+            await conn.ExecuteAsync(@"
+                INSERT INTO dbo.CleanTargetTables (JobId, TableName, ExecutionOrder, LastStatus)
+                VALUES (@JobId, @TableName, @ExecutionOrder, 'Pending')",
+                new { JobId = jobId, TableName = tableName, ExecutionOrder = maxOrder }, transaction);
+
+            addedTables.Add(tableName);
+        }
+
+        transaction.Commit();
+        return Results.Ok(new { 
+            Message = "Proses penambahan selesai.", 
+            Added = addedTables, 
+            Skipped = skippedTables 
+        });
+    }
+    catch (Exception ex)
+    {
+        transaction.Rollback();
+        return Results.BadRequest($"Gagal menambahkan tabel: {ex.Message}");
+    }
+});
+
+// 3. DELETE CLEAN TABLE
+app.MapDelete("/api/clean-tables/{id:int}", async (int id, IConfiguration config) =>
+{
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    await conn.ExecuteAsync("DELETE FROM dbo.CleanTargetTables WHERE Id = @Id", new { Id = id });
+    return Results.Ok();
+});
+
+// 4. REORDER CLEAN TABLES
+app.MapPost("/api/jobs/{jobId:int}/clean-tables/reorder", async (int jobId, [FromBody] List<ReorderItemDto> items, IConfiguration config) =>
+{
+    if (items == null || items.Count == 0)
+    {
+        return Results.BadRequest("Daftar urutan tidak boleh kosong.");
+    }
+
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    await conn.OpenAsync();
+    using var transaction = conn.BeginTransaction();
+
+    try
+    {
+        foreach (var item in items)
+        {
+            await conn.ExecuteAsync(@"
+                UPDATE dbo.CleanTargetTables
+                SET ExecutionOrder = @ExecutionOrder
+                WHERE Id = @Id AND JobId = @JobId",
+                new { item.Id, item.ExecutionOrder, JobId = jobId }, transaction);
+        }
+
+        transaction.Commit();
+        return Results.Ok(new { Message = "Urutan tabel pembersih berhasil diperbarui." });
+    }
+    catch (Exception ex)
+    {
+        transaction.Rollback();
+        return Results.BadRequest($"Gagal memperbarui urutan: {ex.Message}");
+    }
+});
+
+// 5. RUN CLEANING (DELETE & RESEED IDENTITY, HANDLE FK GRACEFULLY)
+app.MapPost("/api/jobs/{jobId:int}/clean-tables/run", async (int jobId, [FromQuery] int? id, IConfiguration config) =>
+{
+    var configDbStr = config.GetConnectionString("ConfigDb");
+    using var configConn = new SqlConnection(configDbStr);
+    await configConn.OpenAsync();
+
+    // 1. Ambil Job koneksi
+    var job = await configConn.QuerySingleOrDefaultAsync<MigrationJob>(
+        "SELECT * FROM dbo.MigrationJobs WHERE Id = @Id", new { Id = jobId });
+    if (job == null) return Results.NotFound("Job tidak ditemukan.");
+
+    // 2. Ambil tabel yang akan dibersihkan
+    List<CleanTargetTable> tablesToClean;
+    if (id.HasValue)
+    {
+        var singleTable = await configConn.QuerySingleOrDefaultAsync<CleanTargetTable>(
+            "SELECT * FROM dbo.CleanTargetTables WHERE Id = @Id AND JobId = @JobId", 
+            new { Id = id.Value, JobId = jobId });
+        if (singleTable == null) return Results.NotFound("Tabel tidak terdaftar dalam daftar pembersih.");
+        tablesToClean = new List<CleanTargetTable> { singleTable };
+    }
+    else
+    {
+        tablesToClean = (await configConn.QueryAsync<CleanTargetTable>(
+            "SELECT * FROM dbo.CleanTargetTables WHERE JobId = @JobId ORDER BY ExecutionOrder ASC", 
+            new { JobId = jobId })).ToList();
+    }
+
+    if (tablesToClean.Count == 0)
+    {
+        return Results.BadRequest("Tidak ada tabel untuk dibersihkan.");
+    }
+
+    var results = new List<object>();
+
+    using var targetConn = new SqlConnection(job.TargetConnectionString);
+    await targetConn.OpenAsync();
+
+    foreach (var table in tablesToClean)
+    {
+        // Done-Skipping Check (hanya jika eksekusi massal / bukan single play)
+        if (!id.HasValue && string.Equals(table.LastStatus, "Completed", StringComparison.OrdinalIgnoreCase))
+        {
+            results.Add(new { Id = table.Id, TableName = table.TableName, Status = "Completed", Message = "Skipped (Already cleaned)" });
+            continue;
+        }
+
+        try
+        {
+            // Set status to InProgress
+            await configConn.ExecuteAsync(@"
+                UPDATE dbo.CleanTargetTables
+                SET LastStatus = 'InProgress', LastErrorMessage = NULL
+                WHERE Id = @Id", new { Id = table.Id });
+
+            var quotedTable = SafeQuoteTable(table.TableName);
+
+            // A. DELETE DATA
+            var deleteQuery = $"DELETE FROM {quotedTable}";
+            await targetConn.ExecuteAsync(deleteQuery);
+
+            // B. CHECK & RESEED IDENTITY (Jika ada kolom Identity)
+            var hasIdentity = await targetConn.QueryFirstOrDefaultAsync<int?>(
+                $"SELECT OBJECTPROPERTY(OBJECT_ID('{quotedTable.Replace("'", "''")}'), 'TableHasIdentity')");
+
+            string msg = "Data deleted.";
+            if (hasIdentity == 1)
+            {
+                var reseedQuery = $"DBCC CHECKIDENT ('{quotedTable.Replace("'", "''")}', RESEED, 0)";
+                await targetConn.ExecuteAsync(reseedQuery);
+                msg = "Data deleted and Identity reseeded to 0.";
+            }
+
+            // Update to Completed
+            await configConn.ExecuteAsync(@"
+                UPDATE dbo.CleanTargetTables
+                SET LastStatus = 'Completed', LastErrorMessage = NULL, LastCleanedAt = GETDATE()
+                WHERE Id = @Id", new { Id = table.Id });
+
+            results.Add(new { Id = table.Id, TableName = table.TableName, Status = "Completed", Message = msg });
+        }
+        catch (Exception ex)
+        {
+            // Catch error gracefully (e.g. FK constraint) and log it
+            await configConn.ExecuteAsync(@"
+                UPDATE dbo.CleanTargetTables
+                SET LastStatus = 'Failed', LastErrorMessage = @Error, LastCleanedAt = GETDATE()
+                WHERE Id = @Id", new { Error = ex.Message, Id = table.Id });
+
+            results.Add(new { Id = table.Id, TableName = table.TableName, Status = "Failed", Message = ex.Message });
+        }
+    }
+
+    return Results.Ok(new { Message = "Proses pembersihan selesai.", Results = results });
+});
+
+// 6. GENERATE UNIFIED CLEAN SP FOR ALL TABLES
+app.MapGet("/api/jobs/{jobId:int}/clean-tables/generate-sp", async (int jobId, IConfiguration config) =>
+{
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var job = await conn.QuerySingleOrDefaultAsync<MigrationJob>(
+        "SELECT * FROM dbo.MigrationJobs WHERE Id = @Id", new { Id = jobId });
+    if (job == null) return Results.NotFound($"Job {jobId} tidak ditemukan");
+
+    var tables = (await conn.QueryAsync<CleanTargetTable>(
+        "SELECT * FROM dbo.CleanTargetTables WHERE JobId = @JobId ORDER BY ExecutionOrder ASC", 
+        new { JobId = jobId })).ToList();
+
+    if (tables.Count == 0)
+    {
+        return Results.BadRequest("Tidak ada tabel terdaftar untuk dibersihkan pada Job ini.");
+    }
+
+    string targetDb = GetDatabaseName(job.TargetConnectionString);
+    string spName = $"sp_CleanTarget_All_{jobId}";
+
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine($"-- ===========================================================================");
+    sb.AppendLine($"-- STORED PROCEDURE: {spName}");
+    sb.AppendLine($"-- Digenerate secara otomatis oleh DbMigrator.NET");
+    sb.AppendLine($"-- Deskripsi: Membersihkan dan me-reseed seluruh tabel target terdaftar secara berurutan");
+    sb.AppendLine($"-- Database Target: {targetDb}");
+    sb.AppendLine($"-- Tanggal Generate: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+    sb.AppendLine($"-- ===========================================================================");
+    sb.AppendLine($"CREATE OR ALTER PROCEDURE dbo.{spName}");
+    sb.AppendLine("AS");
+    sb.AppendLine("BEGIN");
+    sb.AppendLine("    SET NOCOUNT ON;");
+    sb.AppendLine("    BEGIN TRANSACTION;");
+    sb.AppendLine("    BEGIN TRY");
+    sb.AppendLine();
+
+    int step = 1;
+    foreach (var table in tables)
+    {
+        var quotedTable = SafeQuoteTable(table.TableName);
+        sb.AppendLine($"        -- Langkah {step++}: Bersihkan tabel {table.TableName}");
+        sb.AppendLine($"        DELETE FROM {quotedTable};");
+        sb.AppendLine();
+        sb.AppendLine($"        -- Reseed identity jika tabel memiliki kolom Identity");
+        sb.AppendLine($"        IF OBJECTPROPERTY(OBJECT_ID('{quotedTable.Replace("'", "''")}'), 'TableHasIdentity') = 1");
+        sb.AppendLine("        BEGIN");
+        sb.AppendLine($"            DBCC CHECKIDENT ('{quotedTable.Replace("'", "''")}', RESEED, 0);");
+        sb.AppendLine("        END");
+        sb.AppendLine();
+    }
+
+    sb.AppendLine("        COMMIT TRANSACTION;");
+    sb.AppendLine($"        PRINT 'Pembersihan seluruh ({tables.Count}) tabel sukses!';");
+    sb.AppendLine("    END TRY");
+    sb.AppendLine("    BEGIN CATCH");
+    sb.AppendLine("        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;");
+    sb.AppendLine("        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();");
+    sb.AppendLine("        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();");
+    sb.AppendLine("        DECLARE @ErrorState INT = ERROR_STATE();");
+    sb.AppendLine("        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);");
+    sb.AppendLine("    END CATCH");
+    sb.AppendLine("END");
+
+    return Results.Ok(new { SpName = spName, SqlScript = sb.ToString() });
+});
+
+// ============================================================================
+// RESET STATUS ENDPOINTS (DATA, OBJECT, CLEAN)
+// ============================================================================
+
+// 1. Reset Clean Target Tables
+app.MapPost("/api/jobs/{jobId:int}/clean-tables/reset-status", async (int jobId, IConfiguration config) =>
+{
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    await conn.OpenAsync();
+
+    var job = await conn.QuerySingleOrDefaultAsync<MigrationJob>(
+        "SELECT * FROM dbo.MigrationJobs WHERE Id = @Id", new { Id = jobId });
+    if (job == null) return Results.NotFound("Job tidak ditemukan.");
+
+    await conn.ExecuteAsync(@"
+        UPDATE dbo.CleanTargetTables
+        SET LastStatus = 'Pending', LastErrorMessage = NULL, LastCleanedAt = NULL
+        WHERE JobId = @JobId", new { JobId = jobId });
+
+    return Results.Ok(new { Message = "Status pembersihan berhasil direset ke Pending." });
+});
+
+// 2. Reset Data Migration Mappings
+app.MapPost("/api/jobs/{jobId:int}/mappings/reset-status", async (int jobId, IConfiguration config) =>
+{
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    await conn.OpenAsync();
+
+    var job = await conn.QuerySingleOrDefaultAsync<MigrationJob>(
+        "SELECT * FROM dbo.MigrationJobs WHERE Id = @Id", new { Id = jobId });
+    if (job == null) return Results.NotFound("Job tidak ditemukan.");
+
+    await conn.ExecuteAsync(@"
+        UPDATE dbo.TableMappings
+        SET LastStatus = 'Pending', LastErrorMessage = NULL, LastRunAt = NULL
+        WHERE JobId = @JobId", new { JobId = jobId });
+
+    return Results.Ok(new { Message = "Status pemetaan data berhasil direset ke Pending." });
+});
+
+// 3. Reset Object Migration Items
+app.MapPost("/api/jobs/{jobId:int}/obj-items/reset-status", async (int jobId, IConfiguration config) =>
+{
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    await conn.OpenAsync();
+
+    var job = await conn.QuerySingleOrDefaultAsync<MigrationJob>(
+        "SELECT * FROM dbo.MigrationJobs WHERE Id = @Id", new { Id = jobId });
+    if (job == null) return Results.NotFound("Job tidak ditemukan.");
+
+    await conn.ExecuteAsync(@"
+        UPDATE dbo.ObjectMigrationItems
+        SET LastStatus = 'Pending', LastErrorMessage = NULL, LastRunAt = NULL
+        WHERE JobId = @JobId", new { JobId = jobId });
+
+    return Results.Ok(new { Message = "Status objek migrasi berhasil direset ke Pending." });
+});
+
 app.Run();
+
+// ============================================================================
+// SAFE QUOTING UTILITY FOR SQL SERVER
+// ============================================================================
+string SafeQuoteTable(string tableName)
+{
+    if (string.IsNullOrWhiteSpace(tableName)) return tableName;
+    
+    var clean = tableName.Trim();
+    if (clean.Contains('.'))
+    {
+        var parts = clean.Split('.');
+        var quotedParts = parts.Select(p => {
+            var pClean = p.Trim('[', ']');
+            return $"[{pClean.Replace("]", "]]")}]";
+        });
+        return string.Join(".", quotedParts);
+    }
+    else
+    {
+        var pClean = clean.Trim('[', ']');
+        return $"[{pClean.Replace("]", "]]")}]";
+    }
+}
 
 // ============================================================================
 // OBJECT MIGRATION HELPER FUNCTIONS

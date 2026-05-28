@@ -31,7 +31,7 @@ function initSignalR() {
 
     connection.on('ReceiveProgress', (progressData) => {
         if (!progressData) return;
-        
+
         // Bulletproof: Normalize casing to PascalCase (support both camelCase and PascalCase payload)
         const progress = {
             JobId: progressData.JobId !== undefined ? progressData.JobId : progressData.jobId,
@@ -49,10 +49,10 @@ function initSignalR() {
 
         // Tampilkan panel runner jika tersembunyi
         document.getElementById('active-runner-panel').style.display = 'block';
-        
+
         const logsBox = document.getElementById('console-logs');
         const progressList = document.getElementById('runner-progress-list');
-        
+
         let itemDiv = document.getElementById(`runner-item-${progress.TableName}`);
         if (!itemDiv) {
             itemDiv = document.createElement('div');
@@ -78,7 +78,7 @@ function initSignalR() {
         if (progress.TotalRows > 0) {
             pct = Math.round((progress.RowsMigrated / progress.TotalRows) * 100);
         }
-        
+
         bar.style.width = `${pct}%`;
         text.innerText = `${(progress.RowsMigrated || 0).toLocaleString()} / ${(progress.TotalRows || 0).toLocaleString()} (${pct}%)`;
 
@@ -91,7 +91,7 @@ function initSignalR() {
             bar.className = 'progress-bar-fill completed';
             logLine.className = 'console-line success';
             logLine.innerText = `[${new Date().toLocaleTimeString()}] KELAR: Tabel ${progress.TableName} sukses dimigrasi (${progress.RowsMigrated} baris).`;
-            
+
             // If all progress items are completed, change status to COMPLETED and hide cancel button
             setTimeout(() => {
                 const allFills = Array.from(progressList.querySelectorAll('.progress-bar-fill'));
@@ -109,7 +109,7 @@ function initSignalR() {
             bar.className = 'progress-bar-fill failed';
             logLine.className = 'console-line error';
             logLine.innerText = `[${new Date().toLocaleTimeString()}] ERROR: Tabel ${progress.TableName} gagal! Detail: ${progress.ErrorMessage}`;
-            
+
             document.getElementById('runner-status-text').innerText = 'FAILED';
             document.getElementById('runner-status-text').style.color = 'var(--color-error)';
             document.getElementById('btn-cancel-migration').style.display = 'none';
@@ -135,7 +135,7 @@ function initSignalR() {
         logLine.innerText = `[${new Date().toLocaleTimeString()}] FATAL JOB ERROR: ${message}`;
         logsBox.appendChild(logLine);
         logsBox.scrollTop = logsBox.scrollHeight;
-        
+
         document.getElementById('runner-status-text').innerText = 'FAILED';
         document.getElementById('runner-status-text').style.color = 'var(--color-error)';
         document.getElementById('btn-cancel-migration').style.display = 'none';
@@ -171,7 +171,7 @@ function initSignalR() {
 
 function joinJobGroupSignalR(jobId) {
     if (!connection) return;
-    
+
     if (connection.state === signalR.HubConnectionState.Connected) {
         connection.invoke("JoinJobGroup", jobId.toString())
             .then(() => console.log(`Joined SignalR group for Job: ${jobId}`))
@@ -194,7 +194,7 @@ async function loadJobs() {
     try {
         const res = await fetch(`${API_BASE}/jobs`);
         const jobs = await res.json();
-        
+
         const container = document.getElementById('job-list-container');
         if (jobs.length === 0) {
             container.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem;">Belum ada job. Silakan buat baru.</p>`;
@@ -265,7 +265,7 @@ async function selectJob(jobId) {
         // Tampilkan Panel Editor
         document.getElementById('welcome-panel').style.display = 'none';
         document.getElementById('job-editor-panel').style.display = 'block';
-        
+
         document.getElementById('active-job-title').innerHTML = `
             <i class="fa-solid fa-code-fork" style="color: var(--accent-indigo);"></i> 
             Job: <strong>${activeJob.JobName || activeJob.jobName}</strong>
@@ -277,7 +277,7 @@ async function selectJob(jobId) {
         // Load mappings & db schemas
         loadTableMappings(jobId);
         loadDatabaseSchemas();
-        
+
     } catch (err) {
         console.error(err);
     }
@@ -420,10 +420,10 @@ async function saveJob() {
         }
     }
 
-    const payload = { 
-        Id: id, 
-        JobName: name, 
-        SourceConnectionString: source, 
+    const payload = {
+        Id: id,
+        JobName: name,
+        SourceConnectionString: source,
         TargetConnectionString: target,
         PostMigrationScript: postScript
     };
@@ -456,7 +456,7 @@ async function loadTableMappings(jobId) {
     try {
         const res = await fetch(`${API_BASE}/mappings/tables/${jobId}`);
         const mappings = await res.json();
-        
+
         const container = document.getElementById('table-list-container');
         if (mappings.length === 0) {
             container.innerHTML = `
@@ -476,6 +476,20 @@ async function loadTableMappings(jobId) {
             const targetName = map.TargetTableName || map.targetTableName;
             const scriptPreview = (map.NativeSqlScript || map.nativeSqlScript || '').substring(0, 100);
 
+            const lastStatus = map.LastStatus || map.lastStatus || 'Pending';
+            const lastErrorMessage = map.LastErrorMessage || map.lastErrorMessage || '';
+            const lastRunAt = map.LastRunAt || map.lastRunAt;
+
+            let statusClass = 'pending';
+            if (lastStatus === 'Completed') statusClass = 'completed';
+            else if (lastStatus === 'Failed') statusClass = 'failed';
+            else if (lastStatus === 'InProgress') statusClass = 'inprogress';
+
+            let lastRunTime = '';
+            if (lastRunAt) {
+                lastRunTime = new Date(lastRunAt).toLocaleString();
+            }
+
             if (isNative) {
                 return `
             <div class="table-item sortable-item native-sql-item" draggable="true" data-sort-id="${mapId}">
@@ -484,16 +498,22 @@ async function loadTableMappings(jobId) {
                         <i class="fa-solid fa-grip-vertical"></i>
                     </div>
                     <div class="execution-badge" title="Urutan Eksekusi">${map.ExecutionOrder || map.executionOrder}</div>
-                    <div style="display: flex; flex-direction: column; gap: 0.35rem;">
-                        <div style="display: flex; align-items: center; gap: 0.65rem;">
+                    <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
                             <i class="fa-solid fa-terminal" style="color: var(--accent-teal);"></i>
                             <span style="font-weight: 700; color: #ffffff;">${escapeHtml(targetName)}</span>
                             <span class="obj-type-badge native_sql">NATIVE SQL</span>
+                            <span class="badge-clean ${statusClass}">${lastStatus}</span>
+                            ${lastRunTime ? `<span style="font-size: 0.72rem; color: var(--text-muted);"><i class="fa-solid fa-clock"></i> ${lastRunTime}</span>` : ''}
                         </div>
                         <div style="font-size: 0.75rem; color: var(--text-muted); font-family: Consolas, monospace; max-width: 560px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(scriptPreview)}${scriptPreview.length >= 100 ? '...' : ''}</div>
+                        ${lastErrorMessage ? `<div style="font-size: 0.78rem; color: var(--color-error); font-family: Consolas, monospace; line-height: 1.45; white-space: pre-wrap; word-break: break-all; max-width: 100%; padding: 0.65rem 0.85rem; background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.18); border-radius: 6px; margin-top: 0.35rem;">${lastErrorMessage}</div>` : ''}
                     </div>
                 </div>
                 <div class="table-actions">
+                    <button class="btn-icon" onclick="runSingleMapping(${mapId})" title="Jalankan Native SQL Ini" style="color: var(--accent-teal);">
+                        <i class="fa-solid fa-play"></i>
+                    </button>
                     <button class="btn-icon delete" onclick="deleteTableMapping(${mapId})" title="Hapus Native SQL">
                         <i class="fa-solid fa-trash-can"></i>
                     </button>
@@ -509,13 +529,23 @@ async function loadTableMappings(jobId) {
                         <i class="fa-solid fa-grip-vertical"></i>
                     </div>
                     <div class="execution-badge" title="Urutan Eksekusi">${map.ExecutionOrder || map.executionOrder}</div>
-                    <div class="table-flow">
-                        <span style="color: var(--text-muted); font-size: 0.9rem;">${sourceName}</span>
-                        <span class="arrow"><i class="fa-solid fa-circle-arrow-right"></i></span>
-                        <span style="color: #ffffff;">${targetName}</span>
+                    <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                            <div class="table-flow" style="margin: 0; padding: 0; background: none; box-shadow: none; display: flex; align-items: center; gap: 0.5rem;">
+                                <span style="color: var(--text-muted); font-size: 0.9rem;">${sourceName}</span>
+                                <span class="arrow" style="margin: 0; font-size: 0.8rem; color: var(--text-muted); display: inline-flex; align-items: center;"><i class="fa-solid fa-circle-arrow-right"></i></span>
+                                <span style="color: #ffffff; font-weight: 600;">${targetName}</span>
+                            </div>
+                            <span class="badge-clean ${statusClass}">${lastStatus}</span>
+                            ${lastRunTime ? `<span style="font-size: 0.72rem; color: var(--text-muted);"><i class="fa-solid fa-clock"></i> ${lastRunTime}</span>` : ''}
+                        </div>
+                        ${lastErrorMessage ? `<div style="font-size: 0.78rem; color: var(--color-error); font-family: Consolas, monospace; line-height: 1.45; white-space: pre-wrap; word-break: break-all; max-width: 100%; padding: 0.65rem 0.85rem; background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.18); border-radius: 6px; margin-top: 0.35rem;">${lastErrorMessage}</div>` : ''}
                     </div>
                 </div>
                 <div class="table-actions">
+                    <button class="btn-icon" onclick="runSingleMapping(${mapId})" title="Jalankan Pemetaan Ini" style="color: var(--accent-teal);">
+                        <i class="fa-solid fa-play"></i>
+                    </button>
                     <button class="btn-icon" onclick="generateSpScript(${map.Id || map.id})" title="Generate Stored Procedure (SP)" style="color: var(--accent-teal);">
                         <i class="fa-solid fa-file-code"></i>
                     </button>
@@ -652,7 +682,7 @@ function openNewTableMappingForm() {
         document.getElementById('table-post-migration-script').value = '';
     }
     document.getElementById('table-modal-title').innerText = 'Pemetaan Tabel Baru';
-    
+
     document.getElementById('table-mapping-modal').classList.add('active');
 }
 
@@ -668,7 +698,7 @@ function editTableMapping(id, sourceTable, targetTable, order, truncate, postScr
         document.getElementById('table-post-migration-script').value = postScript || '';
     }
     document.getElementById('table-modal-title').innerText = 'Edit Pemetaan Tabel';
-    
+
     document.getElementById('table-mapping-modal').classList.add('active');
 }
 
@@ -765,6 +795,7 @@ async function addDataNativeSqlItem() {
 function populateTableDatalists() {
     setupTableAutocomplete('source-table-select', 'source-table-options', sourceTables);
     setupTableAutocomplete('target-table-select', 'target-table-options', targetTables);
+    setupTableAutocomplete('clean-table-select', 'clean-table-options', targetTables);
 }
 
 function setupTableAutocomplete(inputId, menuId, tables) {
@@ -927,13 +958,13 @@ async function openColumnMappingModal(tableMappingId, sourceTable, targetTable) 
     activeTableMappingId = tableMappingId;
     activeColumnSourceTable = sourceTable;
     activeColumnTargetTable = targetTable;
-    
+
     document.getElementById('column-modal-title').innerText = `Desainer Kolom: ${targetTable}`;
     document.getElementById('column-modal-subtitle').innerText = `Memetakan dari data asal: ${sourceTable}`;
-    
+
     const tbody = document.getElementById('column-mapper-tbody');
     tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted);">Sedang mengambil struktur kolom database...</td></tr>`;
-    
+
     document.getElementById('column-mapping-modal').classList.add('active');
 
     try {
@@ -1026,7 +1057,7 @@ function closeColumnMappingModal() {
 function toggleMaximizeColumnModal() {
     const modalContent = document.querySelector('#column-mapping-modal .modal-content');
     const maxBtn = document.getElementById('btn-maximize-modal');
-    
+
     if (modalContent.classList.contains('maximized')) {
         modalContent.classList.remove('maximized');
         maxBtn.innerHTML = '<i class="fa-solid fa-expand"></i>';
@@ -1051,10 +1082,10 @@ function renderColumnMapper(targetCols, sourceCols, existingMappings) {
         // Cari apakah sudah ada mapping terdaftar
         const mapping = existingMappings.find(m => m.TargetColumnName.toLowerCase() === tCol.Name.toLowerCase()) || {};
         const selectedMappingType = mapping.MappingType || 'Ignore';
-        
+
         const tr = document.createElement('tr');
         tr.dataset.targetColumn = tCol.Name;
-        
+
         // Buat dropdown pilihan kolom source
         const srcOptionsHtml = sourceCols.map(s => `
             <option value="${s.Name}" ${mapping.SourceColumnName === s.Name ? 'selected' : ''}>${s.Name} (${s.Type})</option>
@@ -1095,7 +1126,7 @@ function toggleMappingTypeFields(selectElement, savedData = {}, sourceCols = [])
     const tr = selectElement.closest('tr');
     const container = tr.querySelector('.mapping-config-fields');
     const selectedType = selectElement.value;
-    
+
     // Tarik list source columns dari cache
     const sourceTableName = document.getElementById('column-modal-subtitle').innerText.replace('Memetakan dari data asal: ', '');
     const sCols = sourceColumnsCache[sourceTableName] || sourceCols;
@@ -1110,12 +1141,12 @@ function toggleMappingTypeFields(selectElement, savedData = {}, sourceCols = [])
                 ${optHtml}
             </select>
         `;
-    } 
+    }
     else if (selectedType === 'Constant') {
         container.innerHTML = `
             <input type="text" class="form-control col-constant-input" placeholder="Isi nilai default (misal: 1, Active)" value="${savedData.ConstantValue || ''}">
         `;
-    } 
+    }
     else if (selectedType === 'Lookup') {
         // Buat dropdown tabel target
         const tblOpts = targetTables.map(t => `<option value="${t}" ${savedData.LookupTable === t ? 'selected' : ''}>${t}</option>`).join('');
@@ -1178,12 +1209,12 @@ function toggleMappingTypeFields(selectElement, savedData = {}, sourceCols = [])
         if (savedData.LookupTable) {
             loadLookupColumns(tblSelect, savedData.LookupKeyColumn, savedData.LookupValueColumn);
         }
-    } 
+    }
     else if (selectedType === 'Expression') {
         container.innerHTML = `
             <textarea class="form-control col-expression-input" placeholder="Contoh SQL: CASE WHEN EXISTS(SELECT 1 FROM tbl_history H WHERE H.nik = Source.nik) THEN 1 ELSE 0 END" style="font-family:Consolas, monospace; font-size:0.8rem; min-height:60px;">${savedData.ExpressionSQL || ''}</textarea>
         `;
-    } 
+    }
     else if (selectedType === 'Ignore') {
         container.innerHTML = `<span style="color:var(--text-dark); font-size:0.85rem; font-style:italic;">Kolom ini akan diabaikan (tidak diisi)</span>`;
     }
@@ -1205,9 +1236,9 @@ async function loadLookupColumns(selectElement, selectedKey = null, selectedValu
         }
 
         const cols = targetColumnsCache[lookupTable] || [];
-        
+
         const optsHtml = cols.map(c => `<option value="${c.Name}">${c.Name} (${c.Type})</option>`).join('');
-        
+
         keySelect.innerHTML = `<option value="">-- Pilih Key --</option>` + optsHtml;
         valSelect.innerHTML = `<option value="">-- Pilih ID/Val --</option>` + optsHtml;
 
@@ -1221,7 +1252,7 @@ async function loadLookupColumns(selectElement, selectedKey = null, selectedValu
 function autoMapColumns() {
     const tbody = document.getElementById('column-mapper-tbody');
     const rows = tbody.querySelectorAll('tr');
-    
+
     const sourceTableName = document.getElementById('column-modal-subtitle').innerText.replace('Memetakan dari data asal: ', '');
     const sCols = sourceColumnsCache[sourceTableName] || [];
 
@@ -1230,10 +1261,10 @@ function autoMapColumns() {
     rows.forEach(row => {
         const targetColName = row.dataset.targetColumn;
         const selectType = row.querySelector('.mapping-type-select');
-        
+
         // Cari kolom source dengan nama yang sama (case insensitive)
         const matchedSource = sCols.find(s => s.Name.toLowerCase() === targetColName.toLowerCase());
-        
+
         if (matchedSource) {
             selectType.value = 'Direct';
             // Trigger UI update
@@ -1256,7 +1287,7 @@ function autoMapColumns() {
 async function saveColumnMappings() {
     const tbody = document.getElementById('column-mapper-tbody');
     const rows = tbody.querySelectorAll('tr');
-    
+
     const columnsPayload = [];
 
     for (let row of rows) {
@@ -1283,7 +1314,7 @@ async function saveColumnMappings() {
                 return;
             }
             colMapping.SourceColumnName = srcCol;
-        } 
+        }
         else if (mappingType === 'Constant') {
             const constVal = fieldsContainer.querySelector('.col-constant-input').value.trim();
             if (constVal === '') {
@@ -1291,7 +1322,7 @@ async function saveColumnMappings() {
                 return;
             }
             colMapping.ConstantValue = constVal;
-        } 
+        }
         else if (mappingType === 'Lookup') {
             const lkpTable = fieldsContainer.querySelector('.col-lookup-table').value;
             const lkpKey = fieldsContainer.querySelector('.col-lookup-key').value;
@@ -1307,7 +1338,7 @@ async function saveColumnMappings() {
             colMapping.LookupKeyColumn = lkpKey;
             colMapping.LookupValueColumn = lkpVal;
             colMapping.SourceColumnName = srcCol;
-        } 
+        }
         else if (mappingType === 'Expression') {
             const exprSql = fieldsContainer.querySelector('.col-expression-input').value.trim();
             if (exprSql === '') {
@@ -1352,10 +1383,10 @@ async function runMigrationJob() {
     // Reset Runner UI & Logs Console
     const progressList = document.getElementById('runner-progress-list');
     progressList.innerHTML = '';
-    
+
     const logsBox = document.getElementById('console-logs');
     logsBox.innerHTML = `<div class="console-line info">[${new Date().toLocaleTimeString()}] Menyiapkan migrasi data...</div>`;
-    
+
     document.getElementById('runner-status-text').innerText = 'RUNNING';
     document.getElementById('runner-status-text').style.color = 'var(--accent-teal)';
     document.getElementById('active-runner-panel').style.display = 'block';
@@ -1390,10 +1421,10 @@ async function cancelMigration() {
     const id = activeJob.Id || activeJob.id;
     const btn = document.getElementById('btn-cancel-migration');
     if (!btn) return;
-    
+
     btn.disabled = true;
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Membatalkan...`;
-    
+
     try {
         const res = await fetch(`${API_BASE}/jobs/${id}/cancel`, { method: 'POST' });
         if (res.ok) {
@@ -1423,12 +1454,12 @@ async function exportActiveJob() {
     if (!activeJob) return;
     const id = activeJob.Id || activeJob.id;
     const name = activeJob.JobName || activeJob.jobName || 'job';
-    
+
     try {
         const res = await fetch(`${API_BASE}/jobs/${id}/export`);
         if (!res.ok) throw new Error("Gagal mengekspor.");
         const data = await res.json();
-        
+
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 4));
         const downloadAnchor = document.createElement('a');
         downloadAnchor.setAttribute("href", dataStr);
@@ -1452,10 +1483,10 @@ function importJsonFile(event) {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = async function(e) {
+    reader.onload = async function (e) {
         try {
             const importedData = JSON.parse(e.target.result);
-            
+
             const res = await fetch(`${API_BASE}/jobs/import`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1487,10 +1518,10 @@ function switchTab(tab) {
     const historyTab = document.getElementById('tab-history');
     const mappingList = document.getElementById('table-list-container');
     const historyList = document.getElementById('history-container');
-    
+
     // Select buttons to hide/show inside job-editor-panel header
     const mappingBtns = document.querySelector('.table-mapping-header div:last-child');
-    
+
     if (tab === 'mapping') {
         if (mappingTab) {
             mappingTab.classList.add('active');
@@ -1519,7 +1550,7 @@ function switchTab(tab) {
         if (mappingList) mappingList.style.display = 'none';
         if (historyList) historyList.style.display = 'block';
         if (mappingBtns) mappingBtns.style.display = 'none';
-        
+
         loadHistoryLogs();
     }
 }
@@ -1535,7 +1566,7 @@ async function loadHistoryLogs() {
         const res = await fetch(`${API_BASE}/logs/${jobId}`);
         if (!res.ok) throw new Error("Gagal mengambil log.");
         const logs = await res.json();
-        
+
         if (logs.length === 0) {
             tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Belum ada histori migrasi untuk job ini.</td></tr>`;
             document.getElementById('stat-total-jobs').innerText = '0';
@@ -1549,7 +1580,7 @@ async function loadHistoryLogs() {
         const successRows = logs
             .filter(l => (l.Status || l.status) === 'Completed')
             .reduce((sum, l) => sum + (l.RowsMigrated || l.rowsMigrated || 0), 0);
-        
+
         const completedCount = logs.filter(l => (l.Status || l.status) === 'Completed').length;
         const successRate = totalExecutions > 0 ? Math.round((completedCount / totalExecutions) * 100) : 0;
 
@@ -1560,7 +1591,7 @@ async function loadHistoryLogs() {
         tbody.innerHTML = logs.map(log => {
             const startTime = new Date(log.StartTime || log.startTime);
             const endTime = (log.EndTime || log.endTime) ? new Date(log.EndTime || log.endTime) : null;
-            
+
             let durationStr = '-';
             if (endTime) {
                 const diffMs = endTime - startTime;
@@ -1616,7 +1647,7 @@ async function generateSpScript(mappingId) {
             return;
         }
         const data = await res.json();
-        
+
         document.getElementById('sp-modal-title').innerText = `Generate SP: ${data.SpName}`;
         document.getElementById('sp-sql-textarea').value = data.SqlScript;
         document.getElementById('sp-generator-modal').classList.add('active');
@@ -1634,7 +1665,7 @@ function copySpScript() {
     const textarea = document.getElementById('sp-sql-textarea');
     textarea.select();
     textarea.setSelectionRange(0, 99999); /* For mobile devices */
-    
+
     navigator.clipboard.writeText(textarea.value)
         .then(() => {
             alert("Script SQL Stored Procedure berhasil disalin ke clipboard!");
@@ -1650,25 +1681,38 @@ function copySpScript() {
 // ============================================================================
 function switchInnerTab(tab) {
     const dataBtn = document.getElementById('inner-tab-data');
-    const objBtn  = document.getElementById('inner-tab-object');
+    const objBtn = document.getElementById('inner-tab-object');
+    const cleanBtn = document.getElementById('inner-tab-clean');
     const dataContent = document.getElementById('inner-content-data');
-    const objContent  = document.getElementById('inner-content-object');
+    const objContent = document.getElementById('inner-content-object');
+    const cleanContent = document.getElementById('inner-content-clean');
 
-    if (!dataBtn || !objBtn) return;
+    if (!dataBtn || !objBtn || !cleanBtn) return;
+
+    // Reset active button state
+    dataBtn.classList.remove('active');
+    objBtn.classList.remove('active');
+    cleanBtn.classList.remove('active');
+
+    // Hide all contents
+    if (dataContent) dataContent.style.display = 'none';
+    if (objContent) objContent.style.display = 'none';
+    if (cleanContent) cleanContent.style.display = 'none';
 
     if (tab === 'data') {
         dataBtn.classList.add('active');
-        objBtn.classList.remove('active');
         if (dataContent) dataContent.style.display = 'block';
-        if (objContent)  objContent.style.display = 'none';
-    } else {
+    } else if (tab === 'object') {
         objBtn.classList.add('active');
-        dataBtn.classList.remove('active');
-        if (objContent)  objContent.style.display = 'block';
-        if (dataContent) dataContent.style.display = 'none';
-        // Load object items for current job
+        if (objContent) objContent.style.display = 'block';
         if (activeJob) {
             loadObjItems(activeJob.Id || activeJob.id);
+        }
+    } else if (tab === 'clean') {
+        cleanBtn.classList.add('active');
+        if (cleanContent) cleanContent.style.display = 'block';
+        if (activeJob) {
+            loadCleanTables(activeJob.Id || activeJob.id);
         }
     }
 }
@@ -1682,7 +1726,7 @@ async function loadObjItems(jobId) {
     try {
         const res = await fetch(`${API_BASE}/jobs/${jobId}/obj-items`);
         const items = await res.json();
-        
+
         const container = document.getElementById('obj-items-container');
         if (items.length === 0) {
             container.innerHTML = `
@@ -1701,6 +1745,20 @@ async function loadObjItems(jobId) {
             const objName = item.ObjectName || item.objectName;
             const itemId = item.Id || item.id;
 
+            const lastStatus = item.LastStatus || item.lastStatus || 'Pending';
+            const lastErrorMessage = item.LastErrorMessage || item.lastErrorMessage || '';
+            const lastRunAt = item.LastRunAt || item.lastRunAt;
+
+            let statusClass = 'pending';
+            if (lastStatus === 'Completed') statusClass = 'completed';
+            else if (lastStatus === 'Failed') statusClass = 'failed';
+            else if (lastStatus === 'InProgress') statusClass = 'inprogress';
+
+            let lastRunTime = '';
+            if (lastRunAt) {
+                lastRunTime = new Date(lastRunAt).toLocaleString();
+            }
+
             return `
                 <div class="table-item sortable-item" draggable="true" data-sort-id="${itemId}">
                     <div class="table-info">
@@ -1708,15 +1766,21 @@ async function loadObjItems(jobId) {
                             <i class="fa-solid fa-grip-vertical"></i>
                         </div>
                         <div class="execution-badge" title="Urutan Eksekusi">${item.ExecutionOrder || item.executionOrder || 1}</div>
-                        <div style="display: flex; flex-direction: column; gap: 0.35rem;">
-                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
+                            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                                 <span style="font-weight: 600; color: #ffffff;">${objName}</span>
                                 <span class="obj-type-badge ${badgeClass}">${item.ObjectType || item.objectType}</span>
+                                <span class="badge-clean ${statusClass}">${lastStatus}</span>
+                                ${lastRunTime ? `<span style="font-size: 0.72rem; color: var(--text-muted);"><i class="fa-solid fa-clock"></i> ${lastRunTime}</span>` : ''}
                             </div>
                             ${isNative ? `<div style="font-size: 0.75rem; color: var(--text-muted); font-family: Consolas, monospace; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${(item.NativeSqlScript || item.nativeSqlScript || '').substring(0, 80)}...</div>` : ''}
+                            ${lastErrorMessage ? `<div style="font-size: 0.78rem; color: var(--color-error); font-family: Consolas, monospace; line-height: 1.45; white-space: pre-wrap; word-break: break-all; max-width: 100%; padding: 0.65rem 0.85rem; background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.18); border-radius: 6px; margin-top: 0.35rem;">${lastErrorMessage}</div>` : ''}
                         </div>
                     </div>
                     <div class="table-actions">
+                        <button class="btn-icon" onclick="runSingleObjItem(${itemId})" title="Jalankan Objek Ini" style="color: var(--accent-teal);">
+                            <i class="fa-solid fa-play"></i>
+                        </button>
                         <button class="btn-icon" onclick="openObjBackupModal(${itemId}, '${objName.replace(/'/g, "\\'")}')" title="Lihat Backup Versions" style="color: var(--accent-purple);">
                             <i class="fa-solid fa-clock-rotate-left"></i>
                         </button>
@@ -1930,7 +1994,7 @@ async function runObjMigration() {
     if (!confirm(`Jalankan migrasi objek untuk job "${jobName}"?\n\nSP/Function/View: akan di-drop & create ulang.\nTable: akan CREATE baru atau ALTER sync kolom.\nNative SQL: akan dieksekusi langsung.\n\nSemua objek yang sudah ada di Target akan di-backup otomatis.`)) return;
 
     const jobId = activeJob.Id || activeJob.id;
-    
+
     // Show loading state on button (now inside inner-content-object)
     const btn = document.querySelector('#inner-content-object .btn-primary');
     const originalBtnHtml = btn ? btn.innerHTML : '';
@@ -1950,17 +2014,22 @@ async function runObjMigration() {
         const results = data.Results || data.results || [];
 
         // Show results summary
-        let successCount = results.filter(r => r.Status === 'Completed').length;
+        let successCount = results.filter(r => r.Status === 'Completed' && r.Message !== 'Skipped (Already migrated)').length;
+        let skipCount = results.filter(r => r.Status === 'Completed' && r.Message === 'Skipped (Already migrated)').length;
         let failCount = results.filter(r => r.Status === 'Failed').length;
 
         let summaryHtml = `<div style="margin-bottom: 1.5rem;">
             <div style="font-family: var(--font-heading); font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem;">
                 <i class="fa-solid fa-flag-checkered"></i> Hasil Migrasi Objek
             </div>
-            <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+            <div style="display: flex; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap;">
                 <div style="padding: 0.5rem 1rem; background: var(--color-success-glow); border-radius: 10px; color: var(--color-success); font-weight: 600;">
                     ✅ ${successCount} Sukses
                 </div>
+                ${skipCount > 0 ? `
+                <div style="padding: 0.5rem 1rem; background: rgba(59,130,246,0.08); border-radius: 10px; color: var(--accent-indigo); font-weight: 600; border: 1px solid rgba(59,130,246,0.2);">
+                    ⏩ ${skipCount} Diskip (Done)
+                </div>` : ''}
                 <div style="padding: 0.5rem 1rem; background: var(--color-error-glow); border-radius: 10px; color: var(--color-error); font-weight: 600;">
                     ❌ ${failCount} Gagal
                 </div>
@@ -2002,7 +2071,7 @@ async function runObjMigration() {
 async function openObjBackupModal(itemId, objName) {
     document.getElementById('obj-backup-modal-title').innerText = `Backup: ${objName}`;
     document.getElementById('obj-backup-modal').classList.add('active');
-    
+
     const container = document.getElementById('obj-backup-list');
     container.innerHTML = `<p style="color: var(--text-muted); text-align: center;"><i class="fa-solid fa-spinner fa-spin"></i> Memuat backup...</p>`;
 
@@ -2084,7 +2153,7 @@ async function loadObjLogs() {
         const res = await fetch(`${API_BASE}/jobs/${jobId}/obj-logs`);
         if (!res.ok) throw new Error("Gagal mengambil log.");
         const logs = await res.json();
-        
+
         if (logs.length === 0) {
             tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Belum ada log eksekusi.</td></tr>`;
             return;
@@ -2191,20 +2260,20 @@ function parseConnStringToBuilder(connStr) {
  * Update preview connection string secara realtime
  */
 function updateConnPreview() {
-    const server    = document.getElementById('cb-server').value.trim();
-    const database  = document.getElementById('cb-database').value.trim();
-    const username  = document.getElementById('cb-username').value.trim();
-    const password  = document.getElementById('cb-password').value.trim();
+    const server = document.getElementById('cb-server').value.trim();
+    const database = document.getElementById('cb-database').value.trim();
+    const username = document.getElementById('cb-username').value.trim();
+    const password = document.getElementById('cb-password').value.trim();
     const trustCert = document.getElementById('cb-trust-cert').checked;
-    const encrypt   = document.getElementById('cb-encrypt').checked;
+    const encrypt = document.getElementById('cb-encrypt').checked;
 
     const parts = [];
-    if (server)   parts.push(`Server=${server}`);
+    if (server) parts.push(`Server=${server}`);
     if (database) parts.push(`Database=${database}`);
     if (username) parts.push(`User Id=${username}`);
     if (password) parts.push(`Password=${password}`);
     parts.push(`TrustServerCertificate=${trustCert ? 'True' : 'False'}`);
-    if (encrypt)  parts.push('Encrypt=True');
+    if (encrypt) parts.push('Encrypt=True');
 
     document.getElementById('cb-preview').value = parts.join(';');
 }
@@ -2280,7 +2349,7 @@ async function testConnBuilderConn() {
  */
 function togglePasswordVisibility() {
     const input = document.getElementById('cb-password');
-    const icon  = document.getElementById('pwd-eye-icon');
+    const icon = document.getElementById('pwd-eye-icon');
     if (!input || !icon) return;
     if (input.type === 'password') {
         input.type = 'text';
@@ -2288,5 +2357,452 @@ function togglePasswordVisibility() {
     } else {
         input.type = 'password';
         icon.className = 'fa-solid fa-eye';
+    }
+}
+
+// ============================================================================
+// 16. CLEAN TARGET TABLE HANDLERS
+// ============================================================================
+
+async function loadCleanTables(jobId) {
+    if (!jobId) return;
+
+    // Tampilkan detail database aktif
+    if (activeJob) {
+        const srcConn = activeJob.SourceConnectionString || activeJob.sourceConnectionString || '';
+        const tgtConn = activeJob.TargetConnectionString || activeJob.targetConnectionString || '';
+
+        const srcDb = parseConnectionStringDb(srcConn);
+        const tgtDb = parseConnectionStringDb(tgtConn);
+
+        const srcEl = document.getElementById('clean-source-db-text');
+        const tgtEl = document.getElementById('clean-target-db-text');
+        if (srcEl) srcEl.textContent = srcDb;
+        if (tgtEl) tgtEl.textContent = tgtDb;
+    }
+
+    const container = document.getElementById('clean-tables-container');
+    if (!container) return;
+
+    container.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Memuat daftar pembersih...</div>`;
+
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables`);
+        if (!res.ok) throw new Error("Gagal memuat daftar.");
+        const tables = await res.json();
+
+        if (tables.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 2rem; border: 1px dashed var(--border-glass); border-radius: 15px; color: var(--text-muted);">
+                    <i class="fa-solid fa-broom" style="font-size: 2rem; margin-bottom: 0.75rem;"></i>
+                    <p>Belum ada tabel yang terdaftar dalam daftar pembersih.</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = tables.map(table => {
+            const id = table.Id || table.id;
+            const tableName = table.TableName || table.tableName;
+            const executionOrder = table.ExecutionOrder || table.executionOrder || 1;
+            const lastStatus = (table.LastStatus || table.lastStatus || 'Pending');
+            const lastErrorMessage = table.LastErrorMessage || table.lastErrorMessage || '';
+            const lastCleanedAt = table.LastCleanedAt || table.lastCleanedAt;
+
+            let statusClass = 'pending';
+            if (lastStatus === 'Completed') statusClass = 'completed';
+            else if (lastStatus === 'Failed') statusClass = 'failed';
+            else if (lastStatus === 'InProgress') statusClass = 'inprogress';
+
+            let cleanedTime = '';
+            if (lastCleanedAt) {
+                cleanedTime = new Date(lastCleanedAt).toLocaleString();
+            }
+
+            return `
+                <div class="table-item sortable-item" draggable="true" data-sort-id="${id}">
+                    <div class="table-info">
+                        <div class="drag-handle" title="Geser untuk mengubah urutan">
+                            <i class="fa-solid fa-grip-vertical"></i>
+                        </div>
+                        <div class="execution-badge" title="Urutan Eksekusi">${executionOrder}</div>
+                        <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
+                            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                                <span style="font-weight: 600; color: #ffffff;" class="clean-table-name">${tableName}</span>
+                                <span class="badge-clean ${statusClass}">${lastStatus}</span>
+                                ${cleanedTime ? `<span style="font-size: 0.72rem; color: var(--text-muted);"><i class="fa-solid fa-clock"></i> ${cleanedTime}</span>` : ''}
+                            </div>
+                            ${lastErrorMessage ? `<div style="font-size: 0.78rem; color: var(--color-error); font-family: Consolas, monospace; line-height: 1.45; white-space: pre-wrap; word-break: break-all; max-width: 100%; padding: 0.65rem 0.85rem; background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.18); border-radius: 6px; margin-top: 0.35rem;">${lastErrorMessage}</div>` : ''}
+                        </div>
+                    </div>
+                    <div class="table-actions">
+                        <button class="btn-icon" onclick="runSingleClean(${id})" title="Bersihkan Tabel Ini" style="color: var(--accent-teal);">
+                            <i class="fa-solid fa-play"></i>
+                        </button>
+                        <button class="btn-icon delete" onclick="deleteCleanTable(${id})" title="Hapus dari Daftar">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        initSortableList(container, {
+            endpoint: `${API_BASE}/jobs/${jobId}/clean-tables/reorder`
+        });
+
+    } catch (err) {
+        console.error(err);
+        container.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--color-error);">Gagal memuat: ${err.message}</div>`;
+    }
+}
+
+async function addCleanTables() {
+    if (!activeJob) return;
+    const jobId = activeJob.Id || activeJob.id;
+    const singleInput = document.getElementById('clean-table-select');
+    const bulkInput = document.getElementById('clean-bulk-textarea');
+
+    const singleVal = singleInput ? singleInput.value.trim() : '';
+    const bulkVal = bulkInput ? bulkInput.value.trim() : '';
+
+    let tableNames = '';
+    if (singleVal) {
+        tableNames = singleVal;
+    } else if (bulkVal) {
+        tableNames = bulkVal;
+    } else {
+        alert("Pilih tabel tunggal atau ketik nama tabel massal!");
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ TableNames: tableNames })
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            let alertMsg = `${data.Added.length} tabel berhasil ditambahkan ke daftar pembersih.`;
+            if (data.Skipped.length > 0) {
+                alertMsg += `\n\nSkipped (sudah terdaftar): ${data.Skipped.join(', ')}`;
+            }
+            alert(alertMsg);
+
+            // Clear inputs
+            if (singleInput) singleInput.value = '';
+            if (bulkInput) bulkInput.value = '';
+
+            loadCleanTables(jobId);
+        } else {
+            alert("Gagal menambahkan: " + await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+    }
+}
+
+async function deleteCleanTable(id) {
+    if (!confirm("Apakah Anda yakin ingin menghapus tabel ini dari daftar pembersih?")) return;
+    try {
+        const res = await fetch(`${API_BASE}/clean-tables/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            if (activeJob) loadCleanTables(activeJob.Id || activeJob.id);
+        } else {
+            alert("Gagal menghapus.");
+        }
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function parseConnectionStringDb(connStr) {
+    if (!connStr) return "Unknown DB";
+    const parts = connStr.split(';');
+    let server = '';
+    let db = '';
+    parts.forEach(part => {
+        const eqIdx = part.indexOf('=');
+        if (eqIdx < 0) return;
+        const key = part.substring(0, eqIdx).trim().toLowerCase();
+        const val = part.substring(eqIdx + 1).trim();
+        if (key === 'server' || key === 'data source') server = val;
+        else if (key === 'database' || key === 'initial catalog') db = val;
+    });
+    if (server && db) return `${db} (Server: ${server})`;
+    if (db) return db;
+    return "Unknown DB";
+}
+
+async function runSingleClean(id) {
+    if (!activeJob) return;
+    const jobId = activeJob.Id || activeJob.id;
+    const connStr = activeJob.TargetConnectionString || activeJob.targetConnectionString || '';
+    const dbInfo = parseConnectionStringDb(connStr);
+
+    const row = document.querySelector(`.table-item[data-sort-id="${id}"]`);
+    const tableName = row ? row.querySelector('.clean-table-name')?.textContent?.trim() : '';
+
+    const confirmMsg = `⚠️ PERINGATAN KESELAMATAN PEMBERSIHAN DATA ⚠️\n\n` +
+        `Anda akan MENGHAPUS SEMUA DATA dari tabel berikut:\n` +
+        `👉 TABEL: ${tableName || 'Tabel terpilih'}\n` +
+        `👉 DATABASE TUJUAN: ${dbInfo}\n\n` +
+        `Mekanisme:\n` +
+        `1. DELETE data tabel.\n` +
+        `2. RESEED Identity ke 0 (jika ada kolom Identity).\n\n` +
+        `Apakah Anda benar-benar yakin? Tindakan ini bersifat permanen dan tidak dapat dibatalkan!`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables/run?id=${id}`, { method: 'POST' });
+        if (res.ok) {
+            const data = await res.json();
+            const result = data.Results[0];
+            if (result.Status === 'Completed') {
+                alert(`✅ Sukses membersihkan tabel ${result.TableName}!\n\n${result.Message}`);
+            } else {
+                alert(`❌ Gagal membersihkan tabel ${result.TableName}!\n\nDetail: ${result.Message}`);
+            }
+            loadCleanTables(jobId);
+        } else {
+            alert("Gagal mengeksekusi pembersihan: " + await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+    }
+}
+
+async function runAllClean() {
+    if (!activeJob) return;
+    const jobId = activeJob.Id || activeJob.id;
+    const connStr = activeJob.TargetConnectionString || activeJob.targetConnectionString || '';
+    const dbInfo = parseConnectionStringDb(connStr);
+
+    const rows = [...document.querySelectorAll('#clean-tables-container .table-item')];
+    const tableNames = rows.map(row => row.querySelector('.clean-table-name')?.textContent?.trim()).filter(Boolean);
+
+    if (tableNames.length === 0) {
+        alert("Tidak ada tabel di daftar untuk dibersihkan.");
+        return;
+    }
+
+    const confirmMsg = `⚠️ PERINGATAN KESELAMATAN KRITIS PEMBERSIHAN MASSAL ⚠️\n\n` +
+        `Anda akan MENGHAPUS SEMUA DATA dari ${tableNames.length} tabel berikut secara berurutan:\n` +
+        `${tableNames.map((t, idx) => `  ${idx + 1}. ${t}`).join('\n')}\n\n` +
+        `👉 DATABASE TUJUAN: ${dbInfo}\n\n` +
+        `Mekanisme:\n` +
+        `1. DELETE data di setiap tabel.\n` +
+        `2. RESEED Identity ke 0 (jika ada kolom Identity).\n\n` +
+        `Apakah Anda benar-benar yakin ingin membersihkan data seluruh tabel ini? Tindakan ini bersifat permanen!`;
+
+    if (!confirm(confirmMsg)) return;
+
+    const btn = document.querySelector('#inner-content-clean .btn-danger');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sedang Membersihkan...';
+        btn.disabled = true;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables/run`, { method: 'POST' });
+        if (res.ok) {
+            const data = await res.json();
+            const results = data.Results || [];
+
+            const successCount = results.filter(r => r.Status === 'Completed' && r.Message !== 'Skipped (Already cleaned)').length;
+            const skipCount = results.filter(r => r.Status === 'Completed' && r.Message === 'Skipped (Already cleaned)').length;
+            const failCount = results.filter(r => r.Status === 'Failed').length;
+
+            let cleanResultMsg = `🧹 Proses pembersihan selesai!\n\n✅ Sukses: ${successCount} tabel\n❌ Gagal: ${failCount} tabel`;
+            if (skipCount > 0) {
+                cleanResultMsg += `\n⏩ Diskip (Done): ${skipCount} tabel`;
+            }
+            alert(cleanResultMsg);
+            loadCleanTables(jobId);
+        } else {
+            alert("Gagal mengeksekusi pembersihan: " + await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+        }
+    }
+}
+
+async function generateCleanSpScript() {
+    if (!activeJob) {
+        alert("Pilih Job terlebih dahulu!");
+        return;
+    }
+
+    const jobId = activeJob.Id || activeJob.id;
+    const btn = document.querySelector('#inner-content-clean button[onclick="generateCleanSpScript()"]');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating...';
+        btn.disabled = true;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables/generate-sp`);
+        if (res.ok) {
+            const data = await res.json();
+            document.getElementById('sp-modal-title').innerText = `Generate Clean SP: ${data.SpName}`;
+            document.getElementById('sp-sql-textarea').value = data.SqlScript;
+            document.getElementById('sp-generator-modal').classList.add('active');
+        } else {
+            alert("Gagal meng-generate SP Pembersih: " + await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+        }
+    }
+}
+
+// ============================================================================
+// SINGLE PLAY & RESET HANDLERS
+// ============================================================================
+
+async function runSingleMapping(mappingId) {
+    if (!activeJob) return;
+    const jobId = activeJob.Id || activeJob.id;
+    const confirmMsg = `Apakah Anda yakin ingin menjalankan pemetaan tabel terpilih ini saja?`;
+    if (!confirm(confirmMsg)) return;
+
+    // Reset Runner UI & Logs Console
+    const progressList = document.getElementById('runner-progress-list');
+    progressList.innerHTML = '';
+
+    const logsBox = document.getElementById('console-logs');
+    logsBox.innerHTML = `<div class="console-line info">[${new Date().toLocaleTimeString()}] Menyiapkan migrasi data untuk satu tabel...</div>`;
+
+    document.getElementById('runner-status-text').innerText = 'RUNNING';
+    document.getElementById('runner-status-text').style.color = 'var(--accent-teal)';
+    document.getElementById('active-runner-panel').style.display = 'block';
+
+    // Show cancel button
+    const cancelBtn = document.getElementById('btn-cancel-migration');
+    if (cancelBtn) {
+        cancelBtn.style.display = 'inline-flex';
+        cancelBtn.disabled = false;
+        cancelBtn.innerHTML = `<i class="fa-solid fa-ban"></i> Batalkan Migrasi`;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/run?mappingId=${mappingId}`, { method: 'POST' });
+        if (res.ok) {
+            const msg = await res.json();
+            const logLine = document.createElement('div');
+            logLine.className = 'console-line info';
+            logLine.innerText = `[${new Date().toLocaleTimeString()}] ${msg.Message}`;
+            logsBox.appendChild(logLine);
+        } else {
+            alert("Gagal menjalankan migrasi.");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+    }
+}
+
+async function runSingleObjItem(itemId) {
+    if (!activeJob) return;
+    const jobId = activeJob.Id || activeJob.id;
+
+    const row = document.querySelector(`.table-item[data-sort-id="${itemId}"]`);
+    const objName = row ? row.querySelector('span[style*="font-weight: 600"]').textContent.trim() : 'Objek terpilih';
+
+    const confirmMsg = `Jalankan migrasi objek "${objName}" sekarang?`;
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/obj-run?itemId=${itemId}`, { method: 'POST' });
+        if (res.ok) {
+            const data = await res.json();
+            const result = data.Results[0];
+            if (result.Status === 'Completed') {
+                alert(`✅ Sukses memigrasi objek ${result.ObjectName}!\n\nDetail: ${result.Message}`);
+            } else {
+                alert(`❌ Gagal memigrasi objek ${result.ObjectName}!\n\nDetail: ${result.Message}`);
+            }
+            loadObjItems(jobId);
+        } else {
+            alert("Gagal menjalankan migrasi objek: " + await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+    }
+}
+
+async function resetDataStatuses() {
+    if (!activeJob) return;
+    const jobId = activeJob.Id || activeJob.id;
+    if (!confirm("Apakah Anda yakin ingin me-reset semua status pemetaan data ke 'Pending'?")) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/mappings/reset-status`, { method: 'POST' });
+        if (res.ok) {
+            alert("Status pemetaan data berhasil di-reset!");
+            loadTableMappings(jobId);
+        } else {
+            alert("Gagal me-reset status: " + await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+    }
+}
+
+async function resetObjStatuses() {
+    if (!activeJob) return;
+    const jobId = activeJob.Id || activeJob.id;
+    if (!confirm("Apakah Anda yakin ingin me-reset semua status objek migrasi ke 'Pending'?")) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/obj-items/reset-status`, { method: 'POST' });
+        if (res.ok) {
+            alert("Status objek migrasi berhasil di-reset!");
+            loadObjItems(jobId);
+        } else {
+            alert("Gagal me-reset status: " + await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+    }
+}
+
+async function resetCleanStatuses() {
+    if (!activeJob) return;
+    const jobId = activeJob.Id || activeJob.id;
+    if (!confirm("Apakah Anda yakin ingin me-reset semua status pembersihan tabel ke 'Pending'?")) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables/reset-status`, { method: 'POST' });
+        if (res.ok) {
+            alert("Status pembersihan tabel berhasil di-reset!");
+            loadCleanTables(jobId);
+        } else {
+            alert("Gagal me-reset status: " + await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
     }
 }

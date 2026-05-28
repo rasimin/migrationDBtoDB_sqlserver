@@ -152,7 +152,7 @@ namespace DbMigrator.Core
         /// <param name="jobId">ID Job yang akan dijalankan</param>
         /// <param name="onProgress">Callback progres: (tableName, totalRows, rowsMigrated, status, errorMessage)</param>
         /// <param name="cancellationToken">Token pembatalan proses</param>
-        public async Task RunJobAsync(int jobId, Action<string, int, int, string, string> onProgress, CancellationToken cancellationToken = default)
+        public async Task RunJobAsync(int jobId, Action<string, int, int, string, string> onProgress, CancellationToken cancellationToken = default, int? tableMappingId = null)
         {
             using var configConn = new SqlConnection(_configConnectionString);
             await configConn.OpenAsync();
@@ -166,10 +166,20 @@ namespace DbMigrator.Core
                 throw new Exception($"Job dengan ID {jobId} tidak ditemukan!");
             }
 
-            // 2. Ambil semua Table Mapping yang aktif diurutkan berdasarkan ExecutionOrder
-            var tableMappings = (await configConn.QueryAsync<TableMapping>(
-                "SELECT * FROM dbo.TableMappings WHERE JobId = @JobId AND IsEnabled = 1 ORDER BY ExecutionOrder ASC",
-                new { JobId = jobId })).ToList();
+            // 2. Ambil semua Table Mapping yang aktif diurutkan berdasarkan ExecutionOrder (atau single mapping)
+            List<TableMapping> tableMappings;
+            if (tableMappingId.HasValue)
+            {
+                tableMappings = (await configConn.QueryAsync<TableMapping>(
+                    "SELECT * FROM dbo.TableMappings WHERE Id = @Id AND JobId = @JobId AND IsEnabled = 1",
+                    new { Id = tableMappingId.Value, JobId = jobId })).ToList();
+            }
+            else
+            {
+                tableMappings = (await configConn.QueryAsync<TableMapping>(
+                    "SELECT * FROM dbo.TableMappings WHERE JobId = @JobId AND IsEnabled = 1 ORDER BY ExecutionOrder ASC",
+                    new { JobId = jobId })).ToList();
+            }
 
             // Load kolom untuk masing-masing tabel
             foreach (var mapping in tableMappings)
@@ -189,10 +199,18 @@ namespace DbMigrator.Core
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
+                string currentTable = tableMap.TargetTableName;
+
+                // Done-Skipping Check (hanya jika eksekusi massal / bukan single play)
+                if (!tableMappingId.HasValue && string.Equals(tableMap.LastStatus, "Completed", StringComparison.OrdinalIgnoreCase))
+                {
+                    onProgress?.Invoke(currentTable, 0, 0, "Completed", "Skipped (Already migrated)");
+                    continue;
+                }
+
                 int logId = 0;
                 int totalRows = 0;
                 int rowsMigrated = 0;
-                string currentTable = tableMap.TargetTableName;
 
                 if (IsNativeSqlMapping(tableMap))
                 {
@@ -212,6 +230,12 @@ namespace DbMigrator.Core
                 try
                 {
                     onProgress?.Invoke(currentTable, 0, 0, "InProgress", null);
+
+                    // Update TableMappings status to InProgress
+                    await configConn.ExecuteAsync(@"
+                        UPDATE dbo.TableMappings
+                        SET LastStatus = 'InProgress', LastErrorMessage = NULL
+                        WHERE Id = @Id", new { Id = tableMap.Id });
 
                     // Catat Log Awal ke Database
                     logId = await configConn.QuerySingleAsync<int>(@"
@@ -423,11 +447,16 @@ namespace DbMigrator.Core
 
                     transaction.Commit();
 
-                    // Update Status Sukses di Database Log
+                    // Update Status Sukses di Database Log & TableMappings
                     await configConn.ExecuteAsync(@"
                         UPDATE dbo.MigrationLogs 
                         SET EndTime = GETDATE(), Status = 'Completed', RowsMigrated = @RowsMigrated 
                         WHERE Id = @Id", new { RowsMigrated = rowsMigrated, Id = logId });
+
+                    await configConn.ExecuteAsync(@"
+                        UPDATE dbo.TableMappings
+                        SET LastStatus = 'Completed', LastErrorMessage = NULL, LastRunAt = GETDATE()
+                        WHERE Id = @Id", new { Id = tableMap.Id });
 
                     onProgress?.Invoke(currentTable, totalRows, rowsMigrated, "Completed", null);
                 }
@@ -450,6 +479,11 @@ namespace DbMigrator.Core
                             SET EndTime = GETDATE(), Status = 'Failed', ErrorMessage = @Error 
                             WHERE Id = @Id", new { Error = errorMsg, Id = logId });
                     }
+
+                    await configConn.ExecuteAsync(@"
+                        UPDATE dbo.TableMappings
+                        SET LastStatus = 'Failed', LastErrorMessage = @Error, LastRunAt = GETDATE()
+                        WHERE Id = @Id", new { Error = errorMsg, Id = tableMap.Id });
 
                     onProgress?.Invoke(currentTable, totalRows, rowsMigrated, "Failed", errorMsg);
                     throw; // Hentikan migrasi jika salah satu tabel gagal (agar integritas terjaga)
@@ -532,6 +566,12 @@ namespace DbMigrator.Core
             int logId = 0;
             onProgress?.Invoke(label, 0, 0, "InProgress", null);
 
+            // Update TableMappings status to InProgress
+            await configConn.ExecuteAsync(@"
+                UPDATE dbo.TableMappings
+                SET LastStatus = 'InProgress', LastErrorMessage = NULL
+                WHERE Id = @Id", new { Id = tableMap.Id });
+
             logId = await configConn.QuerySingleAsync<int>(@"
                 INSERT INTO dbo.MigrationLogs (JobId, TableName, StartTime, TotalRows, RowsMigrated, Status)
                 VALUES (@JobId, @TableName, GETDATE(), 0, 0, 'InProgress');
@@ -556,6 +596,11 @@ namespace DbMigrator.Core
                     SET EndTime = GETDATE(), Status = 'Completed', RowsMigrated = 0
                     WHERE Id = @Id", new { Id = logId });
 
+                await configConn.ExecuteAsync(@"
+                    UPDATE dbo.TableMappings
+                    SET LastStatus = 'Completed', LastErrorMessage = NULL, LastRunAt = GETDATE()
+                    WHERE Id = @Id", new { Id = tableMap.Id });
+
                 onProgress?.Invoke(label, 0, 0, "Completed", null);
             }
             catch (Exception ex)
@@ -570,6 +615,11 @@ namespace DbMigrator.Core
                     UPDATE dbo.MigrationLogs
                     SET EndTime = GETDATE(), Status = 'Failed', ErrorMessage = @Error
                     WHERE Id = @Id", new { Error = ex.ToString(), Id = logId });
+
+                await configConn.ExecuteAsync(@"
+                    UPDATE dbo.TableMappings
+                    SET LastStatus = 'Failed', LastErrorMessage = @Error, LastRunAt = GETDATE()
+                    WHERE Id = @Id", new { Error = ex.ToString(), Id = tableMap.Id });
 
                 onProgress?.Invoke(label, 0, 0, "Failed", ex.ToString());
                 throw;

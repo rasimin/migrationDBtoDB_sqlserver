@@ -27,6 +27,9 @@ namespace DbMigrator.Core
         public string NativeSqlScript { get; set; }
         public List<ColumnMapping> Columns { get; set; } = new List<ColumnMapping>();
         public string PostMigrationScript { get; set; }
+        public string LastStatus { get; set; } = "Pending"; // Pending, InProgress, Completed, Failed
+        public string LastErrorMessage { get; set; }
+        public DateTime? LastRunAt { get; set; }
     }
 
     public class ColumnMapping
@@ -71,6 +74,9 @@ namespace DbMigrator.Core
         public string NativeSqlScript { get; set; }
         public int ExecutionOrder { get; set; }
         public bool IsEnabled { get; set; }
+        public string LastStatus { get; set; } = "Pending"; // Pending, InProgress, Completed, Failed
+        public string LastErrorMessage { get; set; }
+        public DateTime? LastRunAt { get; set; }
     }
 
     public class ObjectMigrationBackup
@@ -91,5 +97,21 @@ namespace DbMigrator.Core
         public string Status { get; set; } // Completed, Failed
         public DateTime ExecutedAt { get; set; }
         public string ErrorMessage { get; set; }
+    }
+
+    public class CleanTargetTable
+    {
+        public int Id { get; set; }
+        public int JobId { get; set; }
+        public string TableName { get; set; }
+        public int ExecutionOrder { get; set; }
+        public string LastStatus { get; set; } = "Pending"; // Pending, InProgress, Completed, Failed
+        public string LastErrorMessage { get; set; }
+        public DateTime? LastCleanedAt { get; set; }
+    }
+
+    public class CleanTableRequest
+    {
+        public string TableNames { get; set; }
     }
 }
