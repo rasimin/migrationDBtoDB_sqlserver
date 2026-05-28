@@ -175,6 +175,10 @@
                                 <button class="btn btn-primary" onclick="runMigrationJob()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem;">
                                     <i class="fa-solid fa-play"></i> Jalankan Migrasi Data
                                 </button>
+                                <label style="display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; color: rgba(255,255,255,0.75); cursor: pointer; user-select: none; margin-left: 0.3rem; margin-right: 0.6rem; vertical-align: middle;">
+                                    <input type="checkbox" id="chk-check-constraints" style="width: 15px; height: 15px; accent-color: var(--accent-teal); cursor: pointer;">
+                                    Cek Constraint
+                                </label>
                                 <button class="btn btn-secondary" onclick="openNewTableMappingForm()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">
                                     <i class="fa-solid fa-plus"></i> Tambah Tabel
                                 </button>
@@ -183,6 +187,9 @@
                                 </button>
                                 <button class="btn btn-secondary" onclick="resetDataStatuses()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; color: #fb7185; border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.05);" title="Reset Status semua pemetaan ke Pending">
                                     <i class="fa-solid fa-undo"></i> Reset Status
+                                </button>
+                                <button id="btn-clean-reset-all" class="btn btn-secondary" onclick="cleanAndResetAllData()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; color: #f43f5e; border-color: rgba(244, 63, 94, 0.4); background: rgba(244, 63, 94, 0.05);" title="Bersihkan data semua tabel target & reset status ke Pending">
+                                    <i class="fa-solid fa-broom"></i> Bersihkan Data
                                 </button>
                             </div>
 

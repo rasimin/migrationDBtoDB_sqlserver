@@ -224,7 +224,7 @@ namespace DbMigrator.Core
         /// <param name="jobId">ID Job yang akan dijalankan</param>
         /// <param name="onProgress">Callback progres: (tableName, totalRows, rowsMigrated, status, errorMessage)</param>
         /// <param name="cancellationToken">Token pembatalan proses</param>
-        public async Task RunJobAsync(int jobId, Action<string, int, int, string, string> onProgress, CancellationToken cancellationToken = default, int? tableMappingId = null)
+        public async Task RunJobAsync(int jobId, Action<string, int, int, string, string> onProgress, CancellationToken cancellationToken = default, int? tableMappingId = null, bool checkConstraints = false)
         {
             using var configConn = new SqlConnection(_configConnectionString);
             await configConn.OpenAsync();
@@ -498,7 +498,7 @@ namespace DbMigrator.Core
 
                         if (batchTable.Rows.Count >= batchSize)
                         {
-                            await WriteBatchAsync(batchTable, tableMap.TargetTableName, targetConn, transaction);
+                            await WriteBatchAsync(batchTable, tableMap.TargetTableName, targetConn, transaction, checkConstraints);
                             batchTable.Rows.Clear();
 
                             // Update log progres ke db configurator
@@ -513,7 +513,7 @@ namespace DbMigrator.Core
                     // Tulis sisa baris jika ada
                     if (batchTable.Rows.Count > 0)
                     {
-                        await WriteBatchAsync(batchTable, tableMap.TargetTableName, targetConn, transaction);
+                        await WriteBatchAsync(batchTable, tableMap.TargetTableName, targetConn, transaction, checkConstraints);
                         batchTable.Rows.Clear();
                     }
 
@@ -750,9 +750,15 @@ namespace DbMigrator.Core
         /// <summary>
         /// Menulis satu batch data ke database tujuan menggunakan SqlBulkCopy yang sangat cepat
         /// </summary>
-        private async Task WriteBatchAsync(DataTable table, string destinationTable, SqlConnection connection, SqlTransaction transaction)
+        private async Task WriteBatchAsync(DataTable table, string destinationTable, SqlConnection connection, SqlTransaction transaction, bool checkConstraints = false)
         {
-            using var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.KeepIdentity | SqlBulkCopyOptions.KeepNulls, transaction)
+            var options = SqlBulkCopyOptions.KeepIdentity | SqlBulkCopyOptions.KeepNulls;
+            if (checkConstraints)
+            {
+                options |= SqlBulkCopyOptions.CheckConstraints;
+            }
+
+            using var bulkCopy = new SqlBulkCopy(connection, options, transaction)
             {
                 DestinationTableName = EscapeTableName(destinationTable),
                 BulkCopyTimeout = 300,

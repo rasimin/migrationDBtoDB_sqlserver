@@ -735,7 +735,7 @@ app.MapGet("/api/db/columns", async ([FromQuery] int jobId, [FromQuery] string d
 });
 
 // 11. RUN MIGRATION JOB (BACKGROUND PROCESS WITH REAL-TIME SIGNALR BROADCAST)
-app.MapPost("/api/jobs/{id:int}/run", (int id, [FromQuery] int? mappingId, IConfiguration config, IHubContext<MigrationHub> hubContext, IHostApplicationLifetime appLifetime) =>
+app.MapPost("/api/jobs/{id:int}/run", (int id, [FromQuery] int? mappingId, [FromQuery] bool checkConstraints, IConfiguration config, IHubContext<MigrationHub> hubContext, IHostApplicationLifetime appLifetime) =>
 {
     var configDbStr = config.GetConnectionString("ConfigDb");
     
@@ -766,7 +766,7 @@ app.MapPost("/api/jobs/{id:int}/run", (int id, [FromQuery] int? mappingId, IConf
                     Status = status,
                     ErrorMessage = error
                 }).GetAwaiter().GetResult();
-            }, token, mappingId);
+            }, token, mappingId, checkConstraints);
         }
         catch (Exception ex)
         {

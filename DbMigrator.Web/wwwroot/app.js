@@ -1596,8 +1596,10 @@ async function runMigrationJob() {
         cancelBtn.innerHTML = `<i class="fa-solid fa-ban"></i> Batalkan Migrasi`;
     }
 
+    const checkConstraints = document.getElementById('chk-check-constraints')?.checked || false;
+
     try {
-        const res = await fetch(`${API_BASE}/jobs/${activeJob.Id || activeJob.id}/run`, { method: 'POST' });
+        const res = await fetch(`${API_BASE}/jobs/${activeJob.Id || activeJob.id}/run?checkConstraints=${checkConstraints}`, { method: 'POST' });
         if (res.ok) {
             const msg = await res.json();
             const logLine = document.createElement('div');
@@ -3013,8 +3015,10 @@ async function runSingleMapping(mappingId) {
         cancelBtn.innerHTML = `<i class="fa-solid fa-ban"></i> Batalkan Migrasi`;
     }
 
+    const checkConstraints = document.getElementById('chk-check-constraints')?.checked || false;
+
     try {
-        const res = await fetch(`${API_BASE}/jobs/${jobId}/run?mappingId=${mappingId}`, { method: 'POST' });
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/run?mappingId=${mappingId}&checkConstraints=${checkConstraints}`, { method: 'POST' });
         if (res.ok) {
             const msg = await res.json();
             const logLine = document.createElement('div');
@@ -3057,6 +3061,59 @@ async function runSingleObjItem(itemId) {
     } catch (err) {
         console.error(err);
         alert("Error: " + err.message);
+    }
+}
+
+async function cleanAndResetAllData() {
+    if (!activeJob) return;
+    
+    const confirmMsg = `PERINGATAN: Tindakan ini akan:\n` +
+        `1. MENGHAPUS (DELETE) data seluruh tabel di database target.\n` +
+        `2. Mereset identitas auto-increment (Identity) kembali ke 0.\n` +
+        `3. Mereset status migrasi seluruh tabel kembali ke PENDING.\n\n` +
+        `Apakah Anda benar-benar yakin? Tindakan ini tidak dapat dibatalkan!`;
+        
+    if (!confirm(confirmMsg)) return;
+
+    const btn = document.getElementById('btn-clean-reset-all');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sedang Membersihkan...';
+        btn.disabled = true;
+    }
+
+    const jobId = activeJob.Id || activeJob.id;
+    try {
+        // 1. Reset Clean Target Tables status to Pending (agar tidak ter-skip)
+        await fetch(`${API_BASE}/jobs/${jobId}/clean-tables/reset-status`, { method: 'POST' });
+        
+        // 2. Reset Data Mappings status to Pending
+        await fetch(`${API_BASE}/jobs/${jobId}/mappings/reset-status`, { method: 'POST' });
+
+        // 3. Jalankan pembersihan seluruh tabel target
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables/run`, { method: 'POST' });
+        if (res.ok) {
+            const data = await res.json();
+            const results = data.Results || [];
+            const successCount = results.filter(r => r.Status === 'Completed').length;
+            const failCount = results.filter(r => r.Status === 'Failed').length;
+
+            alert(`🧹 Pembersihan & Reset Status Selesai!\n\n✅ Sukses Bersihkan: ${successCount} tabel\n❌ Gagal: ${failCount} tabel\n🔄 Status migrasi telah direset ke Pending.`);
+            
+            // Reload caches and UI
+            loadTableMappings(jobId);
+            loadCleanTables(jobId);
+        } else {
+            alert("Gagal menjalankan pembersihan data: " + await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+        }
     }
 }
 
