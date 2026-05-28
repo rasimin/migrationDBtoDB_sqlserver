@@ -1221,6 +1221,9 @@ function renderColumnMapper(targetCols, sourceCols, existingMappings) {
                     <!-- Dinamis terisi oleh toggleMappingTypeFields -->
                 </div>
             </td>
+            <td class="if-null-cell">
+                <!-- Dinamis terisi oleh renderIfNullField -->
+            </td>
         `;
 
         tbody.appendChild(tr);
@@ -1228,6 +1231,9 @@ function renderColumnMapper(targetCols, sourceCols, existingMappings) {
         // Panggil toggle awal untuk mengisi form sesuai database/default
         const select = tr.querySelector('.mapping-type-select');
         toggleMappingTypeFields(select, mapping, sourceCols);
+
+        // Render kolom "Jika Null"
+        renderIfNullField(tr, mapping);
     });
 }
 
@@ -1329,6 +1335,55 @@ function toggleMappingTypeFields(selectElement, savedData = {}, sourceCols = [])
     }
 }
 
+// ============================================================================
+// IF-NULL FALLBACK FIELD RENDERER
+// ============================================================================
+const IF_NULL_OPTIONS = [
+    { value: 'Null',              label: 'Null (default)',       hasParam: false },
+    { value: 'GetDate',           label: 'GetDate()',            hasParam: false },
+    { value: 'Constant',          label: 'Konstan',              hasParam: true,  placeholder: 'Masukkan nilai konstan...' },
+    { value: 'RandomNumber',      label: 'Angka Acak',           hasParam: true,  placeholder: 'Panjang digit (misal: 8)' },
+    { value: 'RandomLetters',     label: 'Huruf Acak',           hasParam: true,  placeholder: 'Panjang karakter (misal: 10)' },
+    { value: 'RandomAlphanumeric',label: 'Angka + Huruf Acak',   hasParam: true,  placeholder: 'Panjang karakter (misal: 12)' },
+    { value: 'Expression',        label: 'Ekspresi Query',       hasParam: true,  placeholder: 'Contoh: GETDATE() atau \'DEFAULT_VAL\'' },
+];
+
+function renderIfNullField(tr, savedData = {}) {
+    const cell = tr.querySelector('.if-null-cell');
+    if (!cell) return;
+
+    const savedAction = savedData.IfNullAction || savedData.ifNullAction || 'Null';
+    const savedParam  = savedData.IfNullParam  || savedData.ifNullParam  || '';
+
+    const optHtml = IF_NULL_OPTIONS.map(o =>
+        `<option value="${o.value}" ${savedAction === o.value ? 'selected' : ''}>${o.label}</option>`
+    ).join('');
+
+    const currentOpt = IF_NULL_OPTIONS.find(o => o.value === savedAction) || IF_NULL_OPTIONS[0];
+    const paramHtml  = currentOpt.hasParam
+        ? `<input type="text" class="form-control if-null-param" style="margin-top:0.4rem; padding:0.35rem 0.5rem; font-size:0.78rem;" placeholder="${currentOpt.placeholder}" value="${savedParam}">`
+        : '';
+
+    cell.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:0;">
+            <select class="form-control if-null-select" style="padding:0.4rem 0.5rem; font-size:0.8rem;" onchange="onIfNullActionChange(this)">
+                ${optHtml}
+            </select>
+            <div class="if-null-param-wrapper">${paramHtml}</div>
+        </div>
+    `;
+}
+
+function onIfNullActionChange(sel) {
+    const tr      = sel.closest('tr');
+    const wrapper = tr.querySelector('.if-null-param-wrapper');
+    const opt     = IF_NULL_OPTIONS.find(o => o.value === sel.value);
+    if (!opt) return;
+    wrapper.innerHTML = opt.hasParam
+        ? `<input type="text" class="form-control if-null-param" style="margin-top:0.4rem; padding:0.35rem 0.5rem; font-size:0.78rem;" placeholder="${opt.placeholder}">`
+        : '';
+}
+
 async function loadLookupColumns(selectElement, selectedKey = null, selectedValue = null) {
     const lookupTable = selectElement.value;
     if (!lookupTable) return;
@@ -1413,7 +1468,9 @@ async function saveColumnMappings() {
             LookupTable: null,
             LookupKeyColumn: null,
             LookupValueColumn: null,
-            ExpressionSQL: null
+            ExpressionSQL: null,
+            IfNullAction: row.querySelector('.if-null-select')?.value || 'Null',
+            IfNullParam: row.querySelector('.if-null-param')?.value?.trim() || null
         };
 
         if (mappingType === 'Direct') {

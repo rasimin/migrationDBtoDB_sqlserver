@@ -146,6 +146,78 @@ namespace DbMigrator.Core
             }
         }
 
+        private static readonly Random _rng = new Random();
+        private const string _digits   = "0123456789";
+        private const string _letters  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        private const string _alphaNum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+        /// <summary>
+        /// Applies the user-configured If-Null fallback strategy when the source value is NULL.
+        /// Returns the original value unchanged when it is not null.
+        /// </summary>
+        private object ApplyIfNull(object val, ColumnMapping col, SqlConnection sourceConn)
+        {
+            // Treat null, DBNull, empty string, or whitespace-only string as null/empty
+            bool isNullOrEmpty = val == null || val == DBNull.Value;
+            if (!isNullOrEmpty)
+            {
+                var str = val.ToString();
+                if (str == null || string.IsNullOrWhiteSpace(str))
+                {
+                    isNullOrEmpty = true;
+                }
+            }
+
+            if (!isNullOrEmpty) return val;
+
+            var action = col.IfNullAction?.Trim();
+            if (string.IsNullOrEmpty(action) || action.Equals("Null", StringComparison.OrdinalIgnoreCase))
+                return DBNull.Value;
+
+            if (action.Equals("GetDate", StringComparison.OrdinalIgnoreCase))
+                return DateTime.Now;
+
+            if (action.Equals("Constant", StringComparison.OrdinalIgnoreCase))
+                return (object)col.IfNullParam ?? DBNull.Value;
+
+            if (action.Equals("RandomNumber", StringComparison.OrdinalIgnoreCase))
+            {
+                int len = int.TryParse(col.IfNullParam, out var l) ? Math.Max(1, l) : 8;
+                var sb = new System.Text.StringBuilder(len);
+                sb.Append(_digits[_rng.Next(1, _digits.Length)]); // no leading zero
+                for (int i = 1; i < len; i++) sb.Append(_digits[_rng.Next(_digits.Length)]);
+                return sb.ToString();
+            }
+
+            if (action.Equals("RandomLetters", StringComparison.OrdinalIgnoreCase))
+            {
+                int len = int.TryParse(col.IfNullParam, out var l) ? Math.Max(1, l) : 8;
+                return new string(Enumerable.Range(0, len).Select(_ => _letters[_rng.Next(_letters.Length)]).ToArray());
+            }
+
+            if (action.Equals("RandomAlphanumeric", StringComparison.OrdinalIgnoreCase))
+            {
+                int len = int.TryParse(col.IfNullParam, out var l) ? Math.Max(1, l) : 8;
+                return new string(Enumerable.Range(0, len).Select(_ => _alphaNum[_rng.Next(_alphaNum.Length)]).ToArray());
+            }
+
+            if (action.Equals("Expression", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(col.IfNullParam))
+            {
+                try
+                {
+                    using var cmd = new SqlCommand($"SELECT ({col.IfNullParam})", sourceConn);
+                    var result = cmd.ExecuteScalar();
+                    return result == null || result == DBNull.Value ? DBNull.Value : result;
+                }
+                catch
+                {
+                    return DBNull.Value;
+                }
+            }
+
+            return DBNull.Value;
+        }
+
         /// <summary>
         /// Menjalankan seluruh proses migrasi untuk Job tertentu
         /// </summary>
@@ -413,6 +485,9 @@ namespace DbMigrator.Core
                                     val = matchedId;
                                 }
                             }
+
+                            // Apply If-Null fallback strategy before writing to target
+                            val = ApplyIfNull(val, col, sourceConn);
 
                             columnsMetadata.TryGetValue(col.TargetColumnName, out var targetType);
                             newRow[col.TargetColumnName] = ConvertValue(val, targetType ?? typeof(object));

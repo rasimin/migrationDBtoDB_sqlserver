@@ -278,6 +278,13 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
             ALTER TABLE dbo.ObjectMigrationItems ADD LastErrorMessage NVARCHAR(MAX) NULL;
             ALTER TABLE dbo.ObjectMigrationItems ADD LastRunAt DATETIME NULL;
         END
+
+        -- Ensure ColumnMappings has IfNull strategy columns (F-04: If-Null Fallback)
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ColumnMappings') AND name = 'IfNullAction')
+        BEGIN
+            ALTER TABLE dbo.ColumnMappings ADD IfNullAction NVARCHAR(50) NULL;
+            ALTER TABLE dbo.ColumnMappings ADD IfNullParam NVARCHAR(500) NULL;
+        END
     ");
 }
 
@@ -485,8 +492,8 @@ app.MapPost("/api/mappings/columns/{tableMappingId:int}", async (int tableMappin
         {
             col.TableMappingId = tableMappingId;
             await conn.ExecuteAsync(@"
-                INSERT INTO dbo.ColumnMappings (TableMappingId, SourceColumnName, TargetColumnName, MappingType, ConstantValue, LookupTable, LookupKeyColumn, LookupValueColumn, ExpressionSQL)
-                VALUES (@TableMappingId, @SourceColumnName, @TargetColumnName, @MappingType, @ConstantValue, @LookupTable, @LookupKeyColumn, @LookupValueColumn, @ExpressionSQL)",
+                INSERT INTO dbo.ColumnMappings (TableMappingId, SourceColumnName, TargetColumnName, MappingType, ConstantValue, LookupTable, LookupKeyColumn, LookupValueColumn, ExpressionSQL, IfNullAction, IfNullParam)
+                VALUES (@TableMappingId, @SourceColumnName, @TargetColumnName, @MappingType, @ConstantValue, @LookupTable, @LookupKeyColumn, @LookupValueColumn, @ExpressionSQL, @IfNullAction, @IfNullParam)",
                 col, transaction);
         }
         
@@ -888,8 +895,8 @@ app.MapPost("/api/jobs/import", async ([FromBody] ExportJobDto import, IConfigur
             foreach (var c in t.Columns)
             {
                 await conn.ExecuteAsync(@"
-                    INSERT INTO dbo.ColumnMappings (TableMappingId, SourceColumnName, TargetColumnName, MappingType, ConstantValue, LookupTable, LookupKeyColumn, LookupValueColumn, ExpressionSQL)
-                    VALUES (@TableMappingId, @SourceColumnName, @TargetColumnName, @MappingType, @ConstantValue, @LookupTable, @LookupKeyColumn, @LookupValueColumn, @ExpressionSQL)",
+                    INSERT INTO dbo.ColumnMappings (TableMappingId, SourceColumnName, TargetColumnName, MappingType, ConstantValue, LookupTable, LookupKeyColumn, LookupValueColumn, ExpressionSQL, IfNullAction, IfNullParam)
+                    VALUES (@TableMappingId, @SourceColumnName, @TargetColumnName, @MappingType, @ConstantValue, @LookupTable, @LookupKeyColumn, @LookupValueColumn, @ExpressionSQL, @IfNullAction, @IfNullParam)",
                     new 
                     { 
                         TableMappingId = newTableMappingId, 
@@ -900,7 +907,9 @@ app.MapPost("/api/jobs/import", async ([FromBody] ExportJobDto import, IConfigur
                         LookupTable = c.LookupTable, 
                         LookupKeyColumn = c.LookupKeyColumn, 
                         LookupValueColumn = c.LookupValueColumn, 
-                        ExpressionSQL = c.ExpressionSQL 
+                        ExpressionSQL = c.ExpressionSQL,
+                        IfNullAction = c.IfNullAction,
+                        IfNullParam = c.IfNullParam
                     },
                     transaction);
             }
@@ -2011,4 +2020,6 @@ public class ExportColumnMappingDto
     public string LookupKeyColumn { get; set; }
     public string LookupValueColumn { get; set; }
     public string ExpressionSQL { get; set; }
+    public string IfNullAction { get; set; }
+    public string IfNullParam { get; set; }
 }

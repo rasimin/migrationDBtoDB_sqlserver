@@ -44,6 +44,8 @@ namespace DbMigrator.Core
         public string LookupKeyColumn { get; set; }
         public string LookupValueColumn { get; set; }
         public string ExpressionSQL { get; set; }
+        public string IfNullAction { get; set; }  // Null | GetDate | Constant | RandomNumber | RandomLetters | RandomAlphanumeric | Expression
+        public string IfNullParam { get; set; }   // length (int as string), constant text, or SQL expression
     }
 
     public class MigrationLog

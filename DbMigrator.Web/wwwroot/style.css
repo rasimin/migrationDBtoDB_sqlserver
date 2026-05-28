@@ -197,6 +197,32 @@ header {
     border-color: var(--border-flat-focus);
 }
 
+/* ── Global Select / Option Colors ──────────────────────────────────
+   Browser renders the native <option> list using OS colors by default.
+   These overrides ensure every dropdown in the app is dark-themed.     */
+select,
+select.form-control {
+    background-color: var(--bg-input);
+    color: var(--text-primary);
+    color-scheme: dark;          /* tells browser to use dark scrollbars/chrome */
+}
+
+select option,
+select optgroup {
+    background-color: #1b1f2b;  /* same as --bg-input */
+    color: #f3f4f6;              /* same as --text-primary */
+}
+
+select option:checked,
+select option:hover {
+    background-color: #00adb5;  /* --accent-teal */
+    color: #ffffff;
+}
+
+select option:disabled {
+    color: #4b5563;              /* --text-dark */
+}
+
 .table-search-input {
     padding-right: 2rem;
 }
@@ -1132,4 +1158,42 @@ textarea.form-control {
 @keyframes pulse-clean {
     0%, 100% { opacity: 0.6; }
     50% { opacity: 1; }
+}
+
+/* ============================================================================
+   IF-NULL FALLBACK COLUMN (Column Designer - 4th column)
+   ============================================================================ */
+.if-null-cell {
+    vertical-align: top;
+    padding: 0.5rem 0.6rem !important;
+    min-width: 190px;
+}
+
+.if-null-select {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    width: 100%;
+}
+
+.if-null-select:focus {
+    border-color: var(--accent-teal);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(0,173,181,0.15);
+}
+
+.if-null-param {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    color: var(--text-primary);
+    width: 100%;
+}
+
+.if-null-param:focus {
+    border-color: var(--accent-teal);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(0,173,181,0.12);
 }
