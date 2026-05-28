@@ -343,6 +343,11 @@ namespace DbMigrator.Core
                     var selectProjections = new List<string>();
                     var activeCols = tableMap.Columns.Where(c => !c.MappingType.Equals("Ignore", StringComparison.OrdinalIgnoreCase)).ToList();
 
+                    if (activeCols.Count == 0)
+                    {
+                        throw new InvalidOperationException("Tabel ini tidak memiliki pemetaan kolom yang dikonfigurasi! Harap buka Desainer Kolom (ikon sliders) pada baris tabel di dashboard, lakukan pencocokan kolom (atau klik 'Auto Map'), lalu klik 'Simpan Kolom' sebelum menjalankan migrasi data.");
+                    }
+
                     foreach (var col in activeCols)
                     {
                         if (col.MappingType.Equals("Direct", StringComparison.OrdinalIgnoreCase) || 

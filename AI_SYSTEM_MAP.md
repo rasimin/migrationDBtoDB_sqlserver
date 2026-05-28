@@ -156,6 +156,7 @@ connection.on('ReceiveError', (errorObj) => {
 *   `sourceTables` & `targetTables`: Active database table list cache arrays.
 *   `sourceColumnsCache` & `targetColumnsCache`: Dictionaries for column schema metadata: `tableName -> list of { Name, Type }`.
 *   `activeTableMappingId`: Currently opened column designer target mapping ID.
+*   `dataMappingsCache`, `objItemsCache` & `cleanTablesCache`: Memory registries storing the raw server-fetched JSON configurations to enable high-speed client-side filtering.
 
 ---
 
@@ -166,6 +167,13 @@ connection.on('ReceiveError', (errorObj) => {
 *   **Status Resets:** Implemented dynamic reset status endpoints in Minimal API routes (`Program.cs`) and triggered via `resetDataStatuses()`, `resetObjStatuses()`, and `resetCleanStatuses()` in `app.js` with `fa-undo` UI buttons. Clears states, logs, and dates.
 *   **Done-Skipping:** Added database bypass check in `MigrationEngine.RunJobAsync()` (L742), `/api/jobs/{id}/obj-run` (L1107), and `/api/jobs/{jobId}/clean-tables/run` (L1338). Skips processing if current status is `"Completed"`. Reports skipped counts inside summary popups in frontend client.
 *   **Single play:** Implemented individual play triggers (`runSingleMapping(mapId)`, `runSingleObjItem(itemId)`, and `runSingleClean(id)`) acting independently, which forces execution regardless of whether it is `"Completed"`.
+
+### 🛠️ F-02: Instant Client-Side Search, Dropdown Filtering, & Drag-and-Drop Sort locks
+*   **High-Speed Caching:** Grid data is fetched once from server and stored in client-side arrays (`dataMappingsCache`, `objItemsCache`, and `cleanTablesCache`) to eliminate rendering lag during user search queries.
+*   **Multi-Grid Input Searching:** Integrated instant text query searching (`oninput` on `#data-search`, `#obj-search`, `#clean-search`) filtering by origin/destination tables or object names.
+*   **Multi-Grid Dropdown Filters:** Integrated dropdown-selectors (`onchange` on `#data-filter-status`, `#obj-filter-type`, `#obj-filter-status`, `#clean-filter-status`) enabling multi-dimensional state-filtering (All, Table, Procedure, View, Native SQL and Pending, InProgress, Completed, Failed).
+*   **Dynamic Sortable Lock Safeguards:** Drag-and-drop elements initialize with `draggable="true"` and drag-handles enabled only when no query search/filters are active. The moment any filter triggers, grid elements instantly transition to `draggable="false"` with drag-handles hidden to protect execution index (`ExecutionOrder`) integrity and avoid corruption.
+*   **Usability Grip-Handle Restriction:** The entire row container is set to `draggable="false"` by default to ensure browser standard text blocking/highlighting and copying work perfectly (e.g., to copy partial error logs). Dragging is dynamically enabled (`draggable="true"`) only when `mousedown` occurs directly on the left drag-handle icon and disabled back on release.
 
 ---
 

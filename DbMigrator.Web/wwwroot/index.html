@@ -166,6 +166,23 @@
                                 </button>
                             </div>
 
+                            <!-- Search & Filter Bar (Data Migration) -->
+                            <div id="data-search-filter-row" style="display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; width: 100%;">
+                                <div style="position: relative; flex: 1; min-width: 200px;">
+                                    <input type="text" id="data-search" oninput="filterDataMappings()" placeholder="Cari tabel asal atau tujuan..." class="form-control" style="padding-left: 2.25rem; font-size: 0.85rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                    <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+                                </div>
+                                <div style="width: 160px; flex-shrink: 0;">
+                                    <select id="data-filter-status" onchange="filterDataMappings()" class="form-control" style="font-size: 0.85rem; height: 36px; border-radius: 8px; padding: 0 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                        <option value="ALL">Semua Status</option>
+                                        <option value="Pending">Pending</option>
+                                        <option value="InProgress">InProgress</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Failed">Failed</option>
+                                    </select>
+                                </div>
+                            </div>
+
                             <!-- Table Mappings List -->
                             <div class="table-list" id="table-list-container">
                                 <!-- Loaded Dynamically -->
@@ -238,6 +255,33 @@
                                     style="background: none; border: none; color: var(--text-muted); padding: 0.45rem 0.9rem; cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">
                                     <i class="fa-solid fa-clock-rotate-left"></i> Log Eksekusi
                                 </button>
+                            </div>
+
+                            <!-- Search & Filter Bar (Object Migration) -->
+                            <div id="obj-search-filter-row" style="display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; width: 100%;">
+                                <div style="position: relative; flex: 1; min-width: 200px;">
+                                    <input type="text" id="obj-search" oninput="filterObjItems()" placeholder="Cari nama objek..." class="form-control" style="padding-left: 2.25rem; font-size: 0.85rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                    <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+                                </div>
+                                <div style="width: 140px; flex-shrink: 0;">
+                                    <select id="obj-filter-type" onchange="filterObjItems()" class="form-control" style="font-size: 0.85rem; height: 36px; border-radius: 8px; padding: 0 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                        <option value="ALL">Semua Tipe</option>
+                                        <option value="TABLE">Table</option>
+                                        <option value="PROCEDURE">Procedure</option>
+                                        <option value="FUNCTION">Function</option>
+                                        <option value="VIEW">View</option>
+                                        <option value="NATIVE_SQL">Native SQL</option>
+                                    </select>
+                                </div>
+                                <div style="width: 140px; flex-shrink: 0;">
+                                    <select id="obj-filter-status" onchange="filterObjItems()" class="form-control" style="font-size: 0.85rem; height: 36px; border-radius: 8px; padding: 0 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                        <option value="ALL">Semua Status</option>
+                                        <option value="Pending">Pending</option>
+                                        <option value="InProgress">InProgress</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Failed">Failed</option>
+                                    </select>
+                                </div>
                             </div>
 
                             <!-- Object Items List -->
@@ -323,6 +367,23 @@
                                     <button class="btn btn-secondary" onclick="if (activeJob) loadCleanTables(activeJob.Id || activeJob.id)" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;" title="Refresh daftar status">
                                         <i class="fa-solid fa-arrows-rotate"></i> Refresh Status
                                     </button>
+                                </div>
+                            </div>
+
+                            <!-- Search & Filter Bar (Clean Target Tables) -->
+                            <div id="clean-search-filter-row" style="display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; width: 100%;">
+                                <div style="position: relative; flex: 1; min-width: 200px;">
+                                    <input type="text" id="clean-search" oninput="filterCleanTables()" placeholder="Cari nama tabel..." class="form-control" style="padding-left: 2.25rem; font-size: 0.85rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                    <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+                                </div>
+                                <div style="width: 160px; flex-shrink: 0;">
+                                    <select id="clean-filter-status" onchange="filterCleanTables()" class="form-control" style="font-size: 0.85rem; height: 36px; border-radius: 8px; padding: 0 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                        <option value="ALL">Semua Status</option>
+                                        <option value="Pending">Pending</option>
+                                        <option value="InProgress">InProgress</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Failed">Failed</option>
+                                    </select>
                                 </div>
                             </div>
 

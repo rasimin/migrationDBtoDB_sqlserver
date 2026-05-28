@@ -12,6 +12,10 @@ let activeTableMappingId = null;
 let activeColumnSourceTable = null;
 let activeColumnTargetTable = null;
 
+let dataMappingsCache = [];
+let objItemsCache = [];
+let cleanTablesCache = [];
+
 // Hub SignalR
 let connection = null;
 
@@ -456,47 +460,93 @@ async function loadTableMappings(jobId) {
     try {
         const res = await fetch(`${API_BASE}/mappings/tables/${jobId}`);
         const mappings = await res.json();
+        dataMappingsCache = mappings;
 
-        const container = document.getElementById('table-list-container');
-        if (mappings.length === 0) {
+        // Reset search inputs
+        const searchInput = document.getElementById('data-search');
+        const statusFilter = document.getElementById('data-filter-status');
+        if (searchInput) searchInput.value = '';
+        if (statusFilter) statusFilter.value = 'ALL';
+
+        filterDataMappings();
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function filterDataMappings() {
+    const searchVal = (document.getElementById('data-search')?.value || '').trim().toLowerCase();
+    const statusVal = document.getElementById('data-filter-status')?.value || 'ALL';
+
+    const isFilterActive = (searchVal !== '' || statusVal !== 'ALL');
+
+    const filtered = dataMappingsCache.filter(map => {
+        const sourceName = (map.SourceTableName || map.sourceTableName || '').toLowerCase();
+        const targetName = (map.TargetTableName || map.targetTableName || '').toLowerCase();
+        const matchSearch = sourceName.includes(searchVal) || targetName.includes(searchVal);
+
+        const lastStatus = map.LastStatus || map.lastStatus || 'Pending';
+        const matchStatus = (statusVal === 'ALL' || lastStatus.toLowerCase() === statusVal.toLowerCase());
+
+        return matchSearch && matchStatus;
+    });
+
+    renderTableMappings(filtered, isFilterActive);
+}
+
+function renderTableMappings(mappings, isFilterActive) {
+    const container = document.getElementById('table-list-container');
+    if (!container) return;
+
+    if (mappings.length === 0) {
+        if (isFilterActive) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 2rem; border: 1px dashed var(--border-glass); border-radius: 15px; color: var(--text-muted);">
+                    <i class="fa-solid fa-magnifying-glass" style="font-size: 2rem; margin-bottom: 0.75rem;"></i>
+                    <p>Tidak ada hasil pencocokan untuk pencarian atau filter Anda.</p>
+                </div>
+            `;
+        } else {
             container.innerHTML = `
                 <div style="text-align: center; padding: 2rem; border: 1px dashed var(--border-glass); border-radius: 15px; color: var(--text-muted);">
                     <i class="fa-solid fa-table-cells-large" style="font-size: 2rem; margin-bottom: 0.75rem;"></i>
                     <p>Belum ada pemetaan tabel. Klik 'Tambah Tabel' untuk memetakan tabel asal ke tujuan.</p>
                 </div>
             `;
-            return;
+        }
+        return;
+    }
+
+    container.innerHTML = mappings.map(map => {
+        const mapId = map.Id || map.id;
+        const mappingMode = map.MappingMode || map.mappingMode || 'TABLE';
+        const isNative = mappingMode.toUpperCase() === 'NATIVE_SQL';
+        const sourceName = map.SourceTableName || map.sourceTableName;
+        const targetName = map.TargetTableName || map.targetTableName;
+        const scriptPreview = (map.NativeSqlScript || map.nativeSqlScript || '').substring(0, 100);
+
+        const lastStatus = map.LastStatus || map.lastStatus || 'Pending';
+        const lastErrorMessage = map.LastErrorMessage || map.lastErrorMessage || '';
+        const lastRunAt = map.LastRunAt || map.lastRunAt;
+
+        let statusClass = 'pending';
+        if (lastStatus === 'Completed') statusClass = 'completed';
+        else if (lastStatus === 'Failed') statusClass = 'failed';
+        else if (lastStatus === 'InProgress') statusClass = 'inprogress';
+
+        let lastRunTime = '';
+        if (lastRunAt) {
+            lastRunTime = new Date(lastRunAt).toLocaleString();
         }
 
-        container.innerHTML = mappings.map(map => {
-            const mapId = map.Id || map.id;
-            const mappingMode = map.MappingMode || map.mappingMode || 'TABLE';
-            const isNative = mappingMode.toUpperCase() === 'NATIVE_SQL';
-            const sourceName = map.SourceTableName || map.sourceTableName;
-            const targetName = map.TargetTableName || map.targetTableName;
-            const scriptPreview = (map.NativeSqlScript || map.nativeSqlScript || '').substring(0, 100);
-
-            const lastStatus = map.LastStatus || map.lastStatus || 'Pending';
-            const lastErrorMessage = map.LastErrorMessage || map.lastErrorMessage || '';
-            const lastRunAt = map.LastRunAt || map.lastRunAt;
-
-            let statusClass = 'pending';
-            if (lastStatus === 'Completed') statusClass = 'completed';
-            else if (lastStatus === 'Failed') statusClass = 'failed';
-            else if (lastStatus === 'InProgress') statusClass = 'inprogress';
-
-            let lastRunTime = '';
-            if (lastRunAt) {
-                lastRunTime = new Date(lastRunAt).toLocaleString();
-            }
-
-            if (isNative) {
-                return `
-            <div class="table-item sortable-item native-sql-item" draggable="true" data-sort-id="${mapId}">
+        if (isNative) {
+            return `
+            <div class="table-item sortable-item native-sql-item" draggable="${isFilterActive ? 'false' : 'true'}" data-sort-id="${mapId}">
                 <div class="table-info">
+                    ${isFilterActive ? '' : `
                     <div class="drag-handle" title="Geser untuk mengubah urutan">
                         <i class="fa-solid fa-grip-vertical"></i>
-                    </div>
+                    </div>`}
                     <div class="execution-badge" title="Urutan Eksekusi">${map.ExecutionOrder || map.executionOrder}</div>
                     <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
                         <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
@@ -520,14 +570,15 @@ async function loadTableMappings(jobId) {
                 </div>
             </div>
         `;
-            }
+        }
 
-            return `
-            <div class="table-item sortable-item" draggable="true" data-sort-id="${mapId}">
+        return `
+            <div class="table-item sortable-item" draggable="${isFilterActive ? 'false' : 'true'}" data-sort-id="${mapId}">
                 <div class="table-info">
+                    ${isFilterActive ? '' : `
                     <div class="drag-handle" title="Geser untuk mengubah urutan">
                         <i class="fa-solid fa-grip-vertical"></i>
-                    </div>
+                    </div>`}
                     <div class="execution-badge" title="Urutan Eksekusi">${map.ExecutionOrder || map.executionOrder}</div>
                     <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
                         <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
@@ -560,13 +611,13 @@ async function loadTableMappings(jobId) {
                     </button>
                 </div>
             </div>
-        `}).join('');
+        `;
+    }).join('');
 
+    if (!isFilterActive && activeJob) {
         initSortableList(container, {
-            endpoint: `${API_BASE}/mappings/tables/${jobId}/reorder`
+            endpoint: `${API_BASE}/mappings/tables/${activeJob.Id || activeJob.id}/reorder`
         });
-    } catch (err) {
-        console.error(err);
     }
 }
 
@@ -575,17 +626,33 @@ function initSortableList(container, options) {
     const endpoint = options.endpoint;
 
     container.querySelectorAll(itemSelector).forEach(item => {
-        item.addEventListener('dragstart', (e) => {
-            item.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', item.dataset.sortId);
-        });
+        // Parent item itself is NOT draggable to ensure perfect text selection
+        item.setAttribute('draggable', 'false');
 
-        item.addEventListener('dragend', () => {
-            item.classList.remove('dragging');
-            container.querySelectorAll(`${itemSelector}.drag-over`).forEach(el => el.classList.remove('drag-over'));
-            updateSortableBadges(container, itemSelector);
-        });
+        const handle = item.querySelector('.drag-handle');
+        if (handle) {
+            // Set only the grip handle as draggable
+            handle.setAttribute('draggable', 'true');
+            handle.style.cursor = 'grab'; // Ensure grab cursor is shown on hover
+
+            handle.addEventListener('dragstart', (e) => {
+                item.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', item.dataset.sortId);
+
+                // Make the ghost image represent the entire item row instead of just the tiny handle
+                if (e.dataTransfer.setDragImage) {
+                    // Offset to align ghost image with mouse cursor nicely
+                    e.dataTransfer.setDragImage(item, 10, 15);
+                }
+            });
+
+            handle.addEventListener('dragend', () => {
+                item.classList.remove('dragging');
+                container.querySelectorAll(`${itemSelector}.drag-over`).forEach(el => el.classList.remove('drag-over'));
+                updateSortableBadges(container, itemSelector);
+            });
+        }
     });
 
     container.ondragover = (e) => {
@@ -1726,77 +1793,127 @@ async function loadObjItems(jobId) {
     try {
         const res = await fetch(`${API_BASE}/jobs/${jobId}/obj-items`);
         const items = await res.json();
+        objItemsCache = items;
 
-        const container = document.getElementById('obj-items-container');
-        if (items.length === 0) {
+        // Reset search inputs
+        const searchInput = document.getElementById('obj-search');
+        const typeFilter = document.getElementById('obj-filter-type');
+        const statusFilter = document.getElementById('obj-filter-status');
+        if (searchInput) searchInput.value = '';
+        if (typeFilter) typeFilter.value = 'ALL';
+        if (statusFilter) statusFilter.value = 'ALL';
+
+        filterObjItems();
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function filterObjItems() {
+    const searchVal = (document.getElementById('obj-search')?.value || '').trim().toLowerCase();
+    const typeVal = document.getElementById('obj-filter-type')?.value || 'ALL';
+    const statusVal = document.getElementById('obj-filter-status')?.value || 'ALL';
+
+    const isFilterActive = (searchVal !== '' || typeVal !== 'ALL' || statusVal !== 'ALL');
+
+    const filtered = objItemsCache.filter(item => {
+        const objName = (item.ObjectName || item.objectName || '').toLowerCase();
+        const matchSearch = objName.includes(searchVal);
+
+        const objType = item.ObjectType || item.objectType || '';
+        const matchType = (typeVal === 'ALL' || objType.toUpperCase() === typeVal.toUpperCase());
+
+        const lastStatus = item.LastStatus || item.lastStatus || 'Pending';
+        const matchStatus = (statusVal === 'ALL' || lastStatus.toLowerCase() === statusVal.toLowerCase());
+
+        return matchSearch && matchType && matchStatus;
+    });
+
+    renderObjItems(filtered, isFilterActive);
+}
+
+function renderObjItems(items, isFilterActive) {
+    const container = document.getElementById('obj-items-container');
+    if (!container) return;
+
+    if (items.length === 0) {
+        if (isFilterActive) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 2rem; border: 1px dashed var(--border-glass); border-radius: 15px; color: var(--text-muted);">
+                    <i class="fa-solid fa-magnifying-glass" style="font-size: 2rem; margin-bottom: 0.75rem;"></i>
+                    <p>Tidak ada hasil pencocokan untuk pencarian atau filter Anda.</p>
+                </div>
+            `;
+        } else {
             container.innerHTML = `
                 <div style="text-align: center; padding: 2rem; border: 1px dashed var(--border-glass); border-radius: 15px; color: var(--text-muted);">
                     <i class="fa-solid fa-box-open" style="font-size: 2rem; margin-bottom: 0.75rem;"></i>
                     <p>Belum ada objek. Klik "Scan Objek" atau "Native SQL" untuk menambahkan.</p>
                 </div>
             `;
-            return;
+        }
+        return;
+    }
+
+    container.innerHTML = items.map(item => {
+        const objType = (item.ObjectType || item.objectType || '').toLowerCase();
+        const badgeClass = objType.replace('_', '_');
+        const isNative = objType === 'native_sql';
+        const objName = item.ObjectName || item.objectName;
+        const itemId = item.Id || item.id;
+
+        const lastStatus = item.LastStatus || item.lastStatus || 'Pending';
+        const lastErrorMessage = item.LastErrorMessage || item.lastErrorMessage || '';
+        const lastRunAt = item.LastRunAt || item.lastRunAt;
+
+        let statusClass = 'pending';
+        if (lastStatus === 'Completed') statusClass = 'completed';
+        else if (lastStatus === 'Failed') statusClass = 'failed';
+        else if (lastStatus === 'InProgress') statusClass = 'inprogress';
+
+        let lastRunTime = '';
+        if (lastRunAt) {
+            lastRunTime = new Date(lastRunAt).toLocaleString();
         }
 
-        container.innerHTML = items.map(item => {
-            const objType = (item.ObjectType || item.objectType || '').toLowerCase();
-            const badgeClass = objType.replace('_', '_');
-            const isNative = objType === 'native_sql';
-            const objName = item.ObjectName || item.objectName;
-            const itemId = item.Id || item.id;
-
-            const lastStatus = item.LastStatus || item.lastStatus || 'Pending';
-            const lastErrorMessage = item.LastErrorMessage || item.lastErrorMessage || '';
-            const lastRunAt = item.LastRunAt || item.lastRunAt;
-
-            let statusClass = 'pending';
-            if (lastStatus === 'Completed') statusClass = 'completed';
-            else if (lastStatus === 'Failed') statusClass = 'failed';
-            else if (lastStatus === 'InProgress') statusClass = 'inprogress';
-
-            let lastRunTime = '';
-            if (lastRunAt) {
-                lastRunTime = new Date(lastRunAt).toLocaleString();
-            }
-
-            return `
-                <div class="table-item sortable-item" draggable="true" data-sort-id="${itemId}">
-                    <div class="table-info">
-                        <div class="drag-handle" title="Geser untuk mengubah urutan">
-                            <i class="fa-solid fa-grip-vertical"></i>
+        return `
+            <div class="table-item sortable-item" draggable="${isFilterActive ? 'false' : 'true'}" data-sort-id="${itemId}">
+                <div class="table-info">
+                    ${isFilterActive ? '' : `
+                    <div class="drag-handle" title="Geser untuk mengubah urutan">
+                        <i class="fa-solid fa-grip-vertical"></i>
+                    </div>`}
+                    <div class="execution-badge" title="Urutan Eksekusi">${item.ExecutionOrder || item.executionOrder || 1}</div>
+                    <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                            <span style="font-weight: 600; color: #ffffff;">${objName}</span>
+                            <span class="obj-type-badge ${badgeClass}">${item.ObjectType || item.objectType}</span>
+                            <span class="badge-clean ${statusClass}">${lastStatus}</span>
+                            ${lastRunTime ? `<span style="font-size: 0.72rem; color: var(--text-muted);"><i class="fa-solid fa-clock"></i> ${lastRunTime}</span>` : ''}
                         </div>
-                        <div class="execution-badge" title="Urutan Eksekusi">${item.ExecutionOrder || item.executionOrder || 1}</div>
-                        <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
-                            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-                                <span style="font-weight: 600; color: #ffffff;">${objName}</span>
-                                <span class="obj-type-badge ${badgeClass}">${item.ObjectType || item.objectType}</span>
-                                <span class="badge-clean ${statusClass}">${lastStatus}</span>
-                                ${lastRunTime ? `<span style="font-size: 0.72rem; color: var(--text-muted);"><i class="fa-solid fa-clock"></i> ${lastRunTime}</span>` : ''}
-                            </div>
-                            ${isNative ? `<div style="font-size: 0.75rem; color: var(--text-muted); font-family: Consolas, monospace; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${(item.NativeSqlScript || item.nativeSqlScript || '').substring(0, 80)}...</div>` : ''}
-                            ${lastErrorMessage ? `<div style="font-size: 0.78rem; color: var(--color-error); font-family: Consolas, monospace; line-height: 1.45; white-space: pre-wrap; word-break: break-all; max-width: 100%; padding: 0.65rem 0.85rem; background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.18); border-radius: 6px; margin-top: 0.35rem;">${lastErrorMessage}</div>` : ''}
-                        </div>
-                    </div>
-                    <div class="table-actions">
-                        <button class="btn-icon" onclick="runSingleObjItem(${itemId})" title="Jalankan Objek Ini" style="color: var(--accent-teal);">
-                            <i class="fa-solid fa-play"></i>
-                        </button>
-                        <button class="btn-icon" onclick="openObjBackupModal(${itemId}, '${objName.replace(/'/g, "\\'")}')" title="Lihat Backup Versions" style="color: var(--accent-purple);">
-                            <i class="fa-solid fa-clock-rotate-left"></i>
-                        </button>
-                        <button class="btn-icon delete" onclick="deleteObjItem(${itemId})" title="Hapus Objek">
-                            <i class="fa-solid fa-trash-can"></i>
-                        </button>
+                        ${isNative ? `<div style="font-size: 0.75rem; color: var(--text-muted); font-family: Consolas, monospace; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(item.NativeSqlScript || item.nativeSqlScript || '').substring(0, 80)}...</div>` : ''}
+                        ${lastErrorMessage ? `<div style="font-size: 0.78rem; color: var(--color-error); font-family: Consolas, monospace; line-height: 1.45; white-space: pre-wrap; word-break: break-all; max-width: 100%; padding: 0.65rem 0.85rem; background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.18); border-radius: 6px; margin-top: 0.35rem;">${lastErrorMessage}</div>` : ''}
                     </div>
                 </div>
-            `;
-        }).join('');
+                <div class="table-actions">
+                    <button class="btn-icon" onclick="runSingleObjItem(${itemId})" title="Jalankan Objek Ini" style="color: var(--accent-teal);">
+                        <i class="fa-solid fa-play"></i>
+                    </button>
+                    <button class="btn-icon" onclick="openObjBackupModal(${itemId}, '${objName.replace(/'/g, "\\'")}')" title="Lihat Backup Versions" style="color: var(--accent-purple);">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                    </button>
+                    <button class="btn-icon delete" onclick="deleteObjItem(${itemId})" title="Hapus Objek">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
 
+    if (!isFilterActive && activeJob) {
         initSortableList(container, {
-            endpoint: `${API_BASE}/jobs/${jobId}/obj-items/reorder`
+            endpoint: `${API_BASE}/jobs/${activeJob.Id || activeJob.id}/obj-items/reorder`
         });
-    } catch (err) {
-        console.error(err);
     }
 }
 
@@ -2390,70 +2507,114 @@ async function loadCleanTables(jobId) {
         const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables`);
         if (!res.ok) throw new Error("Gagal memuat daftar.");
         const tables = await res.json();
+        cleanTablesCache = tables;
 
-        if (tables.length === 0) {
+        // Reset search inputs
+        const searchInput = document.getElementById('clean-search');
+        const statusFilter = document.getElementById('clean-filter-status');
+        if (searchInput) searchInput.value = '';
+        if (statusFilter) statusFilter.value = 'ALL';
+
+        filterCleanTables();
+    } catch (err) {
+        console.error(err);
+        container.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--color-error);">Gagal memuat: ${err.message}</div>`;
+    }
+}
+
+function filterCleanTables() {
+    const searchVal = (document.getElementById('clean-search')?.value || '').trim().toLowerCase();
+    const statusVal = document.getElementById('clean-filter-status')?.value || 'ALL';
+
+    const isFilterActive = (searchVal !== '' || statusVal !== 'ALL');
+
+    const filtered = cleanTablesCache.filter(table => {
+        const tableName = (table.TableName || table.tableName || '').toLowerCase();
+        const matchSearch = tableName.includes(searchVal);
+
+        const lastStatus = table.LastStatus || table.lastStatus || 'Pending';
+        const matchStatus = (statusVal === 'ALL' || lastStatus.toLowerCase() === statusVal.toLowerCase());
+
+        return matchSearch && matchStatus;
+    });
+
+    renderCleanTables(filtered, isFilterActive);
+}
+
+function renderCleanTables(tables, isFilterActive) {
+    const container = document.getElementById('clean-tables-container');
+    if (!container) return;
+
+    if (tables.length === 0) {
+        if (isFilterActive) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 2rem; border: 1px dashed var(--border-glass); border-radius: 15px; color: var(--text-muted);">
+                    <i class="fa-solid fa-magnifying-glass" style="font-size: 2rem; margin-bottom: 0.75rem;"></i>
+                    <p>Tidak ada hasil pencocokan untuk pencarian atau filter Anda.</p>
+                </div>
+            `;
+        } else {
             container.innerHTML = `
                 <div style="text-align: center; padding: 2rem; border: 1px dashed var(--border-glass); border-radius: 15px; color: var(--text-muted);">
                     <i class="fa-solid fa-broom" style="font-size: 2rem; margin-bottom: 0.75rem;"></i>
                     <p>Belum ada tabel yang terdaftar dalam daftar pembersih.</p>
                 </div>
             `;
-            return;
+        }
+        return;
+    }
+
+    container.innerHTML = tables.map(table => {
+        const id = table.Id || table.id;
+        const tableName = table.TableName || table.tableName;
+        const executionOrder = table.ExecutionOrder || table.executionOrder || 1;
+        const lastStatus = (table.LastStatus || table.lastStatus || 'Pending');
+        const lastErrorMessage = table.LastErrorMessage || table.lastErrorMessage || '';
+        const lastCleanedAt = table.LastCleanedAt || table.lastCleanedAt;
+
+        let statusClass = 'pending';
+        if (lastStatus === 'Completed') statusClass = 'completed';
+        else if (lastStatus === 'Failed') statusClass = 'failed';
+        else if (lastStatus === 'InProgress') statusClass = 'inprogress';
+
+        let cleanedTime = '';
+        if (lastCleanedAt) {
+            cleanedTime = new Date(lastCleanedAt).toLocaleString();
         }
 
-        container.innerHTML = tables.map(table => {
-            const id = table.Id || table.id;
-            const tableName = table.TableName || table.tableName;
-            const executionOrder = table.ExecutionOrder || table.executionOrder || 1;
-            const lastStatus = (table.LastStatus || table.lastStatus || 'Pending');
-            const lastErrorMessage = table.LastErrorMessage || table.lastErrorMessage || '';
-            const lastCleanedAt = table.LastCleanedAt || table.lastCleanedAt;
-
-            let statusClass = 'pending';
-            if (lastStatus === 'Completed') statusClass = 'completed';
-            else if (lastStatus === 'Failed') statusClass = 'failed';
-            else if (lastStatus === 'InProgress') statusClass = 'inprogress';
-
-            let cleanedTime = '';
-            if (lastCleanedAt) {
-                cleanedTime = new Date(lastCleanedAt).toLocaleString();
-            }
-
-            return `
-                <div class="table-item sortable-item" draggable="true" data-sort-id="${id}">
-                    <div class="table-info">
-                        <div class="drag-handle" title="Geser untuk mengubah urutan">
-                            <i class="fa-solid fa-grip-vertical"></i>
+        return `
+            <div class="table-item sortable-item" draggable="${isFilterActive ? 'false' : 'true'}" data-sort-id="${id}">
+                <div class="table-info">
+                    ${isFilterActive ? '' : `
+                    <div class="drag-handle" title="Geser untuk mengubah urutan">
+                        <i class="fa-solid fa-grip-vertical"></i>
+                    </div>`}
+                    <div class="execution-badge" title="Urutan Eksekusi">${executionOrder}</div>
+                    <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                            <span style="font-weight: 600; color: #ffffff;" class="clean-table-name">${tableName}</span>
+                            <span class="badge-clean ${statusClass}">${lastStatus}</span>
+                            ${cleanedTime ? `<span style="font-size: 0.72rem; color: var(--text-muted);"><i class="fa-solid fa-clock"></i> ${cleanedTime}</span>` : ''}
                         </div>
-                        <div class="execution-badge" title="Urutan Eksekusi">${executionOrder}</div>
-                        <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
-                            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-                                <span style="font-weight: 600; color: #ffffff;" class="clean-table-name">${tableName}</span>
-                                <span class="badge-clean ${statusClass}">${lastStatus}</span>
-                                ${cleanedTime ? `<span style="font-size: 0.72rem; color: var(--text-muted);"><i class="fa-solid fa-clock"></i> ${cleanedTime}</span>` : ''}
-                            </div>
-                            ${lastErrorMessage ? `<div style="font-size: 0.78rem; color: var(--color-error); font-family: Consolas, monospace; line-height: 1.45; white-space: pre-wrap; word-break: break-all; max-width: 100%; padding: 0.65rem 0.85rem; background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.18); border-radius: 6px; margin-top: 0.35rem;">${lastErrorMessage}</div>` : ''}
-                        </div>
-                    </div>
-                    <div class="table-actions">
-                        <button class="btn-icon" onclick="runSingleClean(${id})" title="Bersihkan Tabel Ini" style="color: var(--accent-teal);">
-                            <i class="fa-solid fa-play"></i>
-                        </button>
-                        <button class="btn-icon delete" onclick="deleteCleanTable(${id})" title="Hapus dari Daftar">
-                            <i class="fa-solid fa-trash-can"></i>
-                        </button>
+                        ${lastErrorMessage ? `<div style="font-size: 0.78rem; color: var(--color-error); font-family: Consolas, monospace; line-height: 1.45; white-space: pre-wrap; word-break: break-all; max-width: 100%; padding: 0.65rem 0.85rem; background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.18); border-radius: 6px; margin-top: 0.35rem;">${lastErrorMessage}</div>` : ''}
                     </div>
                 </div>
-            `;
-        }).join('');
+                <div class="table-actions">
+                    <button class="btn-icon" onclick="runSingleClean(${id})" title="Bersihkan Tabel Ini" style="color: var(--accent-teal);">
+                        <i class="fa-solid fa-play"></i>
+                    </button>
+                    <button class="btn-icon delete" onclick="deleteCleanTable(${id})" title="Hapus dari Daftar">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
 
+    if (!isFilterActive && activeJob) {
         initSortableList(container, {
-            endpoint: `${API_BASE}/jobs/${jobId}/clean-tables/reorder`
+            endpoint: `${API_BASE}/jobs/${activeJob.Id || activeJob.id}/clean-tables/reorder`
         });
-
-    } catch (err) {
-        console.error(err);
-        container.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--color-error);">Gagal memuat: ${err.message}</div>`;
     }
 }
 

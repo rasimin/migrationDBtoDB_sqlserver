@@ -434,11 +434,7 @@ textarea.form-control {
 }
 
 .table-item.sortable-item {
-    cursor: grab;
-}
-
-.table-item.sortable-item:active {
-    cursor: grabbing;
+    cursor: default;
 }
 
 .table-item.dragging {
@@ -470,6 +466,11 @@ textarea.form-control {
     justify-content: center;
     width: 18px;
     flex-shrink: 0;
+    cursor: grab;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
 }
 
 .table-item:hover .drag-handle,
