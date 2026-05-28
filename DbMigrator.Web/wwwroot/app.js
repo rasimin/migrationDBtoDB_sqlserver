@@ -16,6 +16,9 @@ let dataMappingsCache = [];
 let objItemsCache = [];
 let cleanTablesCache = [];
 
+let migrationTotalTables = 0;
+let migrationProcessedTables = {}; // TableName -> Status ('Completed' or 'Failed')
+
 // Hub SignalR
 let connection = null;
 
@@ -54,73 +57,112 @@ function initSignalR() {
         // Tampilkan panel runner jika tersembunyi
         document.getElementById('active-runner-panel').style.display = 'block';
 
-        const logsBox = document.getElementById('console-logs');
-        const progressList = document.getElementById('runner-progress-list');
-
-        let itemDiv = document.getElementById(`runner-item-${progress.TableName}`);
-        if (!itemDiv) {
-            itemDiv = document.createElement('div');
-            itemDiv.id = `runner-item-${progress.TableName}`;
-            itemDiv.className = 'progress-item';
-            itemDiv.innerHTML = `
-                <div class="progress-meta">
-                    <span class="table-name"><strong>${progress.TableName}</strong></span>
-                    <span class="progress-text" id="prog-text-${progress.TableName}">0 / 0 (0%)</span>
-                </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar-fill active" id="prog-bar-${progress.TableName}"></div>
-                </div>
-            `;
-            progressList.appendChild(itemDiv);
+        // Bulletproof Fallback: Tentukan total tabel jika belum terinisialisasi
+        if (migrationTotalTables === 0) {
+            const enabledTables = dataMappingsCache.filter(m => {
+                const val = m.IsEnabled !== undefined ? m.IsEnabled : m.isEnabled;
+                return val === true || val === 1 || val === '1';
+            });
+            migrationTotalTables = enabledTables.length || 1;
         }
 
-        const bar = document.getElementById(`prog-bar-${progress.TableName}`);
-        const text = document.getElementById(`prog-text-${progress.TableName}`);
+        const logsBox = document.getElementById('console-logs');
 
-        // Hitung persentase
+        // 1. Hitung Persentase Progress untuk Tabel Aktif
         let pct = 0;
         if (progress.TotalRows > 0) {
             pct = Math.round((progress.RowsMigrated / progress.TotalRows) * 100);
         }
 
-        bar.style.width = `${pct}%`;
-        text.innerText = `${(progress.RowsMigrated || 0).toLocaleString()} / ${(progress.TotalRows || 0).toLocaleString()} (${pct}%)`;
+        // 2. Update Tampilan Tabel Aktif (Active Table Card)
+        const activeTableName = document.getElementById('active-table-name');
+        const activeTableText = document.getElementById('active-table-text');
+        const activeTableBar = document.getElementById('active-table-bar');
 
+        if (activeTableName) activeTableName.innerText = progress.TableName;
+        if (activeTableText) activeTableText.innerText = `${(progress.RowsMigrated || 0).toLocaleString()} / ${(progress.TotalRows || 0).toLocaleString()} (${pct}%)`;
+        if (activeTableBar) {
+            activeTableBar.style.width = `${pct}%`;
+
+            if (progress.Status === 'InProgress') {
+                activeTableBar.className = 'progress-bar-fill active';
+            } else if (progress.Status === 'Completed') {
+                activeTableBar.className = 'progress-bar-fill completed';
+            } else if (progress.Status === 'Failed') {
+                activeTableBar.className = 'progress-bar-fill failed';
+            }
+        }
+
+        // 3. Catat status tabel jika selesai (terminal state)
+        if (progress.Status === 'Completed' || progress.Status === 'Failed') {
+            migrationProcessedTables[progress.TableName] = progress.Status;
+        }
+
+        // 4. Update Tampilan Kemajuan Global (Global Progress Card)
+        const processedCount = Object.keys(migrationProcessedTables).length;
+        const globalPct = migrationTotalTables > 0 ? Math.round((processedCount / migrationTotalTables) * 100) : 0;
+
+        const globalText = document.getElementById('global-progress-text');
+        const globalBar = document.getElementById('global-progress-bar');
+
+        if (globalText) {
+            globalText.innerText = `${processedCount} / ${migrationTotalTables} Tabel (${globalPct}%)`;
+        }
+        if (globalBar) {
+            globalBar.style.width = `${globalPct}%`;
+            if (globalPct >= 100) {
+                globalBar.className = 'progress-bar-fill completed';
+            } else {
+                globalBar.className = 'progress-bar-fill active';
+            }
+        }
+
+        // 5. Tambahkan Log ke Console Box
         const logLine = document.createElement('div');
         logLine.className = 'console-line';
 
         if (progress.Status === 'InProgress') {
             logLine.innerText = `[${new Date().toLocaleTimeString()}] Memindahkan data ${progress.TableName}: ${progress.RowsMigrated} dari ${progress.TotalRows} baris...`;
         } else if (progress.Status === 'Completed') {
-            bar.className = 'progress-bar-fill completed';
             logLine.className = 'console-line success';
-            logLine.innerText = `[${new Date().toLocaleTimeString()}] KELAR: Tabel ${progress.TableName} sukses dimigrasi (${progress.RowsMigrated} baris).`;
-
-            // If all progress items are completed, change status to COMPLETED and hide cancel button
-            setTimeout(() => {
-                const allFills = Array.from(progressList.querySelectorAll('.progress-bar-fill'));
-                const allCompleted = allFills.every(f => f.classList.contains('completed'));
-                if (allCompleted) {
-                    document.getElementById('runner-status-text').innerText = 'COMPLETED';
-                    document.getElementById('runner-status-text').style.color = 'var(--color-success)';
-                    document.getElementById('btn-cancel-migration').style.display = 'none';
-                }
-            }, 100);
+            if (progress.ErrorMessage && progress.ErrorMessage.includes('Skipped')) {
+                logLine.innerText = `[${new Date().toLocaleTimeString()}] LEWAT: Tabel ${progress.TableName} dilewati (${progress.ErrorMessage}).`;
+            } else {
+                logLine.innerText = `[${new Date().toLocaleTimeString()}] KELAR: Tabel ${progress.TableName} sukses dimigrasi (${progress.RowsMigrated} baris).`;
+            }
 
             // Refresh table mapping view untuk memperbarui logs/tampilan jika ada
             if (activeJob) loadTableMappings(activeJob.Id || activeJob.id);
         } else if (progress.Status === 'Failed') {
-            bar.className = 'progress-bar-fill failed';
             logLine.className = 'console-line error';
             logLine.innerText = `[${new Date().toLocaleTimeString()}] ERROR: Tabel ${progress.TableName} gagal! Detail: ${progress.ErrorMessage}`;
-
-            document.getElementById('runner-status-text').innerText = 'FAILED';
-            document.getElementById('runner-status-text').style.color = 'var(--color-error)';
-            document.getElementById('btn-cancel-migration').style.display = 'none';
         }
 
         logsBox.appendChild(logLine);
         logsBox.scrollTop = logsBox.scrollHeight;
+
+        // 6. Cek apakah seluruh rangkaian migrasi job telah selesai
+        if (processedCount >= migrationTotalTables) {
+            setTimeout(() => {
+                const hasFailed = Object.values(migrationProcessedTables).includes('Failed');
+                const statusText = document.getElementById('runner-status-text');
+                const cancelBtn = document.getElementById('btn-cancel-migration');
+
+                if (hasFailed) {
+                    if (statusText) {
+                        statusText.innerText = 'FAILED';
+                        statusText.style.color = 'var(--color-error)';
+                    }
+                } else {
+                    if (statusText) {
+                        statusText.innerText = 'COMPLETED';
+                        statusText.style.color = 'var(--color-success)';
+                    }
+                }
+
+                if (cancelBtn) cancelBtn.style.display = 'none';
+            }, 200);
+        }
     });
 
     connection.on('ReceiveError', (errorObj) => {
@@ -1447,9 +1489,25 @@ async function runMigrationJob() {
     if (!activeJob) return;
     if (!confirm(`Apakah Anda yakin ingin memulai migrasi untuk job "${activeJob.JobName || activeJob.jobName}" sekarang?`)) return;
 
-    // Reset Runner UI & Logs Console
+    // Reset State & Dashboard UI
+    migrationProcessedTables = {};
+    const enabledTables = dataMappingsCache.filter(m => {
+        const val = m.IsEnabled !== undefined ? m.IsEnabled : m.isEnabled;
+        return val === true || val === 1 || val === '1';
+    });
+    migrationTotalTables = enabledTables.length;
+
+    document.getElementById('global-progress-text').innerText = `0 / ${migrationTotalTables} Tabel (0%)`;
+    document.getElementById('global-progress-bar').style.width = '0%';
+    document.getElementById('global-progress-bar').className = 'progress-bar-fill active';
+
+    document.getElementById('active-table-name').innerText = 'Menunggu tabel berikutnya...';
+    document.getElementById('active-table-text').innerText = '0 / 0 baris (0%)';
+    document.getElementById('active-table-bar').style.width = '0%';
+    document.getElementById('active-table-bar').className = 'progress-bar-fill active';
+
     const progressList = document.getElementById('runner-progress-list');
-    progressList.innerHTML = '';
+    if (progressList) progressList.innerHTML = '';
 
     const logsBox = document.getElementById('console-logs');
     logsBox.innerHTML = `<div class="console-line info">[${new Date().toLocaleTimeString()}] Menyiapkan migrasi data...</div>`;
@@ -2845,9 +2903,21 @@ async function runSingleMapping(mappingId) {
     const confirmMsg = `Apakah Anda yakin ingin menjalankan pemetaan tabel terpilih ini saja?`;
     if (!confirm(confirmMsg)) return;
 
-    // Reset Runner UI & Logs Console
+    // Reset State & Dashboard UI
+    migrationProcessedTables = {};
+    migrationTotalTables = 1;
+
+    document.getElementById('global-progress-text').innerText = `0 / 1 Tabel (0%)`;
+    document.getElementById('global-progress-bar').style.width = '0%';
+    document.getElementById('global-progress-bar').className = 'progress-bar-fill active';
+
+    document.getElementById('active-table-name').innerText = 'Menunggu tabel...';
+    document.getElementById('active-table-text').innerText = '0 / 0 baris (0%)';
+    document.getElementById('active-table-bar').style.width = '0%';
+    document.getElementById('active-table-bar').className = 'progress-bar-fill active';
+
     const progressList = document.getElementById('runner-progress-list');
-    progressList.innerHTML = '';
+    if (progressList) progressList.innerHTML = '';
 
     const logsBox = document.getElementById('console-logs');
     logsBox.innerHTML = `<div class="console-line info">[${new Date().toLocaleTimeString()}] Menyiapkan migrasi data untuk satu tabel...</div>`;

@@ -157,6 +157,8 @@ connection.on('ReceiveError', (errorObj) => {
 *   `sourceColumnsCache` & `targetColumnsCache`: Dictionaries for column schema metadata: `tableName -> list of { Name, Type }`.
 *   `activeTableMappingId`: Currently opened column designer target mapping ID.
 *   `dataMappingsCache`, `objItemsCache` & `cleanTablesCache`: Memory registries storing the raw server-fetched JSON configurations to enable high-speed client-side filtering.
+*   `migrationTotalTables`: Count of enabled tables in the active migration run (mass or single mapping).
+*   `migrationProcessedTables`: Dynamic status lookup map (`TableName -> Status`) storing processed tables in the current run session to compute global completion percentage.
 
 ---
 
@@ -174,6 +176,12 @@ connection.on('ReceiveError', (errorObj) => {
 *   **Multi-Grid Dropdown Filters:** Integrated dropdown-selectors (`onchange` on `#data-filter-status`, `#obj-filter-type`, `#obj-filter-status`, `#clean-filter-status`) enabling multi-dimensional state-filtering (All, Table, Procedure, View, Native SQL and Pending, InProgress, Completed, Failed).
 *   **Dynamic Sortable Lock Safeguards:** Drag-and-drop elements initialize with `draggable="true"` and drag-handles enabled only when no query search/filters are active. The moment any filter triggers, grid elements instantly transition to `draggable="false"` with drag-handles hidden to protect execution index (`ExecutionOrder`) integrity and avoid corruption.
 *   **Usability Grip-Handle Restriction:** The entire row container is set to `draggable="false"` by default to ensure browser standard text blocking/highlighting and copying work perfectly (e.g., to copy partial error logs). Dragging is dynamically enabled (`draggable="true"`) only when `mousedown` occurs directly on the left drag-handle icon and disabled back on release.
+
+### 🛠️ F-03: Unified Progress Dashboard
+*   **Anti-Clutter Layout Refactor:** Replaced the legacy stacked list of individual progress bars (which overflowed and cluttered the screen during large-scale runs) with a static, clean, glassmorphic dual-bar dashboard.
+*   **Global Table Progress Card:** Displays `#global-progress-card` representing total tables successfully processed or skipped in real-time vs. overall tables (`X / Y Tables (Z%)`), using `#global-progress-bar`.
+*   **Active Table Progress Card:** Displays `#active-table-progress-card` with `#active-table-bar` showing dynamic row-by-row throughput (`A / B Rows (C%)`) of the current active table, seamlessly transitioning as the runner moves to the next table.
+*   **Dual Single & Mass Adaptability:** JavaScript logic automatically handles mass run total sizing based on `dataMappingsCache` active filters and defaults single mapping runs to `1` table, providing unified, elegant layout compliance under all scenarios.
 
 ---
 
