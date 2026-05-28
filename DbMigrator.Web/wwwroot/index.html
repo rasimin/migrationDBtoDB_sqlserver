@@ -90,7 +90,7 @@
                         <div class="progress-meta" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-size: 0.85rem;">
                             <span>
                                 <i class="fa-solid fa-layer-group" style="color: var(--accent-teal); margin-right: 0.5rem;"></i>
-                                <strong>Kemajuan Total (Tabel)</strong>
+                                <strong id="global-progress-label">Kemajuan Total (Tabel)</strong>
                             </span>
                             <span class="progress-text" id="global-progress-text" style="font-weight: 600; color: var(--accent-teal);">0 / 0 Tabel (0%)</span>
                         </div>
@@ -640,16 +640,22 @@
      MODAL: OBJECT SCANNER (Scan & Select Objects from Source DB)
      ============================================================================ -->
 <div class="modal-overlay" id="obj-scanner-modal">
-    <div class="modal-content" style="max-width: 700px;">
-        <div class="modal-header">
+    <div class="modal-content" style="max-width: 700px; transition: all 0.3s ease;">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <h3>Scan Objek Database</h3>
                 <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Pilih objek dari Source DB untuk ditambahkan ke daftar migrasi.</p>
             </div>
-            <button class="close-btn" onclick="closeObjScannerModal()">&times;</button>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <button class="btn-toggle-fullscreen" onclick="toggleScannerFullscreen()" style="background: none; border: none; color: var(--text-muted); font-size: 1.1rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0.25rem; transition: color 0.2s;" title="Toggle Fullscreen">
+                    <i class="fa-solid fa-expand" id="scanner-fullscreen-icon"></i>
+                </button>
+                <button class="close-btn" onclick="closeObjScannerModal()" style="margin: 0;">&times;</button>
+            </div>
         </div>
         <div class="modal-body" style="padding: 1rem 2rem;">
-            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
+            <!-- Filters row -->
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; align-items: center;">
                 <button class="btn btn-secondary obj-filter-btn active" onclick="filterScanResults('ALL')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">Semua</button>
                 <button class="btn btn-secondary obj-filter-btn" onclick="filterScanResults('TABLE')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">Table</button>
                 <button class="btn btn-secondary obj-filter-btn" onclick="filterScanResults('PROCEDURE')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">SP</button>
@@ -660,6 +666,11 @@
                     <input type="checkbox" id="obj-scan-select-all" onchange="toggleAllScanItems(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
                     Pilih Semua
                 </label>
+            </div>
+            <!-- Search bar -->
+            <div class="search-container" style="position: relative; margin-bottom: 1rem; width: 100%;">
+                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+                <input type="text" id="obj-scan-search" oninput="applyScanFiltering()" placeholder="Cari nama objek (misal: Account)..." class="form-control" style="padding-left: 2.25rem; font-size: 0.85rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%;">
             </div>
             <div id="obj-scan-results" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.35rem;">
                 <p style="color: var(--text-muted); text-align: center; padding: 2rem;">Klik "Scan" untuk memindai objek dari Source DB...</p>

@@ -1197,3 +1197,9 @@ textarea.form-control {
     outline: none;
     box-shadow: 0 0 0 2px rgba(0,173,181,0.12);
 }
+
+/* Fullscreen Object Scanner Modal styling */
+.modal-content.maximized #obj-scan-results {
+    max-height: calc(96vh - 220px) !important;
+    height: calc(96vh - 220px) !important;
+}

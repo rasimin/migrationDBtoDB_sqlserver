@@ -1178,12 +1178,29 @@ app.MapGet("/api/obj-items/{id:int}/backups", async (int id, IConfiguration conf
 app.MapGet("/api/obj-backups/{id:int}/download", async (int id, IConfiguration config) =>
 {
     using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
-    var backup = await conn.QuerySingleOrDefaultAsync<ObjectMigrationBackup>(
-        "SELECT * FROM dbo.ObjectMigrationBackups WHERE Id = @Id", new { Id = id });
+    var backup = await conn.QuerySingleOrDefaultAsync<dynamic>(
+        @"SELECT b.BackupScript, b.Version, b.BackedUpAt, i.ObjectName 
+          FROM dbo.ObjectMigrationBackups b
+          JOIN dbo.ObjectMigrationItems i ON b.ItemId = i.Id
+          WHERE b.Id = @Id", new { Id = id });
+          
     if (backup == null) return Results.NotFound();
 
-    var bytes = System.Text.Encoding.UTF8.GetBytes(backup.BackupScript);
-    return Results.File(bytes, "application/sql", $"backup_v{backup.Version}_{backup.BackedUpAt:yyyyMMdd_HHmmss}.sql");
+    string backupScript = backup.BackupScript;
+    int version = backup.Version;
+    DateTime backedUpAt = backup.BackedUpAt;
+    string objectName = backup.ObjectName ?? "backup";
+
+    // Sanitize filename to avoid invalid characters or confusing extension dots
+    string safeObjectName = objectName;
+    foreach (char c in System.IO.Path.GetInvalidFileNameChars())
+    {
+        safeObjectName = safeObjectName.Replace(c, '_');
+    }
+    safeObjectName = safeObjectName.Replace('.', '_');
+
+    var bytes = System.Text.Encoding.UTF8.GetBytes(backupScript);
+    return Results.File(bytes, "application/sql", $"{safeObjectName}_v{version}_{backedUpAt:yyyyMMdd_HHmmss}.sql");
 });
 
 // OBJ-LOGS. GET LOGS FOR JOB
@@ -1975,12 +1992,16 @@ async Task<string> GenerateTableBackupScript(SqlConnection conn, string schema, 
     // Indexes
     var indexes = await conn.QueryAsync(@"
         SELECT i.name AS IndexName, i.type_desc AS IndexType, i.is_unique AS IsUnique,
-               STRING_AGG(c.name, ', ') WITHIN GROUP (ORDER BY ic.key_ordinal) AS ColumnNames
+               STUFF((
+                   SELECT ', ' + col.name
+                   FROM sys.index_columns ic2
+                   JOIN sys.columns col ON ic2.object_id = col.object_id AND ic2.column_id = col.column_id
+                   WHERE ic2.object_id = i.object_id AND ic2.index_id = i.index_id
+                   ORDER BY ic2.key_ordinal
+                   FOR XML PATH('')
+               ), 1, 2, '') AS ColumnNames
         FROM sys.indexes i
-        JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-        JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-        WHERE i.object_id = OBJECT_ID(@FullName) AND i.is_primary_key = 0 AND i.type > 0
-        GROUP BY i.name, i.type_desc, i.is_unique",
+        WHERE i.object_id = OBJECT_ID(@FullName) AND i.is_primary_key = 0 AND i.type > 0",
         new { FullName = $"{schema}.{table}" });
 
     foreach (var idx in indexes)
@@ -1996,12 +2017,16 @@ async Task SyncIndexes(SqlConnection srcConn, SqlConnection targetConn, string s
 {
     var srcIndexes = await srcConn.QueryAsync(@"
         SELECT i.name AS IndexName, i.is_unique AS IsUnique,
-               STRING_AGG(c.name, ', ') WITHIN GROUP (ORDER BY ic.key_ordinal) AS ColumnNames
+               STUFF((
+                   SELECT ', ' + col.name
+                   FROM sys.index_columns ic2
+                   JOIN sys.columns col ON ic2.object_id = col.object_id AND ic2.column_id = col.column_id
+                   WHERE ic2.object_id = i.object_id AND ic2.index_id = i.index_id
+                   ORDER BY ic2.key_ordinal
+                   FOR XML PATH('')
+               ), 1, 2, '') AS ColumnNames
         FROM sys.indexes i
-        JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-        JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-        WHERE i.object_id = OBJECT_ID(@FullName) AND i.is_primary_key = 0 AND i.type > 0
-        GROUP BY i.name, i.is_unique",
+        WHERE i.object_id = OBJECT_ID(@FullName) AND i.is_primary_key = 0 AND i.type > 0",
         new { FullName = $"{schema}.{table}" });
 
     var tgtIndexNames = (await targetConn.QueryAsync<string>(@"

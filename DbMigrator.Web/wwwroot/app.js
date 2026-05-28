@@ -18,6 +18,7 @@ let cleanTablesCache = [];
 
 let migrationTotalTables = 0;
 let migrationProcessedTables = {}; // TableName -> Status ('Completed' or 'Failed')
+let isCancellationRequested = false;
 
 // Hub SignalR
 let connection = null;
@@ -1588,6 +1589,7 @@ async function runMigrationJob() {
     if (!confirm(`Apakah Anda yakin ingin memulai migrasi untuk job "${activeJob.JobName || activeJob.jobName}" sekarang?`)) return;
 
     // Reset State & Dashboard UI
+    isCancellationRequested = false;
     migrationProcessedTables = {};
     const enabledTables = dataMappingsCache.filter(m => {
         const val = m.IsEnabled !== undefined ? m.IsEnabled : m.isEnabled;
@@ -1649,6 +1651,9 @@ async function cancelMigration() {
 
     btn.disabled = true;
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Membatalkan...`;
+
+    // Flag frontend loops to abort immediately
+    isCancellationRequested = true;
 
     try {
         const res = await fetch(`${API_BASE}/jobs/${id}/cancel`, { method: 'POST' });
@@ -2088,13 +2093,77 @@ async function deleteObjItem(id) {
 // ============================================================================
 // 10. OBJECT SCANNER MODAL
 // ============================================================================
+let activeScanTypeFilter = 'ALL';
+let activeScanSearchQuery = '';
+
 function openObjScannerModal() {
+    // Reset search input & filters
+    const searchInput = document.getElementById('obj-scan-search');
+    if (searchInput) searchInput.value = '';
+    activeScanSearchQuery = '';
+    activeScanTypeFilter = 'ALL';
+
+    // Reset filter active buttons to "Semua"
+    document.querySelectorAll('.obj-filter-btn').forEach(btn => btn.classList.remove('active'));
+    const btnAll = document.querySelector('.obj-filter-btn[onclick*="ALL"]');
+    if (btnAll) btnAll.classList.add('active');
+
+    // Reset modal fullscreen class
+    const modalContent = document.querySelector('#obj-scanner-modal .modal-content');
+    if (modalContent) modalContent.classList.remove('maximized');
+
+    const fsIcon = document.getElementById('scanner-fullscreen-icon');
+    if (fsIcon) {
+        fsIcon.className = 'fa-solid fa-expand';
+        fsIcon.parentElement.title = "Toggle Fullscreen";
+    }
+
     document.getElementById('obj-scanner-modal').classList.add('active');
     startObjScan();
 }
 
 function closeObjScannerModal() {
     document.getElementById('obj-scanner-modal').classList.remove('active');
+    
+    // Reset maximized class
+    const modalContent = document.querySelector('#obj-scanner-modal .modal-content');
+    if (modalContent) modalContent.classList.remove('maximized');
+}
+
+function toggleScannerFullscreen() {
+    const modalContent = document.querySelector('#obj-scanner-modal .modal-content');
+    const fsIcon = document.getElementById('scanner-fullscreen-icon');
+
+    if (modalContent.classList.contains('maximized')) {
+        modalContent.classList.remove('maximized');
+        if (fsIcon) fsIcon.className = 'fa-solid fa-expand';
+        if (fsIcon && fsIcon.parentElement) fsIcon.parentElement.title = "Toggle Fullscreen";
+    } else {
+        modalContent.classList.add('maximized');
+        if (fsIcon) fsIcon.className = 'fa-solid fa-compress';
+        if (fsIcon && fsIcon.parentElement) fsIcon.parentElement.title = "Toggle Normal Screen";
+    }
+}
+
+function applyScanFiltering() {
+    activeScanSearchQuery = (document.getElementById('obj-scan-search')?.value || '').trim().toLowerCase();
+    
+    let filtered = scanResultsCache || [];
+    
+    // 1. Filter by Object Type
+    if (activeScanTypeFilter !== 'ALL') {
+        filtered = filtered.filter(i => (i.ObjectType || i.objectType) === activeScanTypeFilter);
+    }
+    
+    // 2. Filter by Search Query
+    if (activeScanSearchQuery !== '') {
+        filtered = filtered.filter(i => {
+            const name = (i.ObjectName || i.objectName || '').toLowerCase();
+            return name.includes(activeScanSearchQuery);
+        });
+    }
+    
+    renderScanResults(filtered);
 }
 
 async function startObjScan() {
@@ -2109,7 +2178,7 @@ async function startObjScan() {
             return;
         }
         scanResultsCache = await res.json();
-        renderScanResults(scanResultsCache);
+        applyScanFiltering();
     } catch (err) {
         container.innerHTML = `<p style="color: var(--color-error); text-align: center; padding: 2rem;">Error: ${err.message}</p>`;
     }
@@ -2138,14 +2207,15 @@ function renderScanResults(items) {
 function filterScanResults(type) {
     // Update filter button active state
     document.querySelectorAll('.obj-filter-btn').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
-
-    if (type === 'ALL') {
-        renderScanResults(scanResultsCache);
-    } else {
-        const filtered = scanResultsCache.filter(i => (i.ObjectType || i.objectType) === type);
-        renderScanResults(filtered);
+    
+    if (event && event.currentTarget) {
+        event.currentTarget.classList.add('active');
+    } else if (event && event.target) {
+        event.target.classList.add('active');
     }
+
+    activeScanTypeFilter = type;
+    applyScanFiltering();
 }
 
 function toggleAllScanItems(checked) {
@@ -2273,78 +2343,174 @@ async function addNativeSqlItem() {
 async function runObjMigration() {
     if (!activeJob) { alert('Silakan pilih Job terlebih dahulu.'); return; }
     const jobName = activeJob.JobName || activeJob.jobName;
+
+    // Reset cancellation flag
+    isCancellationRequested = false;
+
+    // Saring hanya objek aktif dari cache
+    const enabledItems = objItemsCache.filter(m => {
+        const val = m.IsEnabled !== undefined ? m.IsEnabled : m.isEnabled;
+        return val === true || val === 1 || val === '1';
+    });
+
+    if (enabledItems.length === 0) {
+        alert("Tidak ada objek aktif untuk dimigrasi.");
+        return;
+    }
+
     if (!confirm(`Jalankan migrasi objek untuk job "${jobName}"?\n\nSP/Function/View: akan di-drop & create ulang.\nTable: akan CREATE baru atau ALTER sync kolom.\nNative SQL: akan dieksekusi langsung.\n\nSemua objek yang sudah ada di Target akan di-backup otomatis.`)) return;
 
     const jobId = activeJob.Id || activeJob.id;
 
-    // Show loading state on button (now inside inner-content-object)
-    const btn = document.querySelector('#inner-content-object .btn-primary');
-    const originalBtnHtml = btn ? btn.innerHTML : '';
-    if (btn) {
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menjalankan...';
-        btn.disabled = true;
+    // 1. Reset & Setup Dashboard UI untuk Object Migration secara dinamis
+    const runnerTitle = document.querySelector('#active-runner-panel .runner-header span');
+    if (runnerTitle) runnerTitle.innerText = "Proses Migrasi Objek Berjalan";
+
+    const globalLabel = document.getElementById('global-progress-label');
+    if (globalLabel) globalLabel.innerText = "Kemajuan Total (Objek)";
+
+    document.getElementById('runner-status-text').innerText = 'RUNNING';
+    document.getElementById('runner-status-text').style.color = 'var(--accent-teal)';
+    document.getElementById('active-runner-panel').style.display = 'block';
+
+    const globalText = document.getElementById('global-progress-text');
+    const globalBar = document.getElementById('global-progress-bar');
+    const activeName = document.getElementById('active-table-name');
+    const activeText = document.getElementById('active-table-text');
+    const activeBar = document.getElementById('active-table-bar');
+    const logsBox = document.getElementById('console-logs');
+
+    if (globalText) globalText.innerText = `0 / ${enabledItems.length} Objek (0%)`;
+    if (globalBar) {
+        globalBar.style.width = '0%';
+        globalBar.className = 'progress-bar-fill active';
+    }
+    if (activeName) activeName.innerText = 'Menyiapkan objek...';
+    if (activeText) activeText.innerText = '0%';
+    if (activeBar) {
+        activeBar.style.width = '0%';
+        activeBar.className = 'progress-bar-fill active';
     }
 
-    try {
-        const res = await fetch(`${API_BASE}/jobs/${jobId}/obj-run`, { method: 'POST' });
-        if (!res.ok) {
-            alert("Gagal menjalankan migrasi: " + await res.text());
-            return;
+    logsBox.innerHTML = `<div class="console-line info">[${new Date().toLocaleTimeString()}] Memulai rangkaian migrasi ${enabledItems.length} Objek DB...</div>`;
+
+    // Tampilkan tombol cancel
+    const cancelBtn = document.getElementById('btn-cancel-migration');
+    if (cancelBtn) {
+        cancelBtn.style.display = 'inline-flex';
+        cancelBtn.disabled = false;
+        cancelBtn.innerHTML = `<i class="fa-solid fa-ban"></i> Batalkan Migrasi`;
+    }
+
+    let successCount = 0;
+    let skipCount = 0;
+    let failCount = 0;
+    const results = [];
+
+    // Loop & eksekusi secara sekuensial satu-satu untuk melaporkan progres real-time
+    for (let i = 0; i < enabledItems.length; i++) {
+        if (isCancellationRequested) {
+            const abortLine = document.createElement('div');
+            abortLine.className = 'console-line error';
+            abortLine.innerText = `[${new Date().toLocaleTimeString()}] BATAL: Proses migrasi objek dibatalkan oleh pengguna.`;
+            logsBox.appendChild(abortLine);
+            logsBox.scrollTop = logsBox.scrollHeight;
+            failCount++;
+            break;
         }
 
-        const data = await res.json();
-        const results = data.Results || data.results || [];
+        const item = enabledItems[i];
+        const itemId = item.Id || item.id;
+        const objName = item.ObjectName || item.objectName;
+        const objType = item.ObjectType || item.objectType;
 
-        // Show results summary
-        let successCount = results.filter(r => r.Status === 'Completed' && r.Message !== 'Skipped (Already migrated)').length;
-        let skipCount = results.filter(r => r.Status === 'Completed' && r.Message === 'Skipped (Already migrated)').length;
-        let failCount = results.filter(r => r.Status === 'Failed').length;
+        // Update active card
+        if (activeName) activeName.innerText = objName;
+        if (activeText) activeText.innerText = `Memigrasi objek (${i + 1}/${enabledItems.length})`;
+        if (activeBar) {
+            activeBar.style.width = '50%';
+            activeBar.className = 'progress-bar-fill active';
+        }
 
-        let summaryHtml = `<div style="margin-bottom: 1.5rem;">
-            <div style="font-family: var(--font-heading); font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem;">
-                <i class="fa-solid fa-flag-checkered"></i> Hasil Migrasi Objek
-            </div>
-            <div style="display: flex; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap;">
-                <div style="padding: 0.5rem 1rem; background: var(--color-success-glow); border-radius: 10px; color: var(--color-success); font-weight: 600;">
-                    ✅ ${successCount} Sukses
-                </div>
-                ${skipCount > 0 ? `
-                <div style="padding: 0.5rem 1rem; background: rgba(59,130,246,0.08); border-radius: 10px; color: var(--accent-indigo); font-weight: 600; border: 1px solid rgba(59,130,246,0.2);">
-                    ⏩ ${skipCount} Diskip (Done)
-                </div>` : ''}
-                <div style="padding: 0.5rem 1rem; background: var(--color-error-glow); border-radius: 10px; color: var(--color-error); font-weight: 600;">
-                    ❌ ${failCount} Gagal
-                </div>
-            </div>
-        </div>`;
+        const logLine = document.createElement('div');
+        logLine.className = 'console-line';
+        logLine.innerText = `[${new Date().toLocaleTimeString()}] Memigrasi objek ${objName} [${objType}] (${i + 1}/${enabledItems.length})...`;
+        logsBox.appendChild(logLine);
+        logsBox.scrollTop = logsBox.scrollHeight;
 
-        summaryHtml += results.map(r => {
-            const isOk = r.Status === 'Completed';
-            return `<div style="padding: 0.75rem 1rem; border-radius: 10px; margin-bottom: 0.5rem; background: ${isOk ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)'}; border: 1px solid ${isOk ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'};">
-                <span style="font-weight: 600; color: ${isOk ? 'var(--color-success)' : 'var(--color-error)'}">${isOk ? '✅' : '❌'} ${r.ObjectName}</span>
-                <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem;">${r.Message}</span>
-            </div>`;
-        }).join('');
+        try {
+            const res = await fetch(`${API_BASE}/jobs/${jobId}/obj-run?itemId=${itemId}`, { method: 'POST' });
+            if (res.ok) {
+                const data = await res.json();
+                const result = data.Results[0];
+                results.push(result);
 
-        // Replace the items container temporarily with results
-        const container = document.getElementById('obj-items-container');
-        container.innerHTML = summaryHtml + `
-            <div style="margin-top: 1.5rem; text-align: center;">
-                <button class="btn btn-secondary" onclick="loadObjItems(${jobId})" style="width: auto; padding: 0.5rem 1.5rem;">
-                    <i class="fa-solid fa-arrow-left"></i> Kembali ke Daftar Objek
-                </button>
-            </div>
-        `;
+                if (result.Status === 'Completed') {
+                    if (result.Message === 'Skipped (Already migrated)') {
+                        skipCount++;
+                        logLine.className = 'console-line info';
+                        logLine.innerText = `[${new Date().toLocaleTimeString()}] LEWAT: Objek ${objName} dilewati (Sudah dimigrasi).`;
+                    } else {
+                        successCount++;
+                        logLine.className = 'console-line success';
+                        logLine.innerText = `[${new Date().toLocaleTimeString()}] KELAR: Objek ${objName} sukses dimigrasi.`;
+                    }
+                } else {
+                    failCount++;
+                    logLine.className = 'console-line error';
+                    logLine.innerText = `[${new Date().toLocaleTimeString()}] ERROR: Objek ${objName} gagal! Detail: ${result.Message}`;
+                }
+            } else {
+                failCount++;
+                const errMsg = await res.text();
+                results.push({ ObjectName: objName, Status: 'Failed', Message: errMsg });
+                logLine.className = 'console-line error';
+                logLine.innerText = `[${new Date().toLocaleTimeString()}] ERROR: Objek ${objName} gagal! Detail: ${errMsg}`;
+            }
+        } catch (err) {
+            failCount++;
+            results.push({ ObjectName: objName, Status: 'Failed', Message: err.message });
+            logLine.className = 'console-line error';
+            logLine.innerText = `[${new Date().toLocaleTimeString()}] ERROR: Objek ${objName} gagal! Detail: ${err.message}`;
+        }
 
-    } catch (err) {
-        console.error(err);
-        alert("Error: " + err.message);
-    } finally {
-        if (btn) {
-            btn.innerHTML = originalBtnHtml;
-            btn.disabled = false;
+        logsBox.scrollTop = logsBox.scrollHeight;
+
+        // Selesai per objek
+        if (activeBar) {
+            activeBar.style.width = '100%';
+            activeBar.className = failCount > 0 ? 'progress-bar-fill failed' : 'progress-bar-fill completed';
+        }
+
+        // Update progress global
+        const processedCount = i + 1;
+        const globalPct = Math.round((processedCount / enabledItems.length) * 100);
+        if (globalText) globalText.innerText = `${processedCount} / ${enabledItems.length} Objek (${globalPct}%)`;
+        if (globalBar) {
+            globalBar.style.width = `${globalPct}%`;
+            if (globalPct >= 100) {
+                globalBar.className = failCount > 0 ? 'progress-bar-fill failed' : 'progress-bar-fill completed';
+            }
         }
     }
+
+    // Akhir Rangkaian
+    setTimeout(() => {
+        const statusText = document.getElementById('runner-status-text');
+        if (statusText) {
+            if (failCount > 0) {
+                statusText.innerText = 'FAILED';
+                statusText.style.color = 'var(--color-error)';
+            } else {
+                statusText.innerText = 'COMPLETED';
+                statusText.style.color = 'var(--color-success)';
+            }
+        }
+        if (cancelBtn) cancelBtn.style.display = 'none';
+
+        // Tampilkan summary hasil migrasi objek di grid objek
+        loadObjItems(jobId);
+    }, 200);
 }
 
 // ============================================================================
@@ -2904,65 +3070,182 @@ async function runSingleClean(id) {
 }
 
 async function runAllClean() {
+    await runAllCleanInternal(true);
+}
+
+async function runAllCleanInternal(confirmFirst = false) {
     if (!activeJob) return;
     const jobId = activeJob.Id || activeJob.id;
     const connStr = activeJob.TargetConnectionString || activeJob.targetConnectionString || '';
     const dbInfo = parseConnectionStringDb(connStr);
 
-    const rows = [...document.querySelectorAll('#clean-tables-container .table-item')];
-    const tableNames = rows.map(row => row.querySelector('.clean-table-name')?.textContent?.trim()).filter(Boolean);
-
-    if (tableNames.length === 0) {
+    if (cleanTablesCache.length === 0) {
         alert("Tidak ada tabel di daftar untuk dibersihkan.");
         return;
     }
 
-    const confirmMsg = `⚠️ PERINGATAN KESELAMATAN KRITIS PEMBERSIHAN MASSAL ⚠️\n\n` +
-        `Anda akan MENGHAPUS SEMUA DATA dari ${tableNames.length} tabel berikut secara berurutan:\n` +
-        `${tableNames.map((t, idx) => `  ${idx + 1}. ${t}`).join('\n')}\n\n` +
-        `👉 DATABASE TUJUAN: ${dbInfo}\n\n` +
-        `Mekanisme:\n` +
-        `1. DELETE data di setiap tabel.\n` +
-        `2. RESEED Identity ke 0 (jika ada kolom Identity).\n\n` +
-        `Apakah Anda benar-benar yakin ingin membersihkan data seluruh tabel ini? Tindakan ini bersifat permanen!`;
+    const tableNames = cleanTablesCache.map(t => t.TableName || t.tableName);
 
-    if (!confirm(confirmMsg)) return;
+    if (confirmFirst) {
+        const confirmMsg = `⚠️ PERINGATAN KESELAMATAN KRITIS PEMBERSIHAN MASSAL ⚠️\n\n` +
+            `Anda akan MENGHAPUS SEMUA DATA dari ${tableNames.length} tabel berikut secara berurutan:\n` +
+            `${tableNames.map((t, idx) => `  ${idx + 1}. ${t}`).join('\n')}\n\n` +
+            `👉 DATABASE TUJUAN: ${dbInfo}\n\n` +
+            `Mekanisme:\n` +
+            `1. DELETE data di setiap tabel.\n` +
+            `2. RESEED Identity ke 0 (jika ada kolom Identity).\n\n` +
+            `Apakah Anda benar-benar yakin ingin membersihkan data seluruh tabel ini? Tindakan ini bersifat permanen!`;
 
-    const btn = document.querySelector('#inner-content-clean .btn-danger');
-    const originalHtml = btn ? btn.innerHTML : '';
-    if (btn) {
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sedang Membersihkan...';
-        btn.disabled = true;
+        if (!confirm(confirmMsg)) return;
     }
 
-    try {
-        const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables/run`, { method: 'POST' });
-        if (res.ok) {
-            const data = await res.json();
-            const results = data.Results || [];
+    // Reset cancellation flag
+    isCancellationRequested = false;
 
-            const successCount = results.filter(r => r.Status === 'Completed' && r.Message !== 'Skipped (Already cleaned)').length;
-            const skipCount = results.filter(r => r.Status === 'Completed' && r.Message === 'Skipped (Already cleaned)').length;
-            const failCount = results.filter(r => r.Status === 'Failed').length;
+    // 1. Reset & Setup Dashboard UI untuk Clean Database secara dinamis
+    const runnerTitle = document.querySelector('#active-runner-panel .runner-header span');
+    if (runnerTitle) runnerTitle.innerText = "Proses Pembersihan Database Berjalan";
 
-            let cleanResultMsg = `🧹 Proses pembersihan selesai!\n\n✅ Sukses: ${successCount} tabel\n❌ Gagal: ${failCount} tabel`;
-            if (skipCount > 0) {
-                cleanResultMsg += `\n⏩ Diskip (Done): ${skipCount} tabel`;
+    const globalLabel = document.getElementById('global-progress-label');
+    if (globalLabel) globalLabel.innerText = "Kemajuan Total (Pembersihan)";
+
+    document.getElementById('runner-status-text').innerText = 'RUNNING';
+    document.getElementById('runner-status-text').style.color = 'var(--accent-teal)';
+    document.getElementById('active-runner-panel').style.display = 'block';
+
+    const globalText = document.getElementById('global-progress-text');
+    const globalBar = document.getElementById('global-progress-bar');
+    const activeName = document.getElementById('active-table-name');
+    const activeText = document.getElementById('active-table-text');
+    const activeBar = document.getElementById('active-table-bar');
+    const logsBox = document.getElementById('console-logs');
+
+    if (globalText) globalText.innerText = `0 / ${cleanTablesCache.length} Tabel (0%)`;
+    if (globalBar) {
+        globalBar.style.width = '0%';
+        globalBar.className = 'progress-bar-fill active';
+    }
+    if (activeName) activeName.innerText = 'Menyiapkan tabel...';
+    if (activeText) activeText.innerText = '0%';
+    if (activeBar) {
+        activeBar.style.width = '0%';
+        activeBar.className = 'progress-bar-fill active';
+    }
+
+    logsBox.innerHTML = `<div class="console-line info">[${new Date().toLocaleTimeString()}] Memulai pembersihan data untuk ${cleanTablesCache.length} tabel target...</div>`;
+
+    // Tampilkan tombol cancel
+    const cancelBtn = document.getElementById('btn-cancel-migration');
+    if (cancelBtn) {
+        cancelBtn.style.display = 'inline-flex';
+        cancelBtn.disabled = false;
+        cancelBtn.innerHTML = `<i class="fa-solid fa-ban"></i> Batalkan Pembersihan`;
+    }
+
+    let successCount = 0;
+    let skipCount = 0;
+    let failCount = 0;
+
+    // Loop & eksekusi secara sekuensial satu-satu untuk melaporkan progres real-time
+    for (let i = 0; i < cleanTablesCache.length; i++) {
+        if (isCancellationRequested) {
+            const abortLine = document.createElement('div');
+            abortLine.className = 'console-line error';
+            abortLine.innerText = `[${new Date().toLocaleTimeString()}] BATAL: Pembersihan database dibatalkan oleh pengguna.`;
+            logsBox.appendChild(abortLine);
+            logsBox.scrollTop = logsBox.scrollHeight;
+            failCount++;
+            break;
+        }
+
+        const table = cleanTablesCache[i];
+        const id = table.Id || table.id;
+        const tableName = table.TableName || table.tableName;
+
+        // Update active card
+        if (activeName) activeName.innerText = tableName;
+        if (activeText) activeText.innerText = `Pembersihan (${i + 1}/${cleanTablesCache.length})`;
+        if (activeBar) {
+            activeBar.style.width = '50%';
+            activeBar.className = 'progress-bar-fill active';
+        }
+
+        const logLine = document.createElement('div');
+        logLine.className = 'console-line';
+        logLine.innerText = `[${new Date().toLocaleTimeString()}] Membersihkan tabel ${tableName} (${i + 1}/${cleanTablesCache.length})...`;
+        logsBox.appendChild(logLine);
+        logsBox.scrollTop = logsBox.scrollHeight;
+
+        try {
+            const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables/run?id=${id}`, { method: 'POST' });
+            if (res.ok) {
+                const data = await res.json();
+                const result = data.Results[0];
+
+                if (result.Status === 'Completed') {
+                    if (result.Message === 'Skipped (Already cleaned)') {
+                        skipCount++;
+                        logLine.className = 'console-line info';
+                        logLine.innerText = `[${new Date().toLocaleTimeString()}] LEWAT: Tabel ${tableName} dilewati (Sudah bersih).`;
+                    } else {
+                        successCount++;
+                        logLine.className = 'console-line success';
+                        logLine.innerText = `[${new Date().toLocaleTimeString()}] KELAR: Tabel ${tableName} sukses dibersihkan (${result.Message}).`;
+                    }
+                } else {
+                    failCount++;
+                    logLine.className = 'console-line error';
+                    logLine.innerText = `[${new Date().toLocaleTimeString()}] ERROR: Tabel ${tableName} gagal! Detail: ${result.Message}`;
+                }
+            } else {
+                failCount++;
+                const errMsg = await res.text();
+                logLine.className = 'console-line error';
+                logLine.innerText = `[${new Date().toLocaleTimeString()}] ERROR: Tabel ${tableName} gagal! Detail: ${errMsg}`;
             }
-            alert(cleanResultMsg);
-            loadCleanTables(jobId);
-        } else {
-            alert("Gagal mengeksekusi pembersihan: " + await res.text());
+        } catch (err) {
+            failCount++;
+            logLine.className = 'console-line error';
+            logLine.innerText = `[${new Date().toLocaleTimeString()}] ERROR: Tabel ${tableName} gagal! Detail: ${err.message}`;
         }
-    } catch (err) {
-        console.error(err);
-        alert("Error: " + err.message);
-    } finally {
-        if (btn) {
-            btn.innerHTML = originalHtml;
-            btn.disabled = false;
+
+        logsBox.scrollTop = logsBox.scrollHeight;
+
+        // Selesai per tabel
+        if (activeBar) {
+            activeBar.style.width = '100%';
+            activeBar.className = failCount > 0 ? 'progress-bar-fill failed' : 'progress-bar-fill completed';
+        }
+
+        // Update progress global
+        const processedCount = i + 1;
+        const globalPct = Math.round((processedCount / cleanTablesCache.length) * 100);
+        if (globalText) globalText.innerText = `${processedCount} / ${cleanTablesCache.length} Tabel (${globalPct}%)`;
+        if (globalBar) {
+            globalBar.style.width = `${globalPct}%`;
+            if (globalPct >= 100) {
+                globalBar.className = failCount > 0 ? 'progress-bar-fill failed' : 'progress-bar-fill completed';
+            }
         }
     }
+
+    // Akhir Rangkaian
+    setTimeout(() => {
+        const statusText = document.getElementById('runner-status-text');
+        if (statusText) {
+            if (failCount > 0) {
+                statusText.innerText = 'FAILED';
+                statusText.style.color = 'var(--color-error)';
+            } else {
+                statusText.innerText = 'COMPLETED';
+                statusText.style.color = 'var(--color-success)';
+            }
+        }
+        if (cancelBtn) cancelBtn.style.display = 'none';
+
+        // Reload UI status
+        loadCleanTables(jobId);
+    }, 200);
 }
 
 async function generateCleanSpScript() {
@@ -3116,22 +3399,14 @@ async function cleanAndResetAllData() {
         // 2. Reset Data Mappings status to Pending
         await fetch(`${API_BASE}/jobs/${jobId}/mappings/reset-status`, { method: 'POST' });
 
-        // 3. Jalankan pembersihan seluruh tabel target
-        const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables/run`, { method: 'POST' });
-        if (res.ok) {
-            const data = await res.json();
-            const results = data.Results || [];
-            const successCount = results.filter(r => r.Status === 'Completed').length;
-            const failCount = results.filter(r => r.Status === 'Failed').length;
+        // 3. Muat ulang status dari database ke cache
+        await loadCleanTables(jobId);
 
-            alert(`🧹 Pembersihan & Reset Status Selesai!\n\n✅ Sukses Bersihkan: ${successCount} tabel\n❌ Gagal: ${failCount} tabel\n🔄 Status migrasi telah direset ke Pending.`);
-            
-            // Reload caches and UI
-            loadTableMappings(jobId);
-            loadCleanTables(jobId);
-        } else {
-            alert("Gagal menjalankan pembersihan data: " + await res.text());
-        }
+        // 4. Jalankan pembersihan massal dengan pelaporan progres sekuensial!
+        await runAllCleanInternal();
+        
+        // 5. Muat ulang pemetaan data setelah selesai
+        loadTableMappings(jobId);
     } catch (err) {
         console.error(err);
         alert("Error: " + err.message);
