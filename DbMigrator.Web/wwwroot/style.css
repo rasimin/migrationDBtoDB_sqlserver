@@ -197,9 +197,136 @@ header {
     border-color: var(--border-flat-focus);
 }
 
+.table-search-input {
+    padding-right: 2rem;
+}
+
+.table-search-field {
+    position: relative;
+}
+
+.table-search-toggle {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 40px;
+    height: calc(100% - 2px);
+    border: 0;
+    border-left: 1px solid var(--border-flat);
+    border-radius: 0 6px 6px 0;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.table-search-toggle:hover {
+    color: var(--text-primary);
+    background: var(--bg-card-hover);
+}
+
+.table-autocomplete {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 1200;
+    display: none;
+    max-height: 240px;
+    overflow-y: auto;
+    background: #11141c;
+    border: 1px solid var(--border-flat-focus);
+    border-radius: 6px;
+    box-shadow: var(--shadow-modal);
+    padding: 0.35rem;
+}
+
+.table-autocomplete.active {
+    display: block;
+}
+
+.table-autocomplete-option {
+    padding: 0.58rem 0.7rem;
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 0.84rem;
+    cursor: pointer;
+}
+
+.table-autocomplete-option:hover,
+.table-autocomplete-option.active {
+    background: var(--bg-card-hover);
+    color: var(--accent-teal);
+}
+
+.table-autocomplete-empty {
+    padding: 0.65rem 0.7rem;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
 textarea.form-control {
     resize: vertical;
     min-height: 80px;
+}
+
+.sql-example-box {
+    margin-top: 0.75rem;
+    border: 1px solid var(--border-flat);
+    border-radius: 6px;
+    background: #0b0e14;
+    overflow: hidden;
+}
+
+.sql-example-title {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 0;
+    border-bottom: 1px solid var(--border-flat);
+    background: transparent;
+    color: var(--accent-teal);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+}
+
+.sql-example-title:hover {
+    background: var(--bg-card-hover);
+}
+
+.sql-example-title span {
+    flex: 1;
+}
+
+.sql-example-chevron {
+    color: var(--text-muted);
+    transition: var(--transition-fast);
+}
+
+.sql-example-box.collapsed .sql-example-chevron {
+    transform: rotate(-90deg);
+}
+
+.sql-example-box pre {
+    margin: 0;
+    padding: 0.85rem;
+    color: var(--text-primary);
+    font-family: Consolas, monospace;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+}
+
+.sql-example-box.collapsed pre {
+    display: none;
+}
+
+.sql-example-box.collapsed .sql-example-title {
+    border-bottom: 0;
 }
 
 /* Buttons (Modern Solid Flat Design) */
@@ -306,11 +433,48 @@ textarea.form-control {
     border-color: var(--border-flat-hover);
 }
 
+.table-item.sortable-item {
+    cursor: grab;
+}
+
+.table-item.sortable-item:active {
+    cursor: grabbing;
+}
+
+.table-item.dragging {
+    opacity: 0.58;
+    border-color: var(--accent-teal);
+    background: var(--bg-card-hover);
+}
+
+.table-item.drag-over {
+    border-top-color: var(--accent-teal);
+}
+
+.table-list.is-saving-order {
+    opacity: 0.76;
+    pointer-events: none;
+}
+
 .table-info {
     display: flex;
     align-items: center;
     gap: 1.25rem;
     flex-grow: 1;
+}
+
+.drag-handle {
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    flex-shrink: 0;
+}
+
+.table-item:hover .drag-handle,
+.table-item.dragging .drag-handle {
+    color: var(--accent-teal);
 }
 
 .execution-badge {
@@ -882,7 +1046,7 @@ textarea.form-control {
     border: 1px solid transparent;
     border-left: 3px solid transparent;
     color: var(--text-muted);
-    padding: 0.8rem 1.1rem;
+    padding: 0;
     border-radius: 6px;
     cursor: pointer;
     font-family: var(--font-heading);
@@ -890,10 +1054,23 @@ textarea.form-control {
     font-size: 0.88rem;
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    justify-content: center;
     transition: var(--transition-fast);
-    text-align: left;
-    width: 100%;
+    width: 44px;
+    height: 44px;
+}
+
+.book-tab span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
+.book-tab i {
+    font-size: 1rem;
 }
 
 .book-tab:hover {
@@ -912,5 +1089,3 @@ textarea.form-control {
 #conn-builder-modal {
     z-index: 1100;
 }
-
-

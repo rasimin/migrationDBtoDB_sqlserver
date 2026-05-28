@@ -9,6 +9,8 @@ let targetTables = [];
 let sourceColumnsCache = {}; // tableName -> columns[{name, type}]
 let targetColumnsCache = {}; // tableName -> columns[{name, type}]
 let activeTableMappingId = null;
+let activeColumnSourceTable = null;
+let activeColumnTargetTable = null;
 
 // Hub SignalR
 let connection = null;
@@ -466,14 +468,51 @@ async function loadTableMappings(jobId) {
             return;
         }
 
-        container.innerHTML = mappings.map(map => `
-            <div class="table-item">
+        container.innerHTML = mappings.map(map => {
+            const mapId = map.Id || map.id;
+            const mappingMode = map.MappingMode || map.mappingMode || 'TABLE';
+            const isNative = mappingMode.toUpperCase() === 'NATIVE_SQL';
+            const sourceName = map.SourceTableName || map.sourceTableName;
+            const targetName = map.TargetTableName || map.targetTableName;
+            const scriptPreview = (map.NativeSqlScript || map.nativeSqlScript || '').substring(0, 100);
+
+            if (isNative) {
+                return `
+            <div class="table-item sortable-item native-sql-item" draggable="true" data-sort-id="${mapId}">
                 <div class="table-info">
+                    <div class="drag-handle" title="Geser untuk mengubah urutan">
+                        <i class="fa-solid fa-grip-vertical"></i>
+                    </div>
+                    <div class="execution-badge" title="Urutan Eksekusi">${map.ExecutionOrder || map.executionOrder}</div>
+                    <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                        <div style="display: flex; align-items: center; gap: 0.65rem;">
+                            <i class="fa-solid fa-terminal" style="color: var(--accent-teal);"></i>
+                            <span style="font-weight: 700; color: #ffffff;">${escapeHtml(targetName)}</span>
+                            <span class="obj-type-badge native_sql">NATIVE SQL</span>
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); font-family: Consolas, monospace; max-width: 560px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(scriptPreview)}${scriptPreview.length >= 100 ? '...' : ''}</div>
+                    </div>
+                </div>
+                <div class="table-actions">
+                    <button class="btn-icon delete" onclick="deleteTableMapping(${mapId})" title="Hapus Native SQL">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+            }
+
+            return `
+            <div class="table-item sortable-item" draggable="true" data-sort-id="${mapId}">
+                <div class="table-info">
+                    <div class="drag-handle" title="Geser untuk mengubah urutan">
+                        <i class="fa-solid fa-grip-vertical"></i>
+                    </div>
                     <div class="execution-badge" title="Urutan Eksekusi">${map.ExecutionOrder || map.executionOrder}</div>
                     <div class="table-flow">
-                        <span style="color: var(--text-muted); font-size: 0.9rem;">${map.SourceTableName || map.sourceTableName}</span>
+                        <span style="color: var(--text-muted); font-size: 0.9rem;">${sourceName}</span>
                         <span class="arrow"><i class="fa-solid fa-circle-arrow-right"></i></span>
-                        <span style="color: #ffffff;">${map.TargetTableName || map.targetTableName}</span>
+                        <span style="color: #ffffff;">${targetName}</span>
                     </div>
                 </div>
                 <div class="table-actions">
@@ -491,23 +530,122 @@ async function loadTableMappings(jobId) {
                     </button>
                 </div>
             </div>
-        `).join('');
+        `}).join('');
+
+        initSortableList(container, {
+            endpoint: `${API_BASE}/mappings/tables/${jobId}/reorder`
+        });
     } catch (err) {
         console.error(err);
+    }
+}
+
+function initSortableList(container, options) {
+    const itemSelector = options.itemSelector || '.sortable-item';
+    const endpoint = options.endpoint;
+
+    container.querySelectorAll(itemSelector).forEach(item => {
+        item.addEventListener('dragstart', (e) => {
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', item.dataset.sortId);
+        });
+
+        item.addEventListener('dragend', () => {
+            item.classList.remove('dragging');
+            container.querySelectorAll(`${itemSelector}.drag-over`).forEach(el => el.classList.remove('drag-over'));
+            updateSortableBadges(container, itemSelector);
+        });
+    });
+
+    container.ondragover = (e) => {
+        e.preventDefault();
+        const dragging = container.querySelector(`${itemSelector}.dragging`);
+        if (!dragging) return;
+
+        const afterElement = getDragAfterElement(container, e.clientY, itemSelector);
+        container.querySelectorAll(`${itemSelector}.drag-over`).forEach(el => el.classList.remove('drag-over'));
+
+        if (afterElement == null) {
+            container.appendChild(dragging);
+        } else {
+            afterElement.classList.add('drag-over');
+            container.insertBefore(dragging, afterElement);
+        }
+
+        updateSortableBadges(container, itemSelector);
+    };
+
+    container.ondrop = async (e) => {
+        e.preventDefault();
+        container.querySelectorAll(`${itemSelector}.drag-over`).forEach(el => el.classList.remove('drag-over'));
+        await saveSortableOrder(container, endpoint, itemSelector);
+    };
+}
+
+function getDragAfterElement(container, y, itemSelector) {
+    const draggableElements = [...container.querySelectorAll(`${itemSelector}:not(.dragging)`)];
+
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+
+        if (offset < 0 && offset > closest.offset) {
+            return { offset, element: child };
+        }
+
+        return closest;
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+function updateSortableBadges(container, itemSelector) {
+    container.querySelectorAll(itemSelector).forEach((item, index) => {
+        const badge = item.querySelector('.execution-badge');
+        if (badge) badge.textContent = index + 1;
+    });
+}
+
+async function saveSortableOrder(container, endpoint, itemSelector) {
+    if (!endpoint) return;
+
+    const items = [...container.querySelectorAll(itemSelector)].map((item, index) => ({
+        Id: parseInt(item.dataset.sortId, 10),
+        ExecutionOrder: index + 1
+    })).filter(item => Number.isInteger(item.Id));
+
+    if (items.length === 0) return;
+
+    try {
+        container.classList.add('is-saving-order');
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(items)
+        });
+
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Gagal menyimpan urutan. Data akan dimuat ulang.');
+        if (activeJob) {
+            loadTableMappings(activeJob.Id || activeJob.id);
+            loadObjItems(activeJob.Id || activeJob.id);
+        }
+    } finally {
+        container.classList.remove('is-saving-order');
     }
 }
 
 function openNewTableMappingForm() {
     if (!activeJob) return;
 
-    // Masukkan list ke option
-    const srcSelect = document.getElementById('source-table-select');
-    const tgtSelect = document.getElementById('target-table-select');
-
-    srcSelect.innerHTML = sourceTables.map(t => `<option value="${t}">${t}</option>`).join('');
-    tgtSelect.innerHTML = targetTables.map(t => `<option value="${t}">${t}</option>`).join('');
+    populateTableDatalists();
 
     document.getElementById('table-mapping-id').value = 0;
+    document.getElementById('source-table-select').value = sourceTables[0] || '';
+    document.getElementById('target-table-select').value = targetTables[0] || '';
     document.getElementById('execution-order').value = 1;
     document.getElementById('truncate-target').checked = false;
     if (document.getElementById('table-post-migration-script')) {
@@ -519,13 +657,11 @@ function openNewTableMappingForm() {
 }
 
 function editTableMapping(id, sourceTable, targetTable, order, truncate, postScript) {
-    const srcSelect = document.getElementById('source-table-select');
-    const tgtSelect = document.getElementById('target-table-select');
-
-    srcSelect.innerHTML = sourceTables.map(t => `<option value="${t}" ${t === sourceTable ? 'selected' : ''}>${t}</option>`).join('');
-    tgtSelect.innerHTML = targetTables.map(t => `<option value="${t}" ${t === targetTable ? 'selected' : ''}>${t}</option>`).join('');
+    populateTableDatalists();
 
     document.getElementById('table-mapping-id').value = id;
+    document.getElementById('source-table-select').value = sourceTable || '';
+    document.getElementById('target-table-select').value = targetTable || '';
     document.getElementById('execution-order').value = order;
     document.getElementById('truncate-target').checked = truncate;
     if (document.getElementById('table-post-migration-script')) {
@@ -540,16 +676,202 @@ function closeTableMappingModal() {
     document.getElementById('table-mapping-modal').classList.remove('active');
 }
 
+function openDataNativeSqlModal() {
+    if (!activeJob) return;
+    document.getElementById('data-native-sql-name').value = '';
+    document.getElementById('data-native-sql-mode').value = 'target';
+    document.getElementById('data-native-sql-script').value = '';
+    updateDataNativeSqlTemplate();
+    document.getElementById('data-native-sql-modal').classList.add('active');
+}
+
+function closeDataNativeSqlModal() {
+    document.getElementById('data-native-sql-modal').classList.remove('active');
+}
+
+function updateDataNativeSqlTemplate() {
+    const mode = document.getElementById('data-native-sql-mode').value;
+    const textarea = document.getElementById('data-native-sql-script');
+    const hint = document.getElementById('data-native-sql-hint');
+    const example = document.getElementById('data-native-sql-example');
+
+    if (mode === 'source-target') {
+        hint.innerHTML = 'Script dieksekusi sebagai langkah Data Migration dari koneksi Target DB. Pakai <code>{{SOURCE_DB}}</code> dan <code>{{TARGET_DB}}</code> jika Source dan Target berada di SQL Server instance yang sama.';
+        if (example) {
+            example.textContent = `-- Ambil data dari Source DB lalu masukkan ke Target DB\nINSERT INTO {{TARGET_DB}}.dbo.CustomerTarget (CustomerId, FullName, CreatedAt)\nSELECT Id, Name, GETDATE()\nFROM {{SOURCE_DB}}.dbo.CustomerSource\nWHERE IsActive = 1;\n\n-- Bisa juga update target berdasarkan data source\nUPDATE T\nSET T.FullName = S.Name\nFROM {{TARGET_DB}}.dbo.CustomerTarget T\nJOIN {{SOURCE_DB}}.dbo.CustomerSource S ON S.Id = T.CustomerId;`;
+        }
+        if (!textarea.value.trim()) {
+            textarea.value = `INSERT INTO {{TARGET_DB}}.dbo.TargetTable (ColumnA, ColumnB)\nSELECT ColumnA, ColumnB\nFROM {{SOURCE_DB}}.dbo.SourceTable\nWHERE 1 = 1;`;
+        }
+        return;
+    }
+
+    hint.innerHTML = 'Cocok untuk UPDATE data target, cleanup, staging, atau script SQL lain yang perlu ikut urutan migrasi data.';
+    if (example) {
+        example.textContent = `-- Script berjalan langsung di Target DB\nUPDATE dbo.TargetTable\nSET UpdatedAt = GETDATE()\nWHERE UpdatedAt IS NULL;\n\n-- Contoh lain: cleanup data staging\nDELETE FROM dbo.ImportStaging\nWHERE IsProcessed = 1;`;
+    }
+    if (!textarea.value.trim()) {
+        textarea.value = `UPDATE dbo.TargetTable\nSET UpdatedAt = GETDATE()\nWHERE UpdatedAt IS NULL;`;
+    }
+}
+
+function toggleSqlExample(boxId) {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    box.classList.toggle('collapsed');
+}
+
+async function addDataNativeSqlItem() {
+    if (!activeJob) return;
+
+    const name = document.getElementById('data-native-sql-name').value.trim();
+    const script = document.getElementById('data-native-sql-script').value.trim();
+
+    if (!name || !script) {
+        alert('Harap isi nama langkah dan script SQL!');
+        return;
+    }
+
+    const payload = {
+        JobId: activeJob.Id || activeJob.id,
+        SourceTableName: '[NATIVE_SQL]',
+        TargetTableName: name,
+        ExecutionOrder: 99,
+        TruncateTarget: false,
+        IsEnabled: true,
+        MappingMode: 'NATIVE_SQL',
+        NativeSqlScript: script,
+        PostMigrationScript: null
+    };
+
+    try {
+        const res = await fetch(`${API_BASE}/mappings/tables`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            closeDataNativeSqlModal();
+            loadTableMappings(activeJob.Id || activeJob.id);
+        } else {
+            alert('Gagal menambahkan Native SQL: ' + await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function populateTableDatalists() {
+    setupTableAutocomplete('source-table-select', 'source-table-options', sourceTables);
+    setupTableAutocomplete('target-table-select', 'target-table-options', targetTables);
+}
+
+function setupTableAutocomplete(inputId, menuId, tables) {
+    const input = document.getElementById(inputId);
+    const menu = document.getElementById(menuId);
+    const toggle = document.querySelector(`[data-table-input="${inputId}"]`);
+    if (!input || !menu) return;
+
+    let activeIndex = -1;
+
+    const render = (query = '') => {
+        const normalized = query.trim().toLowerCase();
+        const matches = tables
+            .filter(table => !normalized || table.toLowerCase().includes(normalized))
+            .slice(0, 80);
+
+        activeIndex = -1;
+
+        if (matches.length === 0) {
+            menu.innerHTML = `<div class="table-autocomplete-empty">Tabel tidak ditemukan.</div>`;
+        } else {
+            menu.innerHTML = matches
+                .map(table => `<div class="table-autocomplete-option" data-value="${escapeHtml(table)}">${escapeHtml(table)}</div>`)
+                .join('');
+        }
+
+        menu.classList.add('active');
+    };
+
+    input.onfocus = () => render(input.value);
+    input.oninput = () => render(input.value);
+    input.onkeydown = (e) => {
+        const options = [...menu.querySelectorAll('.table-autocomplete-option')];
+        if (!menu.classList.contains('active') || options.length === 0) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = Math.min(activeIndex + 1, options.length - 1);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = Math.max(activeIndex - 1, 0);
+        } else if (e.key === 'Enter' && activeIndex >= 0) {
+            e.preventDefault();
+            input.value = options[activeIndex].dataset.value;
+            menu.classList.remove('active');
+            return;
+        } else if (e.key === 'Escape') {
+            menu.classList.remove('active');
+            return;
+        } else {
+            return;
+        }
+
+        options.forEach(option => option.classList.remove('active'));
+        options[activeIndex].classList.add('active');
+        options[activeIndex].scrollIntoView({ block: 'nearest' });
+    };
+
+    menu.onclick = (e) => {
+        const option = e.target.closest('.table-autocomplete-option');
+        if (!option) return;
+        input.value = option.dataset.value;
+        menu.classList.remove('active');
+        input.focus();
+    };
+
+    if (toggle) {
+        toggle.onclick = () => {
+            input.focus();
+            render('');
+        };
+    }
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+document.addEventListener('click', (e) => {
+    if (e.target.closest('.table-search-field')) return;
+    document.querySelectorAll('.table-autocomplete.active').forEach(menu => menu.classList.remove('active'));
+});
+
 async function saveTableMapping() {
     const id = parseInt(document.getElementById('table-mapping-id').value);
-    const sourceTable = document.getElementById('source-table-select').value;
-    const targetTable = document.getElementById('target-table-select').value;
+    const sourceTable = document.getElementById('source-table-select').value.trim();
+    const targetTable = document.getElementById('target-table-select').value.trim();
     const order = parseInt(document.getElementById('execution-order').value);
     const truncate = document.getElementById('truncate-target').checked;
     const postScript = document.getElementById('table-post-migration-script') ? document.getElementById('table-post-migration-script').value.trim() : null;
 
     if (!sourceTable || !targetTable) {
         alert("Harap pilih tabel asal dan tujuan!");
+        return;
+    }
+
+    if (!sourceTables.includes(sourceTable)) {
+        alert("Nama tabel asal tidak ditemukan di daftar Source DB.");
+        return;
+    }
+
+    if (!targetTables.includes(targetTable)) {
+        alert("Nama tabel tujuan tidak ditemukan di daftar Target DB.");
         return;
     }
 
@@ -561,6 +883,8 @@ async function saveTableMapping() {
         ExecutionOrder: order,
         TruncateTarget: truncate,
         IsEnabled: true,
+        MappingMode: 'TABLE',
+        NativeSqlScript: null,
         PostMigrationScript: postScript
     };
 
@@ -601,6 +925,8 @@ async function deleteTableMapping(id) {
 // ============================================================================
 async function openColumnMappingModal(tableMappingId, sourceTable, targetTable) {
     activeTableMappingId = tableMappingId;
+    activeColumnSourceTable = sourceTable;
+    activeColumnTargetTable = targetTable;
     
     document.getElementById('column-modal-title').innerText = `Desainer Kolom: ${targetTable}`;
     document.getElementById('column-modal-subtitle').innerText = `Memetakan dari data asal: ${sourceTable}`;
@@ -612,30 +938,75 @@ async function openColumnMappingModal(tableMappingId, sourceTable, targetTable) 
 
     try {
         const jobId = activeJob.Id || activeJob.id;
-        // 1. Fetch Source Columns
-        if (!sourceColumnsCache[sourceTable]) {
-            const res = await fetch(`${API_BASE}/db/columns?jobId=${jobId}&dbType=source&tableName=${sourceTable}`);
-            if (res.ok) sourceColumnsCache[sourceTable] = await res.json();
-        }
-
-        // 2. Fetch Target Columns
-        if (!targetColumnsCache[targetTable]) {
-            const res = await fetch(`${API_BASE}/db/columns?jobId=${jobId}&dbType=target&tableName=${targetTable}`);
-            if (res.ok) targetColumnsCache[targetTable] = await res.json();
-        }
-
-        // 3. Fetch Existing Column Mappings
+        // 1. Fetch Existing Column Mappings first so saved work appears immediately.
         const mapRes = await fetch(`${API_BASE}/mappings/columns/${tableMappingId}`);
         const existingMappings = await mapRes.json();
-        
-        const srcCols = sourceColumnsCache[sourceTable] || [];
-        const tgtCols = targetColumnsCache[targetTable] || [];
 
-        renderColumnMapper(tgtCols, srcCols, existingMappings);
+        if (existingMappings.length > 0) {
+            const savedTargetCols = buildTargetColumnsFromMappings(existingMappings);
+            const savedSourceCols = buildSourceColumnsFromMappings(existingMappings);
+            renderColumnMapper(savedTargetCols, savedSourceCols, existingMappings);
+        }
+
+        // 2. Refresh live source/target structure. If it is slow, saved mappings remain visible.
+        const schemaLoaded = await loadColumnSchemas(jobId, sourceTable, targetTable);
+        if (schemaLoaded) {
+            const srcCols = sourceColumnsCache[sourceTable] || buildSourceColumnsFromMappings(existingMappings);
+            const tgtCols = targetColumnsCache[targetTable] || buildTargetColumnsFromMappings(existingMappings);
+            renderColumnMapper(tgtCols, srcCols, existingMappings);
+        } else if (existingMappings.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--color-error);">Gagal mengambil struktur kolom database.</td></tr>`;
+        }
     } catch (err) {
         console.error(err);
         tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--color-error);">Gagal memuat kolom: ${err.message}</td></tr>`;
     }
+}
+
+async function loadColumnSchemas(jobId, sourceTable, targetTable) {
+    try {
+        const requests = [];
+
+        if (!sourceColumnsCache[sourceTable]) {
+            requests.push(
+                fetch(`${API_BASE}/db/columns?jobId=${jobId}&dbType=source&tableName=${encodeURIComponent(sourceTable)}`)
+                    .then(res => res.ok ? res.json() : null)
+                    .then(cols => { if (cols) sourceColumnsCache[sourceTable] = cols; })
+            );
+        }
+
+        if (!targetColumnsCache[targetTable]) {
+            requests.push(
+                fetch(`${API_BASE}/db/columns?jobId=${jobId}&dbType=target&tableName=${encodeURIComponent(targetTable)}`)
+                    .then(res => res.ok ? res.json() : null)
+                    .then(cols => { if (cols) targetColumnsCache[targetTable] = cols; })
+            );
+        }
+
+        await Promise.all(requests);
+        return !!sourceColumnsCache[sourceTable] && !!targetColumnsCache[targetTable];
+    } catch (err) {
+        console.error(err);
+        return false;
+    }
+}
+
+function buildTargetColumnsFromMappings(mappings) {
+    return [...new Map(mappings
+        .filter(m => m.TargetColumnName || m.targetColumnName)
+        .map(m => {
+            const name = m.TargetColumnName || m.targetColumnName;
+            return [name.toLowerCase(), { Name: name, Type: 'saved' }];
+        })).values()];
+}
+
+function buildSourceColumnsFromMappings(mappings) {
+    return [...new Map(mappings
+        .filter(m => m.SourceColumnName || m.sourceColumnName)
+        .map(m => {
+            const name = m.SourceColumnName || m.sourceColumnName;
+            return [name.toLowerCase(), { Name: name, Type: 'saved' }];
+        })).values()];
 }
 
 function closeColumnMappingModal() {
@@ -679,6 +1050,7 @@ function renderColumnMapper(targetCols, sourceCols, existingMappings) {
     targetCols.forEach(tCol => {
         // Cari apakah sudah ada mapping terdaftar
         const mapping = existingMappings.find(m => m.TargetColumnName.toLowerCase() === tCol.Name.toLowerCase()) || {};
+        const selectedMappingType = mapping.MappingType || 'Ignore';
         
         const tr = document.createElement('tr');
         tr.dataset.targetColumn = tCol.Name;
@@ -689,9 +1061,9 @@ function renderColumnMapper(targetCols, sourceCols, existingMappings) {
         `).join('');
 
         // Tipe Mapping Options
-        const mTypes = ['Direct', 'Constant', 'Lookup', 'Expression', 'Ignore'];
+        const mTypes = ['Ignore', 'Direct', 'Constant', 'Lookup', 'Expression'];
         const typeOptionsHtml = mTypes.map(type => `
-            <option value="${type}" ${mapping.MappingType === type ? 'selected' : ''}>${type}</option>
+            <option value="${type}" ${selectedMappingType === type ? 'selected' : ''}>${type}</option>
         `).join('');
 
         tr.innerHTML = `
@@ -867,6 +1239,9 @@ function autoMapColumns() {
             // Trigger UI update
             toggleMappingTypeFields(selectType, { SourceColumnName: matchedSource.Name }, sCols);
             mapCount++;
+        } else {
+            selectType.value = 'Ignore';
+            toggleMappingTypeFields(selectType, {}, sCols);
         }
     });
 
@@ -1327,8 +1702,11 @@ async function loadObjItems(jobId) {
             const itemId = item.Id || item.id;
 
             return `
-                <div class="table-item">
+                <div class="table-item sortable-item" draggable="true" data-sort-id="${itemId}">
                     <div class="table-info">
+                        <div class="drag-handle" title="Geser untuk mengubah urutan">
+                            <i class="fa-solid fa-grip-vertical"></i>
+                        </div>
                         <div class="execution-badge" title="Urutan Eksekusi">${item.ExecutionOrder || item.executionOrder || 1}</div>
                         <div style="display: flex; flex-direction: column; gap: 0.35rem;">
                             <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -1349,6 +1727,10 @@ async function loadObjItems(jobId) {
                 </div>
             `;
         }).join('');
+
+        initSortableList(container, {
+            endpoint: `${API_BASE}/jobs/${jobId}/obj-items/reorder`
+        });
     } catch (err) {
         console.error(err);
     }
@@ -1473,12 +1855,33 @@ async function addSelectedScanItems() {
 // ============================================================================
 function openObjNativeSqlModal() {
     document.getElementById('native-sql-name').value = '';
+    document.getElementById('native-sql-mode').value = 'target';
     document.getElementById('native-sql-script').value = '';
+    updateNativeSqlTemplate();
     document.getElementById('obj-native-sql-modal').classList.add('active');
 }
 
 function closeObjNativeSqlModal() {
     document.getElementById('obj-native-sql-modal').classList.remove('active');
+}
+
+function updateNativeSqlTemplate() {
+    const mode = document.getElementById('native-sql-mode').value;
+    const textarea = document.getElementById('native-sql-script');
+    const hint = document.getElementById('native-sql-hint');
+
+    if (mode === 'source-target') {
+        hint.innerHTML = 'Script tetap dieksekusi dari koneksi Target DB. Pakai <code>{{SOURCE_DB}}</code> dan <code>{{TARGET_DB}}</code> untuk nama database. Mode ini bekerja saat Source dan Target berada di SQL Server instance yang sama.';
+        if (!textarea.value.trim()) {
+            textarea.value = `INSERT INTO {{TARGET_DB}}.dbo.TargetTable (ColumnA, ColumnB)\nSELECT ColumnA, ColumnB\nFROM {{SOURCE_DB}}.dbo.SourceTable\nWHERE 1 = 1;`;
+        }
+        return;
+    }
+
+    hint.innerHTML = 'Cocok untuk UPDATE, ALTER TABLE, CREATE INDEX, cleanup data, atau script lain yang berjalan langsung di Target DB.';
+    if (!textarea.value.trim()) {
+        textarea.value = `UPDATE dbo.TargetTable\nSET UpdatedAt = GETDATE()\nWHERE UpdatedAt IS NULL;`;
+    }
 }
 
 async function addNativeSqlItem() {
@@ -1887,5 +2290,3 @@ function togglePasswordVisibility() {
         icon.className = 'fa-solid fa-eye';
     }
 }
-
-

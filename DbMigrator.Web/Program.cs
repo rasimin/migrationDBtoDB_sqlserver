@@ -159,6 +159,22 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
             ALTER TABLE dbo.TableMappings ADD PostMigrationScript NVARCHAR(MAX) NULL;
         END
 
+        IF NOT EXISTS (
+            SELECT * FROM sys.columns
+            WHERE object_id = OBJECT_ID('dbo.TableMappings') AND name = 'MappingMode'
+        )
+        BEGIN
+            ALTER TABLE dbo.TableMappings ADD MappingMode NVARCHAR(50) NOT NULL CONSTRAINT DF_TableMappings_MappingMode DEFAULT 'TABLE';
+        END
+
+        IF NOT EXISTS (
+            SELECT * FROM sys.columns
+            WHERE object_id = OBJECT_ID('dbo.TableMappings') AND name = 'NativeSqlScript'
+        )
+        BEGIN
+            ALTER TABLE dbo.TableMappings ADD NativeSqlScript NVARCHAR(MAX) NULL;
+        END
+
         -- ================================================================
         -- OBJECT MIGRATION TABLES (DDL Migrator) - Unified Connection
         -- ObjectMigrationItems & Logs langsung FK ke dbo.MigrationJobs
@@ -324,13 +340,47 @@ app.MapGet("/api/mappings/tables/{jobId:int}", async (int jobId, IConfiguration 
     return Results.Ok(mappings);
 });
 
+// 4B. REORDER TABLE MAPPINGS FOR JOB
+app.MapPost("/api/mappings/tables/{jobId:int}/reorder", async (int jobId, [FromBody] List<ReorderItemDto> items, IConfiguration config) =>
+{
+    if (items == null || items.Count == 0)
+    {
+        return Results.BadRequest("Daftar urutan tidak boleh kosong.");
+    }
+
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    await conn.OpenAsync();
+    using var transaction = conn.BeginTransaction();
+
+    try
+    {
+        foreach (var item in items)
+        {
+            await conn.ExecuteAsync(@"
+                UPDATE dbo.TableMappings
+                SET ExecutionOrder = @ExecutionOrder
+                WHERE Id = @Id AND JobId = @JobId",
+                new { item.Id, item.ExecutionOrder, JobId = jobId }, transaction);
+        }
+
+        transaction.Commit();
+        return Results.Ok(new { Message = "Urutan pemetaan tabel berhasil diperbarui." });
+    }
+    catch
+    {
+        transaction.Rollback();
+        throw;
+    }
+});
+
 // 5. SAVE / UPDATE TABLE MAPPING
 app.MapPost("/api/mappings/tables", async ([FromBody] TableMapping mapping, IConfiguration config) =>
 {
     using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var isNativeSql = string.Equals(mapping.MappingMode, "NATIVE_SQL", StringComparison.OrdinalIgnoreCase);
     
     // BUG-CRUD-003: Validation to prevent duplicate source or target table mappings on the same Job
-    if (mapping.Id == 0)
+    if (!isNativeSql && mapping.Id == 0)
     {
         var existing = await conn.QueryFirstOrDefaultAsync<int?>(
             "SELECT TOP 1 Id FROM dbo.TableMappings WHERE JobId = @JobId AND (SourceTableName = @SourceTableName OR TargetTableName = @TargetTableName)",
@@ -340,7 +390,7 @@ app.MapPost("/api/mappings/tables", async ([FromBody] TableMapping mapping, ICon
             return Results.BadRequest("Pemetaan untuk tabel asal atau tujuan tersebut sudah terdaftar pada Job ini!");
         }
     }
-    else
+    else if (!isNativeSql)
     {
         var existing = await conn.QueryFirstOrDefaultAsync<int?>(
             "SELECT TOP 1 Id FROM dbo.TableMappings WHERE JobId = @JobId AND Id <> @Id AND (SourceTableName = @SourceTableName OR TargetTableName = @TargetTableName)",
@@ -357,15 +407,15 @@ app.MapPost("/api/mappings/tables", async ([FromBody] TableMapping mapping, ICon
             UPDATE dbo.TableMappings 
             SET SourceTableName = @SourceTableName, TargetTableName = @TargetTableName, 
                 ExecutionOrder = @ExecutionOrder, TruncateTarget = @TruncateTarget, IsEnabled = @IsEnabled,
-                PostMigrationScript = @PostMigrationScript
+                PostMigrationScript = @PostMigrationScript, MappingMode = @MappingMode, NativeSqlScript = @NativeSqlScript
             WHERE Id = @Id", mapping);
         return Results.Ok(mapping);
     }
     else
     {
         int newId = await conn.QuerySingleAsync<int>(@"
-            INSERT INTO dbo.TableMappings (JobId, SourceTableName, TargetTableName, ExecutionOrder, TruncateTarget, IsEnabled, PostMigrationScript)
-            VALUES (@JobId, @SourceTableName, @TargetTableName, @ExecutionOrder, @TruncateTarget, @IsEnabled, @PostMigrationScript);
+            INSERT INTO dbo.TableMappings (JobId, SourceTableName, TargetTableName, ExecutionOrder, TruncateTarget, IsEnabled, PostMigrationScript, MappingMode, NativeSqlScript)
+            VALUES (@JobId, @SourceTableName, @TargetTableName, @ExecutionOrder, @TruncateTarget, @IsEnabled, @PostMigrationScript, @MappingMode, @NativeSqlScript);
             SELECT CAST(SCOPE_IDENTITY() as int);", mapping);
         mapping.Id = newId;
         return Results.Created($"/api/mappings/tables/{newId}", mapping);
@@ -743,6 +793,8 @@ app.MapGet("/api/jobs/{id:int}/export", async (int id, IConfiguration config) =>
             TruncateTarget = t.TruncateTarget,
             IsEnabled = t.IsEnabled,
             PostMigrationScript = t.PostMigrationScript,
+            MappingMode = t.MappingMode,
+            NativeSqlScript = t.NativeSqlScript,
             Columns = columns.Select(c => new ExportColumnMappingDto
             {
                 SourceColumnName = c.SourceColumnName,
@@ -798,10 +850,10 @@ app.MapPost("/api/jobs/import", async ([FromBody] ExportJobDto import, IConfigur
         foreach (var t in import.TableMappings)
         {
             int newTableMappingId = await conn.QuerySingleAsync<int>(@"
-                INSERT INTO dbo.TableMappings (JobId, SourceTableName, TargetTableName, ExecutionOrder, TruncateTarget, IsEnabled, PostMigrationScript)
-                VALUES (@JobId, @SourceTableName, @TargetTableName, @ExecutionOrder, @TruncateTarget, @IsEnabled, @PostMigrationScript);
+                INSERT INTO dbo.TableMappings (JobId, SourceTableName, TargetTableName, ExecutionOrder, TruncateTarget, IsEnabled, PostMigrationScript, MappingMode, NativeSqlScript)
+                VALUES (@JobId, @SourceTableName, @TargetTableName, @ExecutionOrder, @TruncateTarget, @IsEnabled, @PostMigrationScript, @MappingMode, @NativeSqlScript);
                 SELECT CAST(SCOPE_IDENTITY() as int);",
-                new { JobId = newJobId, SourceTableName = t.SourceTableName, TargetTableName = t.TargetTableName, ExecutionOrder = t.ExecutionOrder, TruncateTarget = t.TruncateTarget, IsEnabled = t.IsEnabled, PostMigrationScript = t.PostMigrationScript },
+                new { JobId = newJobId, SourceTableName = t.SourceTableName, TargetTableName = t.TargetTableName, ExecutionOrder = t.ExecutionOrder, TruncateTarget = t.TruncateTarget, IsEnabled = t.IsEnabled, PostMigrationScript = t.PostMigrationScript, MappingMode = string.IsNullOrWhiteSpace(t.MappingMode) ? "TABLE" : t.MappingMode, NativeSqlScript = t.NativeSqlScript },
                 transaction);
 
             foreach (var c in t.Columns)
@@ -906,6 +958,39 @@ app.MapGet("/api/jobs/{id:int}/obj-items", async (int id, IConfiguration config)
     var items = await conn.QueryAsync<ObjectMigrationItem>(
         "SELECT * FROM dbo.ObjectMigrationItems WHERE JobId = @JobId ORDER BY ExecutionOrder ASC", new { JobId = id });
     return Results.Ok(items);
+});
+
+// OBJ-ITEMS-REORDER. REORDER ITEMS FOR JOB
+app.MapPost("/api/jobs/{id:int}/obj-items/reorder", async (int id, [FromBody] List<ReorderItemDto> items, IConfiguration config) =>
+{
+    if (items == null || items.Count == 0)
+    {
+        return Results.BadRequest("Daftar urutan tidak boleh kosong.");
+    }
+
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    await conn.OpenAsync();
+    using var transaction = conn.BeginTransaction();
+
+    try
+    {
+        foreach (var item in items)
+        {
+            await conn.ExecuteAsync(@"
+                UPDATE dbo.ObjectMigrationItems
+                SET ExecutionOrder = @ExecutionOrder
+                WHERE Id = @Id AND JobId = @JobId",
+                new { item.Id, item.ExecutionOrder, JobId = id }, transaction);
+        }
+
+        transaction.Commit();
+        return Results.Ok(new { Message = "Urutan migrasi objek berhasil diperbarui." });
+    }
+    catch
+    {
+        transaction.Rollback();
+        throw;
+    }
 });
 
 // OBJ-ITEM-SAVE. ADD/UPDATE ITEM
@@ -1027,7 +1112,8 @@ app.MapPost("/api/jobs/{id:int}/obj-run", async (int id, IConfiguration config) 
                     VALUES (@ItemId, @Version, @BackupScript)",
                     new { ItemId = item.Id, Version = nextVersion, BackupScript = $"-- Native SQL executed:\n{item.NativeSqlScript}" });
 
-                await targetConn.ExecuteAsync(item.NativeSqlScript);
+                var nativeSql = ResolveNativeSqlScript(job, item.NativeSqlScript);
+                await targetConn.ExecuteAsync(nativeSql);
 
                 await configConn.ExecuteAsync(@"
                     INSERT INTO dbo.ObjectMigrationLogs (JobId, ObjectName, Action, Status)
@@ -1065,6 +1151,50 @@ app.Run();
 // ============================================================================
 // OBJECT MIGRATION HELPER FUNCTIONS
 // ============================================================================
+string ResolveNativeSqlScript(MigrationJob job, string script)
+{
+    if (string.IsNullOrWhiteSpace(script)) return script;
+
+    var sourceBuilder = new SqlConnectionStringBuilder(job.SourceConnectionString);
+    var targetBuilder = new SqlConnectionStringBuilder(job.TargetConnectionString);
+    var sourceDb = sourceBuilder.InitialCatalog;
+    var targetDb = targetBuilder.InitialCatalog;
+
+    var usesSourcePlaceholder =
+        script.Contains("{{SOURCE_DB}}", StringComparison.OrdinalIgnoreCase) ||
+        script.Contains("{{SOURCE_DATABASE}}", StringComparison.OrdinalIgnoreCase);
+
+    if (usesSourcePlaceholder &&
+        !string.Equals(NormalizeSqlDataSource(sourceBuilder.DataSource), NormalizeSqlDataSource(targetBuilder.DataSource), StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("Native SQL Source DB ke Target DB hanya didukung otomatis jika Source dan Target berada di SQL Server instance yang sama. Untuk beda server, gunakan linked server di SQL Server lalu tulis nama linked server di script.");
+    }
+
+    return script
+        .Replace("{{SOURCE_DB}}", QuoteSqlIdentifier(sourceDb), StringComparison.OrdinalIgnoreCase)
+        .Replace("{{SOURCE_DATABASE}}", QuoteSqlIdentifier(sourceDb), StringComparison.OrdinalIgnoreCase)
+        .Replace("{{TARGET_DB}}", QuoteSqlIdentifier(targetDb), StringComparison.OrdinalIgnoreCase)
+        .Replace("{{TARGET_DATABASE}}", QuoteSqlIdentifier(targetDb), StringComparison.OrdinalIgnoreCase);
+}
+
+string NormalizeSqlDataSource(string dataSource)
+{
+    return (dataSource ?? string.Empty)
+        .Trim()
+        .Replace("tcp:", "", StringComparison.OrdinalIgnoreCase)
+        .Replace(" ", "");
+}
+
+string QuoteSqlIdentifier(string identifier)
+{
+    if (string.IsNullOrWhiteSpace(identifier))
+    {
+        throw new InvalidOperationException("Connection string Source/Target harus memiliki nama database.");
+    }
+
+    return $"[{identifier.Replace("]", "]]")}]";
+}
+
 async Task MigrateCodeObject(SqlConnection configConn, MigrationJob job, ObjectMigrationItem item, int jobId)
 {
     // 1. Backup existing object from Target DB (if exists)
@@ -1410,6 +1540,12 @@ public class TestConnectionRequest
     public string ConnectionString { get; set; }
 }
 
+public class ReorderItemDto
+{
+    public int Id { get; set; }
+    public int ExecutionOrder { get; set; }
+}
+
 public class ExportJobDto
 {
     public string JobName { get; set; }
@@ -1426,6 +1562,8 @@ public class ExportTableMappingDto
     public int ExecutionOrder { get; set; }
     public bool TruncateTarget { get; set; }
     public bool IsEnabled { get; set; }
+    public string MappingMode { get; set; }
+    public string NativeSqlScript { get; set; }
     public string PostMigrationScript { get; set; }
     public List<ExportColumnMappingDto> Columns { get; set; } = new();
 }

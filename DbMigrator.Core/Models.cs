@@ -23,6 +23,8 @@ namespace DbMigrator.Core
         public int ExecutionOrder { get; set; }
         public bool TruncateTarget { get; set; }
         public bool IsEnabled { get; set; }
+        public string MappingMode { get; set; } = "TABLE"; // TABLE, NATIVE_SQL
+        public string NativeSqlScript { get; set; }
         public List<ColumnMapping> Columns { get; set; } = new List<ColumnMapping>();
         public string PostMigrationScript { get; set; }
     }

@@ -38,7 +38,10 @@ CREATE TABLE dbo.TableMappings (
     TargetTableName NVARCHAR(128) NOT NULL,
     ExecutionOrder INT NOT NULL DEFAULT 1,
     TruncateTarget BIT NOT NULL DEFAULT 0,
-    IsEnabled BIT NOT NULL DEFAULT 1
+    IsEnabled BIT NOT NULL DEFAULT 1,
+    MappingMode NVARCHAR(50) NOT NULL DEFAULT 'TABLE',
+    NativeSqlScript NVARCHAR(MAX) NULL,
+    PostMigrationScript NVARCHAR(MAX) NULL
 );
 
 -- 5. Membuat Tabel ColumnMappings (Mengelola pemetaan dinamis antar kolom)

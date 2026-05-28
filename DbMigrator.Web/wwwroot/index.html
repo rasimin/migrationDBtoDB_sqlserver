@@ -116,12 +116,14 @@
                 <div class="job-editor-layout" style="display: flex; gap: 1.5rem; margin-top: 1rem; border-top: 1px solid var(--border-flat); padding-top: 1rem;">
                     
                     <!-- Left Sidebar (Book Tabs) -->
-                    <div class="job-book-tabs" style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.5rem; border-right: 1px solid var(--border-flat); padding-right: 1rem;">
-                        <button id="inner-tab-data" onclick="switchInnerTab('data')" class="book-tab active">
-                            <i class="fa-solid fa-database"></i> Data Migration
+                    <div class="job-book-tabs" style="width: 56px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.5rem; border-right: 1px solid var(--border-flat); padding-right: 0.75rem;">
+                        <button id="inner-tab-data" onclick="switchInnerTab('data')" class="book-tab active" title="Data Migration" aria-label="Data Migration">
+                            <i class="fa-solid fa-database"></i>
+                            <span>Data Migration</span>
                         </button>
-                        <button id="inner-tab-object" onclick="switchInnerTab('object')" class="book-tab">
-                            <i class="fa-solid fa-cubes"></i> Object Migration
+                        <button id="inner-tab-object" onclick="switchInnerTab('object')" class="book-tab" title="Object Migration" aria-label="Object Migration">
+                            <i class="fa-solid fa-cubes"></i>
+                            <span>Object Migration</span>
                         </button>
                     </div>
 
@@ -139,6 +141,9 @@
                                 </button>
                                 <button class="btn btn-secondary" onclick="openNewTableMappingForm()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">
                                     <i class="fa-solid fa-plus"></i> Tambah Tabel
+                                </button>
+                                <button class="btn btn-secondary" onclick="openDataNativeSqlModal()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-terminal"></i> Native SQL
                                 </button>
                             </div>
 
@@ -269,6 +274,52 @@
 
 
 <!-- ============================================================================
+     MODAL: DATA MIGRATION NATIVE SQL
+     ============================================================================ -->
+<div class="modal-overlay" id="data-native-sql-modal">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <div>
+                <h3>Data Native SQL</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Tambahkan script SQL sebagai langkah dalam urutan migrasi data. Gunakan <code>{{SOURCE_DB}}</code> dan <code>{{TARGET_DB}}</code> untuk query antar database di server yang sama.</p>
+            </div>
+            <button class="close-btn" onclick="closeDataNativeSqlModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <div class="form-group">
+                <label for="data-native-sql-name">Nama Langkah</label>
+                <input type="text" id="data-native-sql-name" class="form-control" placeholder="Contoh: Update status pelanggan">
+            </div>
+            <div class="form-group">
+                <label for="data-native-sql-mode">Template</label>
+                <select id="data-native-sql-mode" class="form-control" onchange="updateDataNativeSqlTemplate()">
+                    <option value="target">Target DB only</option>
+                    <option value="source-target">Source DB ke Target DB</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="data-native-sql-script">Script SQL</label>
+                <textarea id="data-native-sql-script" class="form-control" placeholder="Contoh: UPDATE dbo.Customers SET IsActive = 1;" style="font-family: Consolas, monospace; min-height: 220px; font-size: 0.85rem;"></textarea>
+                <small id="data-native-sql-hint" style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.4rem;"></small>
+                <div class="sql-example-box collapsed" id="data-native-sql-example-box">
+                    <button type="button" class="sql-example-title" onclick="toggleSqlExample('data-native-sql-example-box')">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <span>Contoh penggunaan</span>
+                        <i class="fa-solid fa-chevron-down sql-example-chevron"></i>
+                    </button>
+                    <pre id="data-native-sql-example"></pre>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeDataNativeSqlModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="addDataNativeSqlItem()" style="width: auto;"><i class="fa-solid fa-plus"></i> Tambah ke Data Migration</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- ============================================================================
      MODAL: TABLE MAPPING FORM
      ============================================================================ -->
 <div class="modal-overlay" id="table-mapping-modal">
@@ -281,15 +332,23 @@
             <input type="hidden" id="table-mapping-id" value="0">
             <div class="form-group">
                 <label for="source-table-select">Nama Tabel Asal (Source Table)</label>
-                <select id="source-table-select" class="form-control">
-                    <!-- Options loaded dynamically -->
-                </select>
+                <div class="table-search-field">
+                    <input id="source-table-select" class="form-control table-search-input" autocomplete="off" placeholder="Ketik nama tabel asal...">
+                    <button type="button" class="table-search-toggle" data-table-input="source-table-select" title="Tampilkan tabel">
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div id="source-table-options" class="table-autocomplete"></div>
+                </div>
             </div>
             <div class="form-group">
                 <label for="target-table-select">Nama Tabel Tujuan (Target Table)</label>
-                <select id="target-table-select" class="form-control">
-                    <!-- Options loaded dynamically -->
-                </select>
+                <div class="table-search-field">
+                    <input id="target-table-select" class="form-control table-search-input" autocomplete="off" placeholder="Ketik nama tabel tujuan...">
+                    <button type="button" class="table-search-toggle" data-table-input="target-table-select" title="Tampilkan tabel">
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div id="target-table-options" class="table-autocomplete"></div>
+                </div>
             </div>
             <div class="form-group">
                 <label for="execution-order">Urutan Eksekusi (Execution Order)</label>
@@ -431,7 +490,7 @@
         <div class="modal-header">
             <div>
                 <h3>Native SQL Script</h3>
-                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Tulis script SQL yang akan dieksekusi langsung di Target DB (ALTER TABLE, CREATE INDEX, dll).</p>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Tulis script SQL native. Gunakan placeholder <code>{{SOURCE_DB}}</code> dan <code>{{TARGET_DB}}</code> untuk query antar database di server yang sama.</p>
             </div>
             <button class="close-btn" onclick="closeObjNativeSqlModal()">&times;</button>
         </div>
@@ -441,8 +500,16 @@
                 <input type="text" id="native-sql-name" class="form-control" placeholder="Contoh: Add Index on CustomerNIK">
             </div>
             <div class="form-group">
+                <label for="native-sql-mode">Mode Eksekusi</label>
+                <select id="native-sql-mode" class="form-control" onchange="updateNativeSqlTemplate()">
+                    <option value="target">Target DB only</option>
+                    <option value="source-target">Source DB ke Target DB</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label for="native-sql-script">Script SQL</label>
-                <textarea id="native-sql-script" class="form-control" placeholder="Contoh: ALTER TABLE dbo.Customers ADD Email NVARCHAR(255) NULL;&#10;CREATE INDEX IX_Customer_NIK ON dbo.Customers(NIK);" style="font-family: Consolas, monospace; min-height: 200px; font-size: 0.85rem;"></textarea>
+                <textarea id="native-sql-script" class="form-control" placeholder="Contoh: UPDATE dbo.Customers SET IsActive = 1;" style="font-family: Consolas, monospace; min-height: 220px; font-size: 0.85rem;"></textarea>
+                <small id="native-sql-hint" style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.4rem;"></small>
             </div>
         </div>
         <div class="modal-footer">

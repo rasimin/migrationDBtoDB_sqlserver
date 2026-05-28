@@ -194,6 +194,12 @@ namespace DbMigrator.Core
                 int rowsMigrated = 0;
                 string currentTable = tableMap.TargetTableName;
 
+                if (IsNativeSqlMapping(tableMap))
+                {
+                    await ExecuteNativeSqlMappingAsync(configConn, job, tableMap, jobId, onProgress, cancellationToken);
+                    continue;
+                }
+
                 // A. Persiapan Koneksi Source & Target
                 using var sourceConn = new SqlConnection(job.SourceConnectionString);
                 using var targetConn = new SqlConnection(job.TargetConnectionString);
@@ -503,6 +509,112 @@ namespace DbMigrator.Core
                     throw; // Re-throw to signal job failure
                 }
             }
+        }
+
+        private static bool IsNativeSqlMapping(TableMapping tableMap)
+        {
+            return string.Equals(tableMap.MappingMode, "NATIVE_SQL", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(tableMap.SourceTableName, "[NATIVE_SQL]", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static async Task ExecuteNativeSqlMappingAsync(
+            SqlConnection configConn,
+            MigrationJob job,
+            TableMapping tableMap,
+            int jobId,
+            Action<string, int, int, string, string> onProgress,
+            CancellationToken cancellationToken)
+        {
+            var label = string.IsNullOrWhiteSpace(tableMap.TargetTableName)
+                ? "[DATA-NATIVE-SQL]"
+                : tableMap.TargetTableName;
+
+            int logId = 0;
+            onProgress?.Invoke(label, 0, 0, "InProgress", null);
+
+            logId = await configConn.QuerySingleAsync<int>(@"
+                INSERT INTO dbo.MigrationLogs (JobId, TableName, StartTime, TotalRows, RowsMigrated, Status)
+                VALUES (@JobId, @TableName, GETDATE(), 0, 0, 'InProgress');
+                SELECT CAST(SCOPE_IDENTITY() as int);",
+                new { JobId = jobId, TableName = label });
+
+            using var targetConn = new SqlConnection(job.TargetConnectionString);
+            await targetConn.OpenAsync(cancellationToken);
+            using var transaction = targetConn.BeginTransaction();
+
+            try
+            {
+                var script = ResolveNativeSqlScript(job, tableMap.NativeSqlScript);
+                using var scriptCmd = new SqlCommand(script, targetConn, transaction);
+                scriptCmd.CommandTimeout = 300;
+                await scriptCmd.ExecuteNonQueryAsync(cancellationToken);
+
+                transaction.Commit();
+
+                await configConn.ExecuteAsync(@"
+                    UPDATE dbo.MigrationLogs
+                    SET EndTime = GETDATE(), Status = 'Completed', RowsMigrated = 0
+                    WHERE Id = @Id", new { Id = logId });
+
+                onProgress?.Invoke(label, 0, 0, "Completed", null);
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    transaction.Rollback();
+                }
+                catch { }
+
+                await configConn.ExecuteAsync(@"
+                    UPDATE dbo.MigrationLogs
+                    SET EndTime = GETDATE(), Status = 'Failed', ErrorMessage = @Error
+                    WHERE Id = @Id", new { Error = ex.ToString(), Id = logId });
+
+                onProgress?.Invoke(label, 0, 0, "Failed", ex.ToString());
+                throw;
+            }
+        }
+
+        private static string ResolveNativeSqlScript(MigrationJob job, string script)
+        {
+            if (string.IsNullOrWhiteSpace(script)) return script;
+
+            var sourceBuilder = new SqlConnectionStringBuilder(job.SourceConnectionString);
+            var targetBuilder = new SqlConnectionStringBuilder(job.TargetConnectionString);
+            var usesSourcePlaceholder =
+                script.Contains("{{SOURCE_DB}}", StringComparison.OrdinalIgnoreCase) ||
+                script.Contains("{{SOURCE_DATABASE}}", StringComparison.OrdinalIgnoreCase);
+
+            if (usesSourcePlaceholder &&
+                !string.Equals(NormalizeSqlDataSource(sourceBuilder.DataSource), NormalizeSqlDataSource(targetBuilder.DataSource), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Data Native SQL Source DB ke Target DB hanya didukung otomatis jika Source dan Target berada di SQL Server instance yang sama. Untuk beda server, gunakan linked server di SQL Server lalu tulis nama linked server di script.");
+            }
+
+            return script
+                .Replace("{{SOURCE_DB}}", QuoteSqlIdentifier(sourceBuilder.InitialCatalog), StringComparison.OrdinalIgnoreCase)
+                .Replace("{{SOURCE_DATABASE}}", QuoteSqlIdentifier(sourceBuilder.InitialCatalog), StringComparison.OrdinalIgnoreCase)
+                .Replace("{{TARGET_DB}}", QuoteSqlIdentifier(targetBuilder.InitialCatalog), StringComparison.OrdinalIgnoreCase)
+                .Replace("{{TARGET_DATABASE}}", QuoteSqlIdentifier(targetBuilder.InitialCatalog), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeSqlDataSource(string dataSource)
+        {
+            return (dataSource ?? string.Empty)
+                .Trim()
+                .Replace("tcp:", "", StringComparison.OrdinalIgnoreCase)
+                .Replace(" ", "");
+        }
+
+        private static string QuoteSqlIdentifier(string identifier)
+        {
+            if (string.IsNullOrWhiteSpace(identifier))
+            {
+                throw new InvalidOperationException("Connection string Source/Target harus memiliki nama database.");
+            }
+
+            return $"[{identifier.Replace("]", "]]")}]";
         }
 
         /// <summary>
