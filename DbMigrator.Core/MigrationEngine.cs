@@ -416,6 +416,11 @@ namespace DbMigrator.Core
                             SET EndTime = GETDATE(), Status = 'Completed', RowsMigrated = 0 
                             WHERE Id = @Id", new { Id = logId });
 
+                        await configConn.ExecuteAsync(@"
+                            UPDATE dbo.TableMappings
+                            SET LastStatus = 'Completed', LastErrorMessage = NULL, LastRunAt = GETDATE()
+                            WHERE Id = @Id", new { Id = tableMap.Id });
+
                         transaction.Commit();
                         onProgress?.Invoke(currentTable, 0, 0, "Completed", null);
                         continue;
