@@ -4240,3 +4240,259 @@ function toggleSidebar() {
         if (text) text.innerText = 'Show Sidebar';
     }
 }
+
+// ============================================================================
+// APPIMS DATABASE BACKUP & RESTORE HANDLERS [NEW]
+// ============================================================================
+let appimsBackupPathLoaded = "";
+
+async function openAppimsBackupModal() {
+    const modal = document.getElementById('appims-backup-modal');
+    if (modal) {
+        modal.classList.add('active');
+        
+        const serverEl = document.getElementById('appims-info-server');
+        if (serverEl) serverEl.textContent = "Mengambil data...";
+        
+        await loadAppimsBackupSettings();
+    }
+}
+
+function closeAppimsBackupModal() {
+    const modal = document.getElementById('appims-backup-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+async function loadAppimsBackupSettings() {
+    try {
+        const res = await fetch(`${API_BASE}/appims/backup-settings`);
+        if (!res.ok) throw new Error("Gagal mengambil pengaturan");
+        const data = await res.json();
+        
+        const pathInput = document.getElementById('appims-backup-path');
+        const infoPath = document.getElementById('appims-info-path');
+        const serverEl = document.getElementById('appims-info-server');
+        
+        const backupPath = data.AppimsBackupPath || data.appimsBackupPath || '';
+        appimsBackupPathLoaded = backupPath;
+        
+        if (pathInput) pathInput.value = backupPath;
+        if (infoPath) {
+            infoPath.textContent = backupPath || "Belum Diatur (Simpan path untuk memulai)";
+        }
+        if (serverEl) {
+            serverEl.textContent = data.Server || data.server || 'Unknown';
+        }
+        
+        if (backupPath) {
+            scanAppimsBackupFiles();
+        }
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+async function saveAppimsBackupSettings() {
+    const pathInput = document.getElementById('appims-backup-path');
+    if (!pathInput) return;
+    
+    const path = pathInput.value.trim();
+    if (!path) {
+        alert("Harap masukkan path direktori backup!");
+        return;
+    }
+    
+    const btn = document.getElementById('btn-save-appims-settings');
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...`;
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch(`${API_BASE}/appims/backup-settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ AppimsBackupPath: path })
+        });
+        
+        if (!res.ok) {
+            alert("Gagal menyimpan pengaturan: " + await res.text());
+            return;
+        }
+        
+        const data = await res.json();
+        if (data.Success || data.success) {
+            alert(data.Message || "Pengaturan berhasil disimpan ke app-config.json!");
+            await loadAppimsBackupSettings();
+        } else {
+            alert("Gagal: " + data.Message);
+        }
+    } catch (err) {
+        alert("Error koneksi: " + err.message);
+    } finally {
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+    }
+}
+
+async function scanAppimsBackupFiles() {
+    const selectEl = document.getElementById('appims-restore-file-select');
+    if (!selectEl) return;
+    
+    selectEl.innerHTML = `<option value="">Mengambil daftar file backup...</option>`;
+    
+    try {
+        const res = await fetch(`${API_BASE}/appims/backup-files`);
+        if (!res.ok) {
+            selectEl.innerHTML = `<option value="">-- Gagal memindai folder (Atur/simpan path terlebih dahulu) --</option>`;
+            return;
+        }
+        
+        const data = await res.json();
+        if (data.Success || data.success) {
+            const files = data.Files || data.files || [];
+            if (files.length === 0) {
+                selectEl.innerHTML = `<option value="">-- Tidak ada file .bak ditemukan --</option>`;
+            } else {
+                selectEl.innerHTML = files.map(file => `<option value="${escapeHtml(file)}">${escapeHtml(file)}</option>`).join('');
+            }
+        } else {
+            selectEl.innerHTML = `<option value="">-- Gagal memindai: ${escapeHtml(data.Message || '')} --</option>`;
+        }
+    } catch (err) {
+        console.error(err);
+        selectEl.innerHTML = `<option value="">-- Error memindai folder --</option>`;
+    }
+}
+
+async function runAppimsBackup() {
+    if (!appimsBackupPathLoaded) {
+        alert("Path backup belum diatur atau kosong! Harap atur path folder backup terlebih dahulu.");
+        return;
+    }
+    
+    if (!confirm(`Apakah Anda yakin ingin mem-backup database AppIMS [appims] ke path:\n"${appimsBackupPathLoaded}"?`)) {
+        return;
+    }
+    
+    const btn = document.getElementById('btn-run-appims-backup');
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Mem-backup Database...`;
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch(`${API_BASE}/appims/backup`, {
+            method: 'POST'
+        });
+        
+        if (!res.ok) {
+            alert("Gagal backup: " + await res.text());
+            return;
+        }
+        
+        const data = await res.json();
+        if (data.Success || data.success) {
+            alert(data.Message || "Backup database AppIMS berhasil diselesaikan!");
+            scanAppimsBackupFiles();
+        } else {
+            alert("Gagal backup: " + data.Message);
+        }
+    } catch (err) {
+        alert("Terjadi kesalahan koneksi saat backup: " + err.message);
+    } finally {
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+    }
+}
+
+function toggleAppimsRestoreMode() {
+    const restoreMode = document.querySelector('input[name="appims-restore-mode"]:checked').value;
+    const newDbGroup = document.getElementById('appims-restore-new-db-group');
+    if (newDbGroup) {
+        newDbGroup.style.display = restoreMode === 'new' ? 'block' : 'none';
+    }
+}
+
+async function runAppimsRestore() {
+    const backupFile = document.getElementById('appims-restore-file-select').value;
+    if (!backupFile) {
+        alert("Harap pilih file backup (.bak) yang akan di-restore!");
+        return;
+    }
+    
+    const restoreMode = document.querySelector('input[name="appims-restore-mode"]:checked').value;
+    let restoreDbName = "appims";
+    
+    if (restoreMode === 'new') {
+        restoreDbName = document.getElementById('appims-restore-new-db-name').value.trim();
+        if (!restoreDbName) {
+            alert("Harap masukkan nama database baru untuk restore!");
+            return;
+        }
+        if (!/^[a-zA-Z0-9_-]+$/.test(restoreDbName)) {
+            alert("Nama database hanya boleh mengandung huruf, angka, underscore (_), atau dash (-).");
+            return;
+        }
+    }
+    
+    let confirmMsg = "";
+    if (restoreMode === 'existing') {
+        confirmMsg = `🚨 PERINGATAN SANGAT CRITICAL! 🚨\n\n` +
+                     `Anda akan me-restore database AppIMS [${restoreDbName}] menggunakan file backup:\n` +
+                     `"${backupFile}"\n\n` +
+                     `Tindakan ini akan MENIMPA & MENGHAPUS seluruh konfigurasi migrasi, riwayat pengerjaan, dan data pemetaan tabel yang ada saat ini di database AppIMS [${restoreDbName}]!\n\n` +
+                     `Apakah Anda benar-benar yakin dan setuju untuk melanjutkan?`;
+    } else {
+        confirmMsg = `Tindakan ini akan me-restore file backup "${backupFile}" ke database BARU bernama [${restoreDbName}].\n\n` +
+                     `Apakah Anda yakin ingin melanjutkan?`;
+    }
+    
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+    
+    if (restoreMode === 'existing') {
+        const doubleCheck = prompt(`Harap ketik nama database AppIMS "${restoreDbName}" untuk mengonfirmasi penulisan ulang database:`);
+        if (doubleCheck !== restoreDbName) {
+            alert("Konfirmasi nama database tidak sesuai. Proses restore dibatalkan.");
+            return;
+        }
+    }
+    
+    const btn = document.getElementById('btn-run-appims-restore');
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Me-restore Database...`;
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch(`${API_BASE}/appims/restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                BackupFilename: backupFile,
+                RestoreDbName: restoreDbName
+            })
+        });
+        
+        if (!res.ok) {
+            alert("Gagal me-restore: " + await res.text());
+            return;
+        }
+        
+        const data = await res.json();
+        if (data.Success || data.success) {
+            alert(data.Message || "Restore database AppIMS berhasil diselesaikan!");
+            if (restoreMode === 'existing') {
+                window.location.reload();
+            }
+        } else {
+            alert("Gagal me-restore: " + data.Message);
+        }
+    } catch (err) {
+        alert("Terjadi kesalahan koneksi saat restore: " + err.message);
+    } finally {
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+    }
+}

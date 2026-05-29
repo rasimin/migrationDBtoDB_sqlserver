@@ -65,6 +65,13 @@
                     <i class="fa-solid fa-file-import"></i> Impor JSON
                 </button>
             </div>
+            
+            <!-- Global Config Backup Settings [NEW] -->
+            <div style="margin-top: 0.75rem; border-top: 1px solid var(--border-flat); padding-top: 0.75rem;">
+                <button class="btn btn-secondary" onclick="openAppimsBackupModal()" style="width: 100%; padding: 0.55rem 1rem; font-size: 0.85rem; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06); display: flex; align-items: center; justify-content: center; gap: 0.4rem; font-weight: 600;">
+                    <i class="fa-solid fa-database"></i> Backup / Restore AppIMS
+                </button>
+            </div>
             <input type="file" id="import-file-input" style="display: none;" accept=".json" onchange="importJsonFile(event)">
         </div>
 
@@ -1093,6 +1100,115 @@
 </div>
 
 <!-- ============================================================================
+     MODAL: APPIMS DATABASE BACKUP & RESTORE [NEW]
+     ============================================================================ -->
+<div class="modal-overlay" id="appims-backup-modal">
+    <div class="modal-content" style="max-width: 580px; border-color: var(--accent-indigo);">
+        <div class="modal-header">
+            <div>
+                <h3 style="display: flex; align-items: center; gap: 0.6rem;">
+                    <i class="fa-solid fa-gears" style="color: var(--accent-indigo);"></i>
+                    Backup & Restore AppIMS
+                </h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Kelola backup dan restore database konfigurator migrasi (AppIMS) secara aman.</p>
+            </div>
+            <button class="close-btn" onclick="closeAppimsBackupModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem; display: flex; flex-direction: column; gap: 1.25rem;">
+            
+            <!-- Pengaturan Path Backup (General App Settings) -->
+            <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-flat); padding: 1rem; border-radius: 8px;">
+                <label for="appims-backup-path" style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.4rem; display: block; color: #ffffff;">Database Server Backup Directory Path (General)</label>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="text" id="appims-backup-path" class="form-control" placeholder="Contoh: D:\DatabaseBackup atau C:\SQLBackup (Path lokal server database)" style="font-size: 0.82rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); flex: 1;">
+                    <button class="btn btn-primary" onclick="saveAppimsBackupSettings()" id="btn-save-appims-settings" style="width: auto; height: 36px; padding: 0 0.85rem; display: flex; align-items: center; justify-content: center; gap: 0.35rem; font-size: 0.8rem; cursor: pointer; flex-shrink: 0;" title="Simpan Path Backup">
+                        <i class="fa-solid fa-floppy-disk"></i> Simpan
+                    </button>
+                </div>
+                <small style="color: var(--text-muted); font-size: 0.72rem; display: block; margin-top: 0.4rem; line-height: 1.4;">
+                    Path ini disimpan dalam berkas general <code style="color: var(--accent-teal); font-family: Consolas, monospace;">app-config.json</code> di root web app, bukan di database.
+                </small>
+            </div>
+
+            <!-- Database Info & Backup Action -->
+            <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-flat); padding: 1rem; border-radius: 8px;">
+                <h4 style="font-size: 0.85rem; margin-bottom: 0.75rem; color: var(--accent-indigo); display: flex; align-items: center; gap: 0.35rem;">
+                    <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-indigo);"></span>
+                    Backup Database AppIMS
+                </h4>
+                
+                <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; font-size: 0.82rem; padding: 0.75rem; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.02); margin-bottom: 0.85rem;">
+                    <span style="color: var(--text-muted);">Database:</span>
+                    <strong style="color: #ffffff;">appims (Configurator DB)</strong>
+                    
+                    <span style="color: var(--text-muted);">Target:</span>
+                    <strong id="appims-info-server" style="color: #ffffff;">Loading...</strong>
+                    
+                    <span style="color: var(--text-muted);">Direktori Backup:</span>
+                    <strong id="appims-info-path" style="color: var(--accent-teal); font-family: Consolas, monospace; word-break: break-all;">Belum Diatur</strong>
+                </div>
+
+                <p style="font-size: 0.76rem; color: var(--text-muted); line-height: 1.45; margin-bottom: 0.85rem;">
+                    Cadangkan database konfigurator sekarang. Hasil pencadangan berupa berkas <code style="color: var(--accent-indigo);">.bak</code> yang dikompresi otomatis demi optimalisasi ruang penyimpanan.
+                </p>
+
+                <button class="btn btn-secondary" onclick="runAppimsBackup()" id="btn-run-appims-backup" style="width: 100%; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06); font-weight: 600; padding: 0.6rem 1rem; font-size: 0.82rem; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; cursor: pointer;">
+                    <i class="fa-solid fa-download"></i> Backup Database AppIMS
+                </button>
+            </div>
+
+            <!-- Restore Action -->
+            <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-flat); padding: 1rem; border-radius: 8px;">
+                <h4 style="font-size: 0.85rem; margin-bottom: 0.75rem; color: var(--accent-purple); display: flex; align-items: center; gap: 0.35rem;">
+                    <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-purple);"></span>
+                    Restore Database AppIMS
+                </h4>
+
+                <div class="form-group" style="margin-bottom: 0.85rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <label for="appims-restore-file-select" style="font-size: 0.8rem; margin: 0; font-weight: 600;">Pilih File Backup (.bak)</label>
+                        <a href="#" onclick="scanAppimsBackupFiles(); return false;" style="color: var(--accent-purple); font-size: 0.75rem; text-decoration: none; display: inline-flex; align-items: center; gap: 0.2rem;" title="Pindai Ulang Folder Backup">
+                            <i class="fa-solid fa-arrows-rotate"></i> Pindai Folder
+                        </a>
+                    </div>
+                    <select id="appims-restore-file-select" class="form-control" style="font-size: 0.82rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%;">
+                        <option value="">-- Pindai file backup terlebih dahulu --</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0.85rem;">
+                    <label style="font-size: 0.8rem; font-weight: 600; margin-bottom: 0.4rem; display: block;">Tujuan Restore</label>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; background: rgba(0,0,0,0.15); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-flat);">
+                        <label style="display: flex; align-items: center; gap: 0.45rem; cursor: pointer; font-size: 0.8rem; color: #ffffff;">
+                            <input type="radio" name="appims-restore-mode" value="existing" checked onchange="toggleAppimsRestoreMode()" style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--accent-purple);">
+                            Restore ke Database Existing (appims)
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.45rem; cursor: pointer; font-size: 0.8rem; color: #ffffff;">
+                            <input type="radio" name="appims-restore-mode" value="new" onchange="toggleAppimsRestoreMode()" style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--accent-purple);">
+                            Restore ke Nama Database Baru
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Input Nama Database Baru (Hidden by default) -->
+                <div class="form-group" id="appims-restore-new-db-group" style="display: none; margin-bottom: 0.85rem; padding-left: 0.5rem; border-left: 2px solid var(--accent-purple);">
+                    <label for="appims-restore-new-db-name" style="font-size: 0.8rem; margin-bottom: 0.35rem; display: block; font-weight: 600;">Nama Database Baru</label>
+                    <input type="text" id="appims-restore-new-db-name" placeholder="Contoh: appims_backup_2026" class="form-control" style="font-size: 0.82rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                </div>
+
+                <button class="btn btn-danger" onclick="runAppimsRestore()" id="btn-run-appims-restore" style="width: 100%; font-weight: 600; padding: 0.6rem 1rem; font-size: 0.82rem; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; cursor: pointer; background: #ef4444; border-color: #ef4444; color: #ffffff;">
+                    <i class="fa-solid fa-arrows-spin"></i> Jalankan Restore Database
+                </button>
+            </div>
+
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeAppimsBackupModal()" style="width: auto;">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
      MODAL: JOB CONFIGURATION (Tambah / Edit Job)
      ============================================================================ -->
 <div class="modal-overlay" id="job-form-modal">
@@ -1170,7 +1286,7 @@
 
 <!-- SignalR CDN & Application Script -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
-<script src="app.js?v=3.6"></script>
+<script src="app.js?v=3.7"></script>
 
 </body>
 </html>

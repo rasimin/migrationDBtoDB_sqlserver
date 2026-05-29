@@ -914,6 +914,296 @@ app.MapPost("/api/jobs/{id:int}/cancel", (int id) =>
 });
 
 // ============================================================================
+// APPIMS CONFIGURATOR DATABASE BACKUP & RESTORE ENDPOINTS [NEW]
+// ============================================================================
+
+app.MapGet("/api/appims/backup-settings", async (IConfiguration config, IWebHostEnvironment env) =>
+{
+    var filePath = Path.Combine(env.ContentRootPath, "app-config.json");
+    string serverName = "Unknown Server";
+    try
+    {
+        var builder = new SqlConnectionStringBuilder(config.GetConnectionString("ConfigDb"));
+        serverName = builder.DataSource;
+    }
+    catch { }
+
+    if (!File.Exists(filePath))
+    {
+        return Results.Ok(new { Success = true, AppimsBackupPath = "", Server = serverName });
+    }
+    try
+    {
+        var json = await File.ReadAllTextAsync(filePath);
+        var settings = System.Text.Json.JsonSerializer.Deserialize<GeneralAppSettings>(json);
+        return Results.Ok(new { Success = true, AppimsBackupPath = settings?.AppimsBackupPath ?? "", Server = serverName });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = $"Gagal membaca pengaturan: {ex.Message}", AppimsBackupPath = "", Server = serverName });
+    }
+});
+
+app.MapPost("/api/appims/backup-settings", async ([FromBody] GeneralAppSettings settings, IWebHostEnvironment env) =>
+{
+    if (settings == null) return Results.BadRequest("Request invalid");
+    var filePath = Path.Combine(env.ContentRootPath, "app-config.json");
+    try
+    {
+        var currentSettings = new GeneralAppSettings();
+        if (File.Exists(filePath))
+        {
+            var existingJson = await File.ReadAllTextAsync(filePath);
+            try
+            {
+                currentSettings = System.Text.Json.JsonSerializer.Deserialize<GeneralAppSettings>(existingJson) ?? new GeneralAppSettings();
+            }
+            catch { }
+        }
+
+        currentSettings.AppimsBackupPath = settings.AppimsBackupPath;
+
+        var json = System.Text.Json.JsonSerializer.Serialize(currentSettings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        await File.WriteAllTextAsync(filePath, json);
+        return Results.Ok(new { Success = true, Message = "Pengaturan berhasil disimpan ke app-config.json!" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = $"Gagal menyimpan pengaturan: {ex.Message}" });
+    }
+});
+
+app.MapPost("/api/appims/backup", async (IConfiguration config, IWebHostEnvironment env) =>
+{
+    var filePath = Path.Combine(env.ContentRootPath, "app-config.json");
+    string backupPath = "";
+    if (File.Exists(filePath))
+    {
+        try
+        {
+            var json = await File.ReadAllTextAsync(filePath);
+            var settings = System.Text.Json.JsonSerializer.Deserialize<GeneralAppSettings>(json);
+            backupPath = settings?.AppimsBackupPath ?? "";
+        }
+        catch { }
+    }
+
+    if (string.IsNullOrEmpty(backupPath))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Path backup kosong. Harap atur path folder backup AppIMS terlebih dahulu!" });
+    }
+
+    var configConnStr = config.GetConnectionString("ConfigDb");
+    var dbName = GetDatabaseName(configConnStr);
+
+    try
+    {
+        var path = backupPath.Trim().TrimEnd('\\').TrimEnd('/');
+        var dateStr = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        var filename = $"{dbName}_{dateStr}.bak";
+        var fullBackupFilePath = $"{path}\\{filename}";
+
+        using var conn = new SqlConnection(configConnStr);
+        await conn.OpenAsync();
+
+        var backupSql = @"
+            BACKUP DATABASE [" + dbName + @"]
+            TO DISK = @BackupPath
+            WITH COMPRESSION, INIT, STATS = 10;
+        ";
+
+        await conn.ExecuteAsync(backupSql, new { BackupPath = fullBackupFilePath }, commandTimeout: 300);
+
+        return Results.Ok(new { Success = true, Message = $"Database AppIMS '{dbName}' berhasil di-backup ke file '{filename}'!", Filename = filename, Path = fullBackupFilePath });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = $"Gagal mem-backup database AppIMS: {ex.Message}" });
+    }
+});
+
+app.MapGet("/api/appims/backup-files", async (IConfiguration config, IWebHostEnvironment env) =>
+{
+    var filePath = Path.Combine(env.ContentRootPath, "app-config.json");
+    string backupPath = "";
+    if (File.Exists(filePath))
+    {
+        try
+        {
+            var json = await File.ReadAllTextAsync(filePath);
+            var settings = System.Text.Json.JsonSerializer.Deserialize<GeneralAppSettings>(json);
+            backupPath = settings?.AppimsBackupPath ?? "";
+        }
+        catch { }
+    }
+
+    if (string.IsNullOrEmpty(backupPath))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Path backup kosong. Harap atur path folder backup AppIMS terlebih dahulu!" });
+    }
+
+    var configConnStr = config.GetConnectionString("ConfigDb");
+    try
+    {
+        var path = backupPath.Trim().TrimEnd('\\').TrimEnd('/');
+
+        using var conn = new SqlConnection(configConnStr);
+        await conn.OpenAsync();
+
+        var sql = @"
+            DECLARE @Path NVARCHAR(500) = @BackupPath;
+            
+            IF OBJECT_ID('tempdb..#Files') IS NOT NULL DROP TABLE #Files;
+            CREATE TABLE #Files (
+                subdirectory NVARCHAR(512),
+                depth INT,
+                [file] BIT
+            );
+            
+            INSERT INTO #Files (subdirectory, depth, [file])
+            EXEC master.sys.xp_dirtree @Path, 1, 1;
+            
+            SELECT subdirectory AS Filename 
+            FROM #Files 
+            WHERE [file] = 1 AND subdirectory LIKE '%.bak'
+            ORDER BY subdirectory DESC;
+            
+            DROP TABLE #Files;
+        ";
+
+        var files = (await conn.QueryAsync<string>(sql, new { BackupPath = path })).ToList();
+        return Results.Ok(new { Success = true, Files = files });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = $"Gagal mendeteksi file backup AppIMS di server database: {ex.Message}" });
+    }
+});
+
+app.MapPost("/api/appims/restore", async ([FromBody] RestoreRequest request, IConfiguration config, IWebHostEnvironment env) =>
+{
+    if (request == null || string.IsNullOrEmpty(request.BackupFilename))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Filename backup kosong!" });
+    }
+
+    var filePath = Path.Combine(env.ContentRootPath, "app-config.json");
+    string backupPath = "";
+    if (File.Exists(filePath))
+    {
+        try
+        {
+            var json = await File.ReadAllTextAsync(filePath);
+            var settings = System.Text.Json.JsonSerializer.Deserialize<GeneralAppSettings>(json);
+            backupPath = settings?.AppimsBackupPath ?? "";
+        }
+        catch { }
+    }
+
+    if (string.IsNullOrEmpty(backupPath))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Path backup kosong. Harap atur path folder backup AppIMS terlebih dahulu!" });
+    }
+
+    var configConnStr = config.GetConnectionString("ConfigDb");
+    var dbName = GetDatabaseName(configConnStr);
+
+    try
+    {
+        var path = backupPath.Trim().TrimEnd('\\').TrimEnd('/');
+        var fullBackupFilePath = $"{path}\\{request.BackupFilename}";
+
+        var restoreDbName = string.IsNullOrEmpty(request.RestoreDbName) 
+            ? dbName 
+            : request.RestoreDbName.Trim();
+
+        var isNewDb = !string.Equals(restoreDbName, dbName, StringComparison.OrdinalIgnoreCase);
+
+        var masterConnStr = GetMasterConnectionString(configConnStr);
+        using var masterConn = new SqlConnection(masterConnStr);
+        await masterConn.OpenAsync();
+
+        if (!isNewDb)
+        {
+            var setSingleUserSql = @"
+                IF EXISTS (SELECT * FROM sys.databases WHERE name = @DbName)
+                BEGIN
+                    ALTER DATABASE [" + restoreDbName + @"] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+                END
+            ";
+            await masterConn.ExecuteAsync(setSingleUserSql, new { DbName = restoreDbName });
+
+            try
+            {
+                var restoreSql = @"
+                    RESTORE DATABASE [" + restoreDbName + @"]
+                    FROM DISK = @BackupPath
+                    WITH REPLACE;
+                ";
+                await masterConn.ExecuteAsync(restoreSql, new { BackupPath = fullBackupFilePath }, commandTimeout: 300);
+            }
+            finally
+            {
+                var setMultiUserSql = @"
+                    IF EXISTS (SELECT * FROM sys.databases WHERE name = @DbName)
+                    BEGIN
+                        ALTER DATABASE [" + restoreDbName + @"] SET MULTI_USER;
+                    END
+                ";
+                await masterConn.ExecuteAsync(setMultiUserSql, new { DbName = restoreDbName });
+            }
+
+            return Results.Ok(new { Success = true, Message = $"Database AppIMS '{restoreDbName}' berhasil di-restore dengan sukses!" });
+        }
+        else
+        {
+            var fileListSql = "RESTORE FILELISTONLY FROM DISK = @BackupPath;";
+            var files = (await masterConn.QueryAsync(fileListSql, new { BackupPath = fullBackupFilePath })).ToList();
+
+            var moveClauses = new List<string>();
+            var paramDict = new Dictionary<string, object> { { "BackupPath", fullBackupFilePath } };
+
+            int fileIdx = 0;
+            foreach (var file in files)
+            {
+                string logicalName = (string)file.LogicalName;
+                string physicalName = (string)file.PhysicalName;
+                string type = (string)file.Type;
+
+                var lastBackslash = physicalName.LastIndexOf('\\');
+                var dir = lastBackslash >= 0 ? physicalName.Substring(0, lastBackslash) : "C:\\backup";
+                
+                var ext = type.Equals("L", StringComparison.OrdinalIgnoreCase) ? "_log.ldf" : ".mdf";
+                var suffix = fileIdx > 0 && !type.Equals("L", StringComparison.OrdinalIgnoreCase) ? $"_{fileIdx}" : "";
+                var newPhysicalName = $"{dir}\\{restoreDbName}{suffix}{ext}";
+
+                moveClauses.Add("MOVE @LogicalName_" + fileIdx + " TO @PhysicalName_" + fileIdx);
+                paramDict.Add("LogicalName_" + fileIdx, logicalName);
+                paramDict.Add("PhysicalName_" + fileIdx, newPhysicalName);
+                fileIdx++;
+            }
+
+            var moveSqlStr = string.Join(",\n                ", moveClauses);
+            var restoreSql = @"
+                RESTORE DATABASE [" + restoreDbName + @"]
+                FROM DISK = @BackupPath
+                WITH REPLACE,
+                " + moveSqlStr + @";
+            ";
+
+            await masterConn.ExecuteAsync(restoreSql, paramDict, commandTimeout: 300);
+
+            return Results.Ok(new { Success = true, Message = $"Database baru '{restoreDbName}' berhasil dibuat dan di-restore dari backup AppIMS!" });
+        }
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = $"Gagal me-restore database AppIMS: {ex.Message}" });
+    }
+});
+
+
+// ============================================================================
 // DYNAMIC DB BACKUP & RESTORE ENDPOINTS [NEW]
 // ============================================================================
 
@@ -2407,6 +2697,11 @@ public class RestoreRequest
 {
     public string BackupFilename { get; set; }
     public string RestoreDbName { get; set; }
+}
+
+public class GeneralAppSettings
+{
+    public string AppimsBackupPath { get; set; } = string.Empty;
 }
 
 public partial class Program
