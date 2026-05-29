@@ -80,6 +80,7 @@ namespace DbMigrator.Core
         public string LastStatus { get; set; } = "Pending"; // Pending, InProgress, Completed, Failed
         public string LastErrorMessage { get; set; }
         public DateTime? LastRunAt { get; set; }
+        public bool AllowDropColumns { get; set; } = false;
     }
 
     public class ObjectMigrationBackup

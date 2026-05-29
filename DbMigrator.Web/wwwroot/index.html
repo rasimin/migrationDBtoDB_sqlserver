@@ -363,37 +363,14 @@
                                 </div>
                             </div>
 
-                            <!-- Input Form: Autocomplete + TextArea -->
-                            <div style="background: rgba(255, 255, 255, 0.02); padding: 1.25rem; border-radius: 8px; border: 1px solid var(--border-flat); margin-bottom: 1.5rem;">
-                                <h4 style="font-size: 0.9rem; font-weight: 600; margin-top: 0; margin-bottom: 0.85rem; color: #ffffff;">Tambah Tabel ke Daftar Pembersih</h4>
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                                    <div class="form-group" style="margin-bottom: 0; position: relative;">
-                                        <label for="clean-table-select" style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.4rem; display: block;">Pilih Tabel Tunggal (Autocomplete)</label>
-                                        <div style="position: relative;">
-                                            <input type="text" id="clean-table-select" class="form-control" placeholder="Cari & pilih tabel target..." autocomplete="off" style="padding-right: 2rem;">
-                                            <button type="button" data-table-input="clean-table-select" style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0;">
-                                                <i class="fa-solid fa-chevron-down"></i>
-                                            </button>
-                                            <div id="clean-table-options" class="table-autocomplete"></div>
-                                        </div>
-                                    </div>
-                                    <div class="form-group" style="margin-bottom: 0;">
-                                        <label for="clean-bulk-textarea" style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.4rem; display: block;">Atau Tambah Massal (Pisahkan dengan Koma)</label>
-                                        <textarea id="clean-bulk-textarea" class="form-control" placeholder="Contoh: TableA, TableB, TableC" style="min-height: 38px; height: 38px; padding: 0.5rem 0.75rem; font-family: Consolas, monospace; font-size: 0.85rem; resize: none;"></textarea>
-                                    </div>
-                                </div>
-                                <div style="display: flex; justify-content: flex-end;">
-                                    <button class="btn btn-secondary" onclick="addCleanTables()" style="width: auto; padding: 0.55rem 1.25rem; font-size: 0.85rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);">
-                                        <i class="fa-solid fa-plus"></i> Tambah ke Daftar Pembersih
-                                    </button>
-                                </div>
-                            </div>
-
                             <!-- Action Buttons Bar -->
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
                                 <div style="display: flex; gap: 0.5rem; align-items: center;">
                                     <button class="btn btn-danger" onclick="runAllClean()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem; background: var(--color-error); border: none;">
                                         <i class="fa-solid fa-broom"></i> Bersihkan Semua Tabel
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="openCleanTableModal()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);">
+                                        <i class="fa-solid fa-plus"></i> Tambah Tabel
                                     </button>
                                     <button class="btn btn-secondary" onclick="generateCleanSpScript()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; border-color: var(--accent-teal); color: var(--accent-teal); background: rgba(0,173,181,0.05);">
                                         <i class="fa-solid fa-file-code"></i> Generate Clean SP
@@ -690,12 +667,13 @@
     <div class="modal-content" style="max-width: 700px;">
         <div class="modal-header">
             <div>
-                <h3>Native SQL Script</h3>
+                <h3 id="native-sql-modal-title">Native SQL Script</h3>
                 <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Tulis script SQL native. Gunakan placeholder <code>{{SOURCE_DB}}</code> dan <code>{{TARGET_DB}}</code> untuk query antar database di server yang sama.</p>
             </div>
             <button class="close-btn" onclick="closeObjNativeSqlModal()">&times;</button>
         </div>
         <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <input type="hidden" id="native-sql-id" value="0">
             <div class="form-group">
                 <label for="native-sql-name">Nama Identifikasi</label>
                 <input type="text" id="native-sql-name" class="form-control" placeholder="Contoh: Add Index on CustomerNIK">
@@ -715,7 +693,73 @@
         </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeObjNativeSqlModal()" style="width: auto;">Batal</button>
-            <button class="btn btn-primary" onclick="addNativeSqlItem()" style="width: auto;"><i class="fa-solid fa-plus"></i> Tambah ke Daftar</button>
+            <button class="btn btn-primary" id="native-sql-submit-btn" onclick="addNativeSqlItem()" style="width: auto;"><i class="fa-solid fa-plus"></i> Tambah ke Daftar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: TABLE OBJECT EDIT OPTIONS
+     ============================================================================ -->
+<div class="modal-overlay" id="obj-table-edit-modal">
+    <div class="modal-content" style="max-width: 550px; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3>Pengaturan Objek Tabel</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Konfigurasi aturan sinkronisasi skema untuk tabel target.</p>
+            </div>
+            <button class="close-btn" onclick="closeObjTableEditModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <input type="hidden" id="edit-table-obj-id" value="0">
+            <div class="form-group">
+                <label>Nama Tabel</label>
+                <input type="text" id="edit-table-obj-name" class="form-control" readonly style="background: rgba(255,255,255,0.05); color: var(--text-muted);">
+            </div>
+            
+            <div class="form-group" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); padding: 1rem 1.25rem; border-radius: 8px;">
+                <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                    <input type="checkbox" id="edit-table-allow-drop" style="width: auto; margin-top: 0.25rem; cursor: pointer;">
+                    <div>
+                        <label for="edit-table-allow-drop" style="font-weight: 600; color: #ffffff; cursor: pointer; display: inline-block; margin-bottom: 0.25rem;">Izinkan Hapus Kolom (Drop Columns)</label>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.45;">Jika diaktifkan, kolom pada tabel Target yang <strong>tidak ada</strong> di tabel Source akan dihapus selama migrasi skema tabel dijalankan.</p>
+                    </div>
+                </div>
+                <div class="alert-warning" id="drop-warning" style="display: none; margin-top: 0.75rem; padding: 0.75rem 1rem; border-radius: 6px; font-size: 0.75rem; line-height: 1.45; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); color: #fbbf24;">
+                    <i class="fa-solid fa-triangle-exclamation" style="margin-right: 0.35rem;"></i>
+                    <strong>PERINGATAN:</strong> Mengaktifkan opsi ini berisiko menghapus data kolom pada database Target jika kolom tersebut tidak ada di database Source. Harap gunakan dengan hati-hati.
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeObjTableEditModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="saveObjTableEdit()" style="width: auto;"><i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: TAMBAH TABEL PEMBERSIH (CLEAN TARGET TABLES)
+     ============================================================================ -->
+<div class="modal-overlay" id="clean-table-modal">
+    <div class="modal-content" style="max-width: 500px; border-color: var(--accent-purple);">
+        <div class="modal-header">
+            <div>
+                <h3>Tambah Tabel Pembersih</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Masukkan satu atau beberapa nama tabel target.</p>
+            </div>
+            <button class="close-btn" onclick="closeCleanTableModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <div class="form-group">
+                <label for="clean-bulk-textarea">Nama Tabel (Pisahkan dengan Koma jika banyak)</label>
+                <textarea id="clean-bulk-textarea" class="form-control" placeholder="Contoh: TableA, TableB, TableC" style="min-height: 120px; font-family: Consolas, monospace; font-size: 0.88rem;"></textarea>
+                <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.4rem;">Anda dapat mengetik satu nama tabel atau menulis banyak tabel sekaligus dengan pemisah koma.</small>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeCleanTableModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="addCleanTables()" style="width: auto;"><i class="fa-solid fa-plus"></i> Tambah ke Daftar</button>
         </div>
     </div>
 </div>

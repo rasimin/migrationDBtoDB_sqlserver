@@ -935,7 +935,6 @@ async function addDataNativeSqlItem() {
 function populateTableDatalists() {
     setupTableAutocomplete('source-table-select', 'source-table-options', sourceTables);
     setupTableAutocomplete('target-table-select', 'target-table-options', targetTables);
-    setupTableAutocomplete('clean-table-select', 'clean-table-options', targetTables);
 }
 
 function setupTableAutocomplete(inputId, menuId, tables) {
@@ -2022,6 +2021,7 @@ function renderObjItems(items, isFilterActive) {
         const objType = (item.ObjectType || item.objectType || '').toLowerCase();
         const badgeClass = objType.replace('_', '_');
         const isNative = objType === 'native_sql';
+        const canEdit = ['table', 'native_sql'].includes(objType);
         const objName = item.ObjectName || item.objectName;
         const itemId = item.Id || item.id;
 
@@ -2062,6 +2062,10 @@ function renderObjItems(items, isFilterActive) {
                     <button class="btn-icon" onclick="runSingleObjItem(${itemId})" title="Jalankan Objek Ini" style="color: var(--accent-teal);">
                         <i class="fa-solid fa-play"></i>
                     </button>
+                    ${canEdit ? `
+                    <button class="btn-icon" onclick="editObjItem(${itemId})" title="Edit Objek" style="color: #fb923c;">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                    </button>` : ''}
                     <button class="btn-icon" onclick="openObjBackupModal(${itemId}, '${objName.replace(/'/g, "\\'")}')" title="Lihat Backup Versions" style="color: var(--accent-purple);">
                         <i class="fa-solid fa-clock-rotate-left"></i>
                     </button>
@@ -2262,11 +2266,32 @@ async function addSelectedScanItems() {
 // ============================================================================
 // 11. NATIVE SQL MODAL
 // ============================================================================
-function openObjNativeSqlModal() {
-    document.getElementById('native-sql-name').value = '';
-    document.getElementById('native-sql-mode').value = 'target';
-    document.getElementById('native-sql-script').value = '';
-    updateNativeSqlTemplate();
+// ============================================================================
+// 11. NATIVE SQL MODAL & OBJECT EDITING
+// ============================================================================
+function openObjNativeSqlModal(editItem = null) {
+    if (editItem) {
+        document.getElementById('native-sql-id').value = editItem.Id || editItem.id;
+        document.getElementById('native-sql-name').value = editItem.ObjectName || editItem.objectName || '';
+        document.getElementById('native-sql-script').value = editItem.NativeSqlScript || editItem.nativeSqlScript || '';
+        
+        // Cek mode eksekusi dari script template jika mengandung SOURCE_DB
+        const script = editItem.NativeSqlScript || editItem.nativeSqlScript || '';
+        const mode = script.includes('{{SOURCE_DB}}') ? 'source-target' : 'target';
+        document.getElementById('native-sql-mode').value = mode;
+        updateNativeSqlTemplate(true); // pass true so it doesn't overwrite script content
+
+        document.getElementById('native-sql-modal-title').innerText = 'Edit Native SQL Script';
+        document.getElementById('native-sql-submit-btn').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan';
+    } else {
+        document.getElementById('native-sql-id').value = '0';
+        document.getElementById('native-sql-name').value = '';
+        document.getElementById('native-sql-mode').value = 'target';
+        document.getElementById('native-sql-script').value = '';
+        updateNativeSqlTemplate();
+        document.getElementById('native-sql-modal-title').innerText = 'Native SQL Script';
+        document.getElementById('native-sql-submit-btn').innerHTML = '<i class="fa-solid fa-plus"></i> Tambah ke Daftar';
+    }
     document.getElementById('obj-native-sql-modal').classList.add('active');
 }
 
@@ -2274,27 +2299,28 @@ function closeObjNativeSqlModal() {
     document.getElementById('obj-native-sql-modal').classList.remove('active');
 }
 
-function updateNativeSqlTemplate() {
+function updateNativeSqlTemplate(skipOverwrite = false) {
     const mode = document.getElementById('native-sql-mode').value;
     const textarea = document.getElementById('native-sql-script');
     const hint = document.getElementById('native-sql-hint');
 
     if (mode === 'source-target') {
         hint.innerHTML = 'Script tetap dieksekusi dari koneksi Target DB. Pakai <code>{{SOURCE_DB}}</code> dan <code>{{TARGET_DB}}</code> untuk nama database. Mode ini bekerja saat Source dan Target berada di SQL Server instance yang sama.';
-        if (!textarea.value.trim()) {
+        if (!skipOverwrite && !textarea.value.trim()) {
             textarea.value = `INSERT INTO {{TARGET_DB}}.dbo.TargetTable (ColumnA, ColumnB)\nSELECT ColumnA, ColumnB\nFROM {{SOURCE_DB}}.dbo.SourceTable\nWHERE 1 = 1;`;
         }
         return;
     }
 
     hint.innerHTML = 'Cocok untuk UPDATE, ALTER TABLE, CREATE INDEX, cleanup data, atau script lain yang berjalan langsung di Target DB.';
-    if (!textarea.value.trim()) {
+    if (!skipOverwrite && !textarea.value.trim()) {
         textarea.value = `UPDATE dbo.TargetTable\nSET UpdatedAt = GETDATE()\nWHERE UpdatedAt IS NULL;`;
     }
 }
 
 async function addNativeSqlItem() {
     if (!activeJob) return;
+    const id = parseInt(document.getElementById('native-sql-id').value || '0');
     const name = document.getElementById('native-sql-name').value.trim();
     const script = document.getElementById('native-sql-script').value.trim();
 
@@ -2303,20 +2329,34 @@ async function addNativeSqlItem() {
         return;
     }
 
-    // hitung urutan eksekusi terakhir + 1 agar selalu di akhir secara default
     let nextOrder = 1;
-    if (objItemsCache && objItemsCache.length > 0) {
-        const orders = objItemsCache.map(m => parseInt(m.ExecutionOrder || m.executionOrder || 0));
-        nextOrder = Math.max(...orders, 0) + 1;
+    let isEnabled = true;
+    let allowDropColumns = false;
+
+    if (id > 0) {
+        const existing = objItemsCache.find(m => (m.Id || m.id) === id);
+        if (existing) {
+            nextOrder = existing.ExecutionOrder || existing.executionOrder || 1;
+            isEnabled = existing.IsEnabled !== undefined ? existing.IsEnabled : (existing.isEnabled !== undefined ? existing.isEnabled : true);
+            allowDropColumns = existing.AllowDropColumns !== undefined ? existing.AllowDropColumns : (existing.allowDropColumns !== undefined ? existing.allowDropColumns : false);
+        }
+    } else {
+        // hitung urutan eksekusi terakhir + 1 agar selalu di akhir secara default
+        if (objItemsCache && objItemsCache.length > 0) {
+            const orders = objItemsCache.map(m => parseInt(m.ExecutionOrder || m.executionOrder || 0));
+            nextOrder = Math.max(...orders, 0) + 1;
+        }
     }
 
     const payload = {
+        Id: id,
         JobId: activeJob.Id || activeJob.id,
         ObjectName: name,
         ObjectType: 'NATIVE_SQL',
         NativeSqlScript: script,
         ExecutionOrder: nextOrder,
-        IsEnabled: true
+        IsEnabled: isEnabled,
+        AllowDropColumns: allowDropColumns
     };
 
     try {
@@ -2330,7 +2370,87 @@ async function addNativeSqlItem() {
             closeObjNativeSqlModal();
             loadObjItems(activeJob.Id || activeJob.id);
         } else {
-            alert("Gagal menambahkan: " + await res.text());
+            alert("Gagal menyimpan: " + await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+// ============================================================================
+// OBJECT EDITING FUNCTIONS
+// ============================================================================
+function editObjItem(id) {
+    const item = objItemsCache.find(m => (m.Id || m.id) === id);
+    if (!item) return;
+
+    const objType = (item.ObjectType || item.objectType || '').toLowerCase();
+
+    if (objType === 'native_sql') {
+        openObjNativeSqlModal(item);
+    } else if (objType === 'table') {
+        openObjTableEditModal(item);
+    } else {
+        alert("Pengeditan tidak didukung untuk tipe objek ini.");
+    }
+}
+
+function openObjTableEditModal(item) {
+    document.getElementById('edit-table-obj-id').value = item.Id || item.id;
+    document.getElementById('edit-table-obj-name').value = item.ObjectName || item.objectName;
+    
+    const allowDrop = item.AllowDropColumns || item.allowDropColumns || false;
+    const checkbox = document.getElementById('edit-table-allow-drop');
+    checkbox.checked = allowDrop;
+    
+    // Toggle warning display
+    const warning = document.getElementById('drop-warning');
+    if (warning) {
+        warning.style.display = allowDrop ? 'block' : 'none';
+    }
+    
+    // Setup event listener on checkbox change
+    checkbox.onchange = function() {
+        if (warning) warning.style.display = this.checked ? 'block' : 'none';
+    };
+
+    document.getElementById('obj-table-edit-modal').classList.add('active');
+}
+
+function closeObjTableEditModal() {
+    document.getElementById('obj-table-edit-modal').classList.remove('active');
+}
+
+async function saveObjTableEdit() {
+    const id = parseInt(document.getElementById('edit-table-obj-id').value || '0');
+    const allowDrop = document.getElementById('edit-table-allow-drop').checked;
+    
+    const item = objItemsCache.find(m => (m.Id || m.id) === id);
+    if (!item) return;
+    
+    const payload = {
+        Id: id,
+        JobId: item.JobId || item.jobId,
+        ObjectName: item.ObjectName || item.objectName,
+        ObjectType: item.ObjectType || item.objectType,
+        NativeSqlScript: item.NativeSqlScript || item.nativeSqlScript,
+        ExecutionOrder: item.ExecutionOrder || item.executionOrder,
+        IsEnabled: item.IsEnabled !== undefined ? item.IsEnabled : (item.isEnabled !== undefined ? item.isEnabled : true),
+        AllowDropColumns: allowDrop
+    };
+
+    try {
+        const res = await fetch(`${API_BASE}/obj-items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            closeObjTableEditModal();
+            loadObjItems(activeJob.Id || activeJob.id);
+        } else {
+            alert("Gagal menyimpan pengaturan tabel: " + await res.text());
         }
     } catch (err) {
         console.error(err);
@@ -2949,22 +3069,25 @@ function renderCleanTables(tables, isFilterActive) {
     }
 }
 
+function openCleanTableModal() {
+    const bulkInput = document.getElementById('clean-bulk-textarea');
+    if (bulkInput) bulkInput.value = '';
+    document.getElementById('clean-table-modal').classList.add('active');
+}
+
+function closeCleanTableModal() {
+    document.getElementById('clean-table-modal').classList.remove('active');
+}
+
 async function addCleanTables() {
     if (!activeJob) return;
     const jobId = activeJob.Id || activeJob.id;
-    const singleInput = document.getElementById('clean-table-select');
     const bulkInput = document.getElementById('clean-bulk-textarea');
 
-    const singleVal = singleInput ? singleInput.value.trim() : '';
     const bulkVal = bulkInput ? bulkInput.value.trim() : '';
 
-    let tableNames = '';
-    if (singleVal) {
-        tableNames = singleVal;
-    } else if (bulkVal) {
-        tableNames = bulkVal;
-    } else {
-        alert("Pilih tabel tunggal atau ketik nama tabel massal!");
+    if (!bulkVal) {
+        alert("Harap isi nama tabel!");
         return;
     }
 
@@ -2972,7 +3095,7 @@ async function addCleanTables() {
         const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ TableNames: tableNames })
+            body: JSON.stringify({ TableNames: bulkVal })
         });
 
         if (res.ok) {
@@ -2983,9 +3106,9 @@ async function addCleanTables() {
             }
             alert(alertMsg);
 
-            // Clear inputs
-            if (singleInput) singleInput.value = '';
+            // Clear & close modal
             if (bulkInput) bulkInput.value = '';
+            closeCleanTableModal();
 
             loadCleanTables(jobId);
         } else {

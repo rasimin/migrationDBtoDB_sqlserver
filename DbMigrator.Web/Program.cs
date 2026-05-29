@@ -230,7 +230,8 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
                 ObjectType NVARCHAR(50) NOT NULL,
                 NativeSqlScript NVARCHAR(MAX) NULL,
                 ExecutionOrder INT NOT NULL DEFAULT 1,
-                IsEnabled BIT NOT NULL DEFAULT 1
+                IsEnabled BIT NOT NULL DEFAULT 1,
+                AllowDropColumns BIT NOT NULL DEFAULT 0
             );
         END
 
@@ -285,6 +286,12 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
             ALTER TABLE dbo.ObjectMigrationItems ADD LastStatus NVARCHAR(50) NOT NULL DEFAULT 'Pending';
             ALTER TABLE dbo.ObjectMigrationItems ADD LastErrorMessage NVARCHAR(MAX) NULL;
             ALTER TABLE dbo.ObjectMigrationItems ADD LastRunAt DATETIME NULL;
+        END
+
+        -- Ensure ObjectMigrationItems has AllowDropColumns column
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ObjectMigrationItems') AND name = 'AllowDropColumns')
+        BEGIN
+            ALTER TABLE dbo.ObjectMigrationItems ADD AllowDropColumns BIT NOT NULL DEFAULT 0;
         END
 
         -- Ensure ColumnMappings has IfNull strategy columns (F-04: If-Null Fallback)
@@ -1115,7 +1122,7 @@ app.MapPost("/api/obj-items", async ([FromBody] ObjectMigrationItem item, IConfi
         await conn.ExecuteAsync(@"
             UPDATE dbo.ObjectMigrationItems 
             SET ObjectName = @ObjectName, ObjectType = @ObjectType, NativeSqlScript = @NativeSqlScript,
-                ExecutionOrder = @ExecutionOrder, IsEnabled = @IsEnabled
+                ExecutionOrder = @ExecutionOrder, IsEnabled = @IsEnabled, AllowDropColumns = @AllowDropColumns
             WHERE Id = @Id", item);
         return Results.Ok(item);
     }
@@ -1130,8 +1137,8 @@ app.MapPost("/api/obj-items", async ([FromBody] ObjectMigrationItem item, IConfi
         }
 
         int newId = await conn.QuerySingleAsync<int>(@"
-            INSERT INTO dbo.ObjectMigrationItems (JobId, ObjectName, ObjectType, NativeSqlScript, ExecutionOrder, IsEnabled)
-            VALUES (@JobId, @ObjectName, @ObjectType, @NativeSqlScript, @ExecutionOrder, @IsEnabled);
+            INSERT INTO dbo.ObjectMigrationItems (JobId, ObjectName, ObjectType, NativeSqlScript, ExecutionOrder, IsEnabled, AllowDropColumns)
+            VALUES (@JobId, @ObjectName, @ObjectType, @NativeSqlScript, @ExecutionOrder, @IsEnabled, @AllowDropColumns);
             SELECT CAST(SCOPE_IDENTITY() as int);", item);
         item.Id = newId;
         return Results.Created($"/api/obj-items/{newId}", item);
@@ -1149,10 +1156,11 @@ app.MapPost("/api/jobs/{id:int}/obj-items/bulk", async (int id, [FromBody] List<
         item.JobId = id;
         item.ExecutionOrder = order++;
         item.IsEnabled = true;
+        item.AllowDropColumns = false;
         await conn.ExecuteAsync(@"
             IF NOT EXISTS (SELECT 1 FROM dbo.ObjectMigrationItems WHERE JobId = @JobId AND ObjectName = @ObjectName AND ObjectType = @ObjectType)
-            INSERT INTO dbo.ObjectMigrationItems (JobId, ObjectName, ObjectType, NativeSqlScript, ExecutionOrder, IsEnabled)
-            VALUES (@JobId, @ObjectName, @ObjectType, @NativeSqlScript, @ExecutionOrder, @IsEnabled);", item);
+            INSERT INTO dbo.ObjectMigrationItems (JobId, ObjectName, ObjectType, NativeSqlScript, ExecutionOrder, IsEnabled, AllowDropColumns)
+            VALUES (@JobId, @ObjectName, @ObjectType, @NativeSqlScript, @ExecutionOrder, @IsEnabled, @AllowDropColumns);", item);
     }
     return Results.Ok(new { Message = $"{items.Count} objek berhasil ditambahkan." });
 });
@@ -1902,17 +1910,20 @@ async Task MigrateTableObject(SqlConnection configConn, MigrationJob job, Object
         }
 
         // DROP columns that exist in Target but NOT in Source
-        foreach (var tgtCol in tgtCols)
+        if (item.AllowDropColumns)
         {
-            string colName = tgtCol.COLUMN_NAME;
-            if (!srcColNames.Contains(colName, StringComparer.OrdinalIgnoreCase))
+            foreach (var tgtCol in tgtCols)
             {
-                // Check if column is part of a constraint before dropping
-                try
+                string colName = tgtCol.COLUMN_NAME;
+                if (!srcColNames.Contains(colName, StringComparer.OrdinalIgnoreCase))
                 {
-                    await targetConn.ExecuteAsync($"ALTER TABLE [{schemaName}].[{cleanName}] DROP COLUMN [{colName}]");
+                    // Check if column is part of a constraint before dropping
+                    try
+                    {
+                        await targetConn.ExecuteAsync($"ALTER TABLE [{schemaName}].[{cleanName}] DROP COLUMN [{colName}]");
+                    }
+                    catch { /* Skip columns that can't be dropped (PK, FK constraints) */ }
                 }
-                catch { /* Skip columns that can't be dropped (PK, FK constraints) */ }
             }
         }
 
