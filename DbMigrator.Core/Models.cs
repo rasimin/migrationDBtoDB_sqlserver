@@ -31,6 +31,7 @@ namespace DbMigrator.Core
         public string LastStatus { get; set; } = "Pending"; // Pending, InProgress, Completed, Failed
         public string LastErrorMessage { get; set; }
         public DateTime? LastRunAt { get; set; }
+        public int LastRowsMigrated { get; set; }
     }
 
     public class ColumnMapping

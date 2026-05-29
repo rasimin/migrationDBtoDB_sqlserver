@@ -418,7 +418,7 @@ namespace DbMigrator.Core
 
                         await configConn.ExecuteAsync(@"
                             UPDATE dbo.TableMappings
-                            SET LastStatus = 'Completed', LastErrorMessage = NULL, LastRunAt = GETDATE()
+                            SET LastStatus = 'Completed', LastErrorMessage = NULL, LastRunAt = GETDATE(), LastRowsMigrated = 0
                             WHERE Id = @Id", new { Id = tableMap.Id });
 
                         transaction.Commit();
@@ -560,8 +560,8 @@ namespace DbMigrator.Core
 
                     await configConn.ExecuteAsync(@"
                         UPDATE dbo.TableMappings
-                        SET LastStatus = 'Completed', LastErrorMessage = NULL, LastRunAt = GETDATE()
-                        WHERE Id = @Id", new { Id = tableMap.Id });
+                        SET LastStatus = 'Completed', LastErrorMessage = NULL, LastRunAt = GETDATE(), LastRowsMigrated = @LastRowsMigrated
+                        WHERE Id = @Id", new { Id = tableMap.Id, LastRowsMigrated = rowsMigrated });
 
                     onProgress?.Invoke(currentTable, totalRows, rowsMigrated, "Completed", null);
                 }
@@ -703,7 +703,7 @@ namespace DbMigrator.Core
 
                 await configConn.ExecuteAsync(@"
                     UPDATE dbo.TableMappings
-                    SET LastStatus = 'Completed', LastErrorMessage = NULL, LastRunAt = GETDATE()
+                    SET LastStatus = 'Completed', LastErrorMessage = NULL, LastRunAt = GETDATE(), LastRowsMigrated = 0
                     WHERE Id = @Id", new { Id = tableMap.Id });
 
                 onProgress?.Invoke(label, 0, 0, "Completed", null);

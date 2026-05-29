@@ -54,3 +54,12 @@ graph TD
     Setelah Coder selesai, `QAMonitorAgent` meminta `UITesterAgent` untuk melakukan pengujian menyeluruh sekali lagi dari awal untuk memastikan perbaikan tidak merusak fitur lain (*regression testing*).
 5.  **Langkah 5: Penyelesaian**  
     Siklus 2-4 akan terus berputar secara otomatis sampai `UITesterAgent` menyatakan **0 Bug Found**. `QAMonitorAgent` kemudian menutup siklus dan memberikan laporan final kepada Anda bahwa proyek siap rilis dengan kualitas terbaik!
+
+---
+
+## ⚠️ Aturan Emas Git & Commit (PENTING!)
+
+Semua Agen (termasuk Coder, QA, dan Tester) wajib mematuhi aturan git berikut:
+1.  **DILARANG Keras Melakukan Auto-Commit / Auto-Push:** Jangan pernah menjalankan perintah `git commit` atau `git push` secara otomatis setelah melakukan perbaikan atau penyelesaian tugas.
+2.  **Hanya Jalankan Atas Perintah Eksplisit:** Perintah Git (`git add`, `git commit`, `git push`) **HANYA** boleh dijalankan jika pengguna menuliskan perintah eksplisit untuk melakukan commit/push di dalam chat request.
+3.  **Prioritaskan Keamanan:** Selalu biarkan berkas dalam keadaan termodifikasi (*modified*) agar pengguna dapat meninjau (*review*) terlebih dahulu sebelum melakukan commit manual atau memberikan izin commit eksplisit.

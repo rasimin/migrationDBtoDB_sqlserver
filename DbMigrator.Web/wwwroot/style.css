@@ -59,7 +59,7 @@ body {
 
 /* App Container */
 .app-container {
-    max-width: 1440px;
+    max-width: 100%;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
@@ -1202,4 +1202,16 @@ textarea.form-control {
 .modal-content.maximized #obj-scan-results {
     max-height: calc(96vh - 220px) !important;
     height: calc(96vh - 220px) !important;
+}
+
+/* Sidebar toggle support */
+.dashboard-grid {
+    transition: grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1), gap 0.3s ease;
+}
+.dashboard-grid.sidebar-hidden {
+    grid-template-columns: 1fr;
+    gap: 0;
+}
+.dashboard-grid.sidebar-hidden #left-panel-card {
+    display: none;
 }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DbMigrator.NET - Premium Control Panel</title>
     <meta name="description" content="Dynamic Metadata-Driven SQL Server Database Migration Tool — kelola migrasi data dan objek DDL antar database secara visual.">
-    <link rel="stylesheet" href="style.css?v=3.0">
+    <link rel="stylesheet" href="style.css?v=3.1">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
@@ -24,9 +24,16 @@
                 <p>Dynamic Metadata-Driven Database Migration Tool</p>
             </div>
         </div>
-        <div class="server-badge">
-            <span class="dot"></span>
-            <span>Server Config: <strong>RASIMIN\MSSQLSERVER2022</strong></span>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div class="server-badge">
+                <span class="dot"></span>
+                <span>Server Config: <strong>RASIMIN\MSSQLSERVER2022</strong></span>
+            </div>
+            
+            <button class="btn btn-secondary" onclick="toggleSidebar()" title="Sembunyikan/Tampilkan Panel Kiri" style="width: auto; height: 36px; padding: 0 0.75rem; font-size: 0.8rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06); display: flex; align-items: center; gap: 0.35rem; border-radius: 6px; cursor: pointer;">
+                <i class="fa-solid fa-indent" id="sidebar-toggle-icon"></i>
+                <span id="sidebar-toggle-text">Hide Sidebar</span>
+            </button>
         </div>
     </header>
 
@@ -38,7 +45,7 @@
         <!-- ============================================================ -->
         <!-- LEFT PANEL: Unified Job List + Form                          -->
         <!-- ============================================================ -->
-        <div class="panel-card">
+        <div class="panel-card" id="left-panel-card">
             <div class="panel-title">
                 <i class="fa-solid fa-gears"></i>
                 <span>Migration Jobs</span>
@@ -933,7 +940,7 @@
 
 <!-- SignalR CDN & Application Script -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
-<script src="app.js?v=3.0"></script>
+<script src="app.js?v=3.2"></script>
 
 </body>
 </html>

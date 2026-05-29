@@ -577,6 +577,7 @@ function renderTableMappings(mappings, isFilterActive) {
         const lastStatus = map.LastStatus || map.lastStatus || 'Pending';
         const lastErrorMessage = map.LastErrorMessage || map.lastErrorMessage || '';
         const lastRunAt = map.LastRunAt || map.lastRunAt;
+        const lastRowsMigrated = map.LastRowsMigrated !== undefined ? map.LastRowsMigrated : (map.lastRowsMigrated !== undefined ? map.lastRowsMigrated : 0);
 
         let statusClass = 'pending';
         if (lastStatus === 'Completed') statusClass = 'completed';
@@ -636,7 +637,7 @@ function renderTableMappings(mappings, isFilterActive) {
                                 <span class="arrow" style="margin: 0; font-size: 0.8rem; color: var(--text-muted); display: inline-flex; align-items: center;"><i class="fa-solid fa-circle-arrow-right"></i></span>
                                 <span style="color: #ffffff; font-weight: 600;">${targetName}</span>
                             </div>
-                            <span class="badge-clean ${statusClass}">${lastStatus}</span>
+                            <span class="badge-clean ${statusClass}">${lastStatus}${lastStatus === 'Completed' ? ` (${lastRowsMigrated.toLocaleString()} baris)` : ''}</span>
                             ${lastRunTime ? `<span style="font-size: 0.72rem; color: var(--text-muted);"><i class="fa-solid fa-clock"></i> ${lastRunTime}</span>` : ''}
                         </div>
                         ${lastErrorMessage ? `<div style="font-size: 0.78rem; color: var(--color-error); font-family: Consolas, monospace; line-height: 1.45; white-space: pre-wrap; word-break: break-all; max-width: 100%; padding: 0.65rem 0.85rem; background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.18); border-radius: 6px; margin-top: 0.35rem;">${lastErrorMessage}</div>` : ''}
@@ -3595,5 +3596,28 @@ async function resetCleanStatuses() {
     } catch (err) {
         console.error(err);
         alert("Error: " + err.message);
+    }
+}
+
+// ============================================================================
+// FULLSCREEN & SIDEBAR TOGGLE
+// ============================================================================
+function toggleSidebar() {
+    const grid = document.querySelector('.dashboard-grid');
+    const icon = document.getElementById('sidebar-toggle-icon');
+    const text = document.getElementById('sidebar-toggle-text');
+    
+    if (grid.classList.contains('sidebar-hidden')) {
+        grid.classList.remove('sidebar-hidden');
+        if (icon) {
+            icon.className = 'fa-solid fa-indent';
+        }
+        if (text) text.innerText = 'Hide Sidebar';
+    } else {
+        grid.classList.add('sidebar-hidden');
+        if (icon) {
+            icon.className = 'fa-solid fa-outdent';
+        }
+        if (text) text.innerText = 'Show Sidebar';
     }
 }

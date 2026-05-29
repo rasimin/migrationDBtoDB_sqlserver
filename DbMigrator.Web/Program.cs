@@ -280,6 +280,12 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
             ALTER TABLE dbo.TableMappings ADD LastRunAt DATETIME NULL;
         END
 
+        -- Ensure TableMappings has LastRowsMigrated column
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TableMappings') AND name = 'LastRowsMigrated')
+        BEGIN
+            ALTER TABLE dbo.TableMappings ADD LastRowsMigrated INT NOT NULL DEFAULT 0;
+        END
+
         -- Ensure ObjectMigrationItems has status columns
         IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ObjectMigrationItems') AND name = 'LastStatus')
         BEGIN
@@ -1648,7 +1654,7 @@ app.MapPost("/api/jobs/{jobId:int}/mappings/reset-status", async (int jobId, ICo
 
     await conn.ExecuteAsync(@"
         UPDATE dbo.TableMappings
-        SET LastStatus = 'Pending', LastErrorMessage = NULL, LastRunAt = NULL
+        SET LastStatus = 'Pending', LastErrorMessage = NULL, LastRunAt = NULL, LastRowsMigrated = 0
         WHERE JobId = @JobId", new { JobId = jobId });
 
     return Results.Ok(new { Message = "Status pemetaan data berhasil direset ke Pending." });
