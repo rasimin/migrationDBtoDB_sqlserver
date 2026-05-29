@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DbMigrator.NET - Premium Control Panel</title>
     <meta name="description" content="Dynamic Metadata-Driven SQL Server Database Migration Tool — kelola migrasi data dan objek DDL antar database secara visual.">
-    <link rel="stylesheet" href="style.css?v=3.1">
+    <link rel="stylesheet" href="style.css?v=3.5">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
@@ -243,6 +243,14 @@
                                         <option value="Failed">Failed</option>
                                     </select>
                                 </div>
+                                <div style="display: flex; gap: 0.25rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); border-radius: 8px; padding: 2px; align-items: center; height: 36px;">
+                                    <button class="btn btn-secondary view-toggle-btn btn-view-list active" onclick="setViewMode('list')" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 6px; cursor: pointer;" title="Tampilan List">
+                                        <i class="fa-solid fa-list" style="font-size: 0.85rem;"></i>
+                                    </button>
+                                    <button class="btn btn-secondary view-toggle-btn btn-view-card" onclick="setViewMode('card')" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 6px; cursor: pointer;" title="Tampilan Card Grid">
+                                        <i class="fa-solid fa-table-cells" style="font-size: 0.85rem;"></i>
+                                    </button>
+                                </div>
                             </div>
 
                             <!-- Table Mappings List -->
@@ -344,6 +352,14 @@
                                         <option value="Failed">Failed</option>
                                     </select>
                                 </div>
+                                <div style="display: flex; gap: 0.25rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); border-radius: 8px; padding: 2px; align-items: center; height: 36px;">
+                                    <button class="btn btn-secondary view-toggle-btn btn-view-list active" onclick="setViewMode('list')" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 6px; cursor: pointer;" title="Tampilan List">
+                                        <i class="fa-solid fa-list" style="font-size: 0.85rem;"></i>
+                                    </button>
+                                    <button class="btn btn-secondary view-toggle-btn btn-view-card" onclick="setViewMode('card')" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 6px; cursor: pointer;" title="Tampilan Card Grid">
+                                        <i class="fa-solid fa-table-cells" style="font-size: 0.85rem;"></i>
+                                    </button>
+                                </div>
                             </div>
 
                             <!-- Object Items List -->
@@ -380,6 +396,9 @@
                                     <button class="btn btn-secondary" onclick="openCleanTableModal()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);">
                                         <i class="fa-solid fa-plus"></i> Tambah Tabel
                                     </button>
+                                    <button class="btn btn-secondary" onclick="openCleanTableScannerModal()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06);">
+                                        <i class="fa-solid fa-magnifying-glass-chart"></i> Scan Tabel
+                                    </button>
                                     <button class="btn btn-secondary" onclick="generateCleanSpScript()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; border-color: var(--accent-teal); color: var(--accent-teal); background: rgba(0,173,181,0.05);">
                                         <i class="fa-solid fa-file-code"></i> Generate Clean SP
                                     </button>
@@ -408,6 +427,14 @@
                                         <option value="Completed">Completed</option>
                                         <option value="Failed">Failed</option>
                                     </select>
+                                </div>
+                                <div style="display: flex; gap: 0.25rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); border-radius: 8px; padding: 2px; align-items: center; height: 36px;">
+                                    <button class="btn btn-secondary view-toggle-btn btn-view-list active" onclick="setViewMode('list')" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 6px; cursor: pointer;" title="Tampilan List">
+                                        <i class="fa-solid fa-list" style="font-size: 0.85rem;"></i>
+                                    </button>
+                                    <button class="btn btn-secondary view-toggle-btn btn-view-card" onclick="setViewMode('card')" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 6px; cursor: pointer;" title="Tampilan Card Grid">
+                                        <i class="fa-solid fa-table-cells" style="font-size: 0.85rem;"></i>
+                                    </button>
                                 </div>
                             </div>
 
@@ -773,6 +800,44 @@
 </div>
 
 <!-- ============================================================================
+     MODAL: TARGET TABLE SCANNER (Scan & Select Tables from Target DB)
+     ============================================================================ -->
+<div class="modal-overlay" id="clean-table-scanner-modal">
+    <div class="modal-content" style="max-width: 600px; border-color: var(--accent-indigo);">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3>Scan Tabel Target</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Pilih tabel dari Target DB untuk dimasukkan ke daftar pembersih.</p>
+            </div>
+            <button class="close-btn" onclick="closeCleanTableScannerModal()" style="margin: 0;">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1rem 2rem;">
+            <!-- Filters & Select All row -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <span style="font-size: 0.8rem; color: var(--text-muted);">Tipe: <strong style="color: var(--accent-indigo);">TABLE</strong></span>
+                <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--text-muted); cursor: pointer;">
+                    <input type="checkbox" id="clean-table-scan-select-all" onchange="toggleAllCleanTableScanItems(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
+                    Pilih Semua
+                </label>
+            </div>
+            <!-- Search bar -->
+            <div class="search-container" style="position: relative; margin-bottom: 1rem; width: 100%;">
+                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+                <input type="text" id="clean-table-scan-search" oninput="applyCleanTableScanFiltering()" placeholder="Cari nama tabel..." class="form-control" style="padding-left: 2.25rem; font-size: 0.85rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%;">
+            </div>
+            <div id="clean-table-scan-results" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.35rem;">
+                <p style="color: var(--text-muted); text-align: center; padding: 2rem;">Klik "Scan Ulang" untuk memindai tabel...</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="startCleanTableScan()" style="width: auto;"><i class="fa-solid fa-radar"></i> Scan Ulang</button>
+            <button class="btn btn-primary" onclick="addSelectedCleanTableScanItems()" style="width: auto;"><i class="fa-solid fa-plus"></i> Tambah Terpilih</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- ============================================================================
      MODAL: BACKUP VERSION VIEWER
      ============================================================================ -->
 <div class="modal-overlay" id="obj-backup-modal">
@@ -941,7 +1006,7 @@
 
 <!-- SignalR CDN & Application Script -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
-<script src="app.js?v=3.3"></script>
+<script src="app.js?v=3.5"></script>
 
 </body>
 </html>

@@ -15,6 +15,7 @@ let activeColumnTargetTable = null;
 let dataMappingsCache = [];
 let objItemsCache = [];
 let cleanTablesCache = [];
+let activeViewMode = 'list';
 
 let migrationTotalTables = 0;
 let migrationProcessedTables = {}; // TableName -> Status ('Completed' or 'Failed')
@@ -26,6 +27,9 @@ let connection = null;
 document.addEventListener('DOMContentLoaded', () => {
     loadJobs();
     initSignalR();
+    // Load view mode preference from localStorage on startup
+    activeViewMode = localStorage.getItem('activeViewMode') || 'list';
+    setViewMode(activeViewMode);
 });
 
 // ============================================================================
@@ -238,6 +242,47 @@ function joinJobGroupSignalR(jobId) {
 }
 
 // ============================================================================
+// VIEW MODE TOGGLE & PERSISTENCE
+// ============================================================================
+function setViewMode(mode) {
+    activeViewMode = mode;
+    localStorage.setItem('activeViewMode', mode);
+
+    const containers = [
+        document.getElementById('table-list-container'),
+        document.getElementById('obj-items-container'),
+        document.getElementById('clean-tables-container')
+    ];
+
+    containers.forEach(container => {
+        if (container) {
+            if (mode === 'card') {
+                container.classList.add('card-view');
+            } else {
+                container.classList.remove('card-view');
+            }
+        }
+    });
+
+    // Update active status on all switcher buttons
+    document.querySelectorAll('.btn-view-list').forEach(btn => {
+        if (mode === 'list') {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    document.querySelectorAll('.btn-view-card').forEach(btn => {
+        if (mode === 'card') {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+// ============================================================================
 // 2. JOB MANAGEMENT
 // ============================================================================
 // ============================================================================
@@ -318,6 +363,9 @@ async function selectJob(jobId) {
         // Tampilkan Panel Editor
         document.getElementById('welcome-panel').style.display = 'none';
         document.getElementById('job-editor-panel').style.display = 'block';
+
+        // Terapkan view mode yang aktif ke seluruh container tab
+        setViewMode(activeViewMode);
 
         // Tampilkan detail database aktif secara global
         if (activeJob) {
@@ -723,12 +771,12 @@ function initSortableList(container, options) {
         const dragging = container.querySelector(`${itemSelector}.dragging`);
         if (!dragging) return;
 
-        const afterElement = getDragAfterElement(container, e.clientY, itemSelector);
+        const afterElement = getDragAfterElement(container, e.clientX, e.clientY, itemSelector);
         container.querySelectorAll(`${itemSelector}.drag-over`).forEach(el => el.classList.remove('drag-over'));
 
         if (afterElement == null) {
             container.appendChild(dragging);
-        } else {
+        } else if (afterElement !== dragging) {
             afterElement.classList.add('drag-over');
             container.insertBefore(dragging, afterElement);
         }
@@ -743,19 +791,67 @@ function initSortableList(container, options) {
     };
 }
 
-function getDragAfterElement(container, y, itemSelector) {
-    const draggableElements = [...container.querySelectorAll(`${itemSelector}:not(.dragging)`)];
+function getDragAfterElement(container, x, y, itemSelector) {
+    const allElements = [...container.querySelectorAll(itemSelector)];
+    const draggableElements = allElements.filter(el => !el.classList.contains('dragging'));
+    if (draggableElements.length === 0) return null;
 
-    return draggableElements.reduce((closest, child) => {
-        const box = child.getBoundingClientRect();
-        const offset = y - box.top - box.height / 2;
+    const isGrid = container.classList.contains('card-view');
 
-        if (offset < 0 && offset > closest.offset) {
-            return { offset, element: child };
+    if (isGrid) {
+        const dragging = container.querySelector(`${itemSelector}.dragging`);
+        if (!dragging) return null;
+
+        let closest = { distance: Number.POSITIVE_INFINITY, element: null };
+
+        draggableElements.forEach(child => {
+            const box = child.getBoundingClientRect();
+            const centerX = box.left + box.width / 2;
+            const centerY = box.top + box.height / 2;
+            const distance = Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2);
+
+            if (distance < closest.distance) {
+                closest = { distance, element: child };
+            }
+        });
+
+        if (closest.element) {
+            const draggingIndex = allElements.indexOf(dragging);
+            const targetIndex = allElements.indexOf(closest.element);
+            
+            const box = closest.element.getBoundingClientRect();
+            const centerX = box.left + box.width / 2;
+            const centerY = box.top + box.height / 2;
+
+            if (draggingIndex < targetIndex) {
+                // Moving forward: insert after target only if cursor passed its center
+                const passed = (y > box.bottom) || (y >= box.top && x > centerX);
+                if (passed) {
+                    return closest.element.nextElementSibling;
+                }
+            } else {
+                // Moving backward: insert before target only if cursor is before its center
+                const passed = (y < box.top) || (y <= box.bottom && x < centerX);
+                if (passed) {
+                    return closest.element;
+                }
+            }
+            // If not crossed, return dragging itself to prevent shifting back and forth
+            return dragging;
         }
+        return null;
+    } else {
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
 
-        return closest;
-    }, { offset: Number.NEGATIVE_INFINITY }).element;
+            if (offset < 0 && offset > closest.offset) {
+                return { offset, element: child };
+            }
+
+            return closest;
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
 }
 
 function updateSortableBadges(container, itemSelector) {
@@ -1776,7 +1872,7 @@ function switchTab(tab) {
             historyTab.style.color = 'var(--text-muted)';
             historyTab.style.borderBottom = 'none';
         }
-        if (mappingList) mappingList.style.display = 'flex';
+        if (mappingList) mappingList.style.display = '';
         if (historyList) historyList.style.display = 'none';
         if (mappingBtns) mappingBtns.style.display = 'flex';
     } else {
@@ -2711,7 +2807,7 @@ function switchObjTab(tab) {
         itemsTab.style.borderBottom = '2px solid var(--accent-teal)';
         logsTab.style.color = 'var(--text-muted)';
         logsTab.style.borderBottom = 'none';
-        itemsContainer.style.display = 'flex';
+        itemsContainer.style.display = '';
         logsContainer.style.display = 'none';
     } else {
         logsTab.style.color = 'var(--accent-teal)';
@@ -3608,6 +3704,117 @@ async function resetCleanStatuses() {
         }
     } catch (err) {
         console.error(err);
+        alert("Error: " + err.message);
+    }
+}
+
+// ============================================================================
+// 17. CLEAN TARGET TABLE SCANNER
+// ============================================================================
+let cleanTableScanResultsCache = [];
+let activeCleanTableScanSearchQuery = '';
+
+function openCleanTableScannerModal() {
+    // Reset search
+    const searchInput = document.getElementById('clean-table-scan-search');
+    if (searchInput) searchInput.value = '';
+    activeCleanTableScanSearchQuery = '';
+
+    // Reset select all checkbox
+    const selectAllCb = document.getElementById('clean-table-scan-select-all');
+    if (selectAllCb) selectAllCb.checked = false;
+
+    document.getElementById('clean-table-scanner-modal').classList.add('active');
+    startCleanTableScan();
+}
+
+function closeCleanTableScannerModal() {
+    document.getElementById('clean-table-scanner-modal').classList.remove('active');
+}
+
+async function startCleanTableScan() {
+    if (!activeJob) { alert('Silakan pilih Job terlebih dahulu.'); return; }
+    const jobId = activeJob.Id || activeJob.id;
+    const container = document.getElementById('clean-table-scan-results');
+    container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 2rem;"><i class="fa-solid fa-spinner fa-spin"></i> Memindai tabel dari Target DB...</p>`;
+
+    try {
+        const res = await fetch(`${API_BASE}/db/tables?jobId=${jobId}&dbType=target`);
+        if (!res.ok) {
+            container.innerHTML = `<p style="color: var(--color-error); text-align: center; padding: 2rem;">Gagal memindai: ${await res.text()}</p>`;
+            return;
+        }
+        cleanTableScanResultsCache = await res.json(); // returns array of strings
+        applyCleanTableScanFiltering();
+    } catch (err) {
+        container.innerHTML = `<p style="color: var(--color-error); text-align: center; padding: 2rem;">Error: ${err.message}</p>`;
+    }
+}
+
+function applyCleanTableScanFiltering() {
+    activeCleanTableScanSearchQuery = (document.getElementById('clean-table-scan-search')?.value || '').trim().toLowerCase();
+    
+    let filtered = cleanTableScanResultsCache || [];
+    
+    if (activeCleanTableScanSearchQuery !== '') {
+        filtered = filtered.filter(name => name.toLowerCase().includes(activeCleanTableScanSearchQuery));
+    }
+    
+    renderCleanTableScanResults(filtered);
+}
+
+function renderCleanTableScanResults(tables) {
+    const container = document.getElementById('clean-table-scan-results');
+    if (tables.length === 0) {
+        container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 2rem;">Tidak ada tabel ditemukan.</p>`;
+        return;
+    }
+
+    container.innerHTML = tables.map(name => {
+        return `
+            <label class="scan-item">
+                <input type="checkbox" class="clean-scan-checkbox" data-name="${name}">
+                <span class="scan-item-name">${name}</span>
+                <span class="obj-type-badge table">TABLE</span>
+            </label>
+        `;
+    }).join('');
+}
+
+function toggleAllCleanTableScanItems(checked) {
+    document.querySelectorAll('.clean-scan-checkbox').forEach(cb => cb.checked = checked);
+}
+
+async function addSelectedCleanTableScanItems() {
+    const checkboxes = document.querySelectorAll('.clean-scan-checkbox:checked');
+    if (checkboxes.length === 0) {
+        alert("Pilih minimal satu tabel untuk ditambahkan!");
+        return;
+    }
+
+    const tableNames = Array.from(checkboxes).map(cb => cb.dataset.name).join(',');
+
+    try {
+        const jobId = activeJob.Id || activeJob.id;
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ TableNames: tableNames })
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            let alertMsg = `${data.Added.length} tabel berhasil ditambahkan ke daftar pembersih.`;
+            if (data.Skipped.length > 0) {
+                alertMsg += `\n\nSkipped (sudah terdaftar): ${data.Skipped.join(', ')}`;
+            }
+            alert(alertMsg);
+            closeCleanTableScannerModal();
+            loadCleanTables(jobId);
+        } else {
+            alert("Gagal menambahkan: " + await res.text());
+        }
+    } catch (err) {
         alert("Error: " + err.message);
     }
 }
