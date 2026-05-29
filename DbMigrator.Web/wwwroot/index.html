@@ -172,6 +172,22 @@
 
                     <!-- Right Content Pane -->
                     <div class="job-book-content" style="flex: 1; min-width: 0;">
+                        
+                        <!-- Real-Time Connection Info Card (Global for all inner tabs) -->
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-flat); border-radius: 8px; padding: 0.85rem 1.25rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                                <i class="fa-solid fa-database" style="color: var(--accent-indigo);"></i>
+                                <span>Source Database:</span>
+                                <strong id="clean-source-db-text" style="color: #ffffff;">-</strong>
+                            </div>
+                            <div style="font-size: 1rem; color: var(--text-muted);"><i class="fa-solid fa-right-long"></i></div>
+                            <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                                <i class="fa-solid fa-server" style="color: var(--accent-teal);"></i>
+                                <span>Target Database:</span>
+                                <strong id="clean-target-db-text" style="color: #ffffff;">-</strong>
+                            </div>
+                        </div>
+
                         <!-- ===================================================== -->
                         <!-- INNER CONTENT: DATA MIGRATION                          -->
                         <!-- ===================================================== -->
@@ -354,21 +370,6 @@
                         <!-- INNER CONTENT: CLEAN TARGET TABLE                      -->
                         <!-- ===================================================== -->
                         <div id="inner-content-clean" style="display: none; margin-top: 0;">
-                            
-                            <!-- Real-Time Connection Info Card -->
-                            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-flat); border-radius: 8px; padding: 0.85rem 1.25rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-                                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
-                                    <i class="fa-solid fa-database" style="color: var(--accent-indigo);"></i>
-                                    <span>Source Database:</span>
-                                    <strong id="clean-source-db-text" style="color: #ffffff;">-</strong>
-                                </div>
-                                <div style="font-size: 1rem; color: var(--text-muted);"><i class="fa-solid fa-right-long"></i></div>
-                                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
-                                    <i class="fa-solid fa-server" style="color: var(--accent-teal);"></i>
-                                    <span>Target Database:</span>
-                                    <strong id="clean-target-db-text" style="color: #ffffff;">-</strong>
-                                </div>
-                            </div>
 
                             <!-- Action Buttons Bar -->
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
@@ -940,7 +941,7 @@
 
 <!-- SignalR CDN & Application Script -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
-<script src="app.js?v=3.2"></script>
+<script src="app.js?v=3.3"></script>
 
 </body>
 </html>

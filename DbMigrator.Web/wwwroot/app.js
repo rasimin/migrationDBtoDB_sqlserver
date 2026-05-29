@@ -319,6 +319,19 @@ async function selectJob(jobId) {
         document.getElementById('welcome-panel').style.display = 'none';
         document.getElementById('job-editor-panel').style.display = 'block';
 
+        // Tampilkan detail database aktif secara global
+        if (activeJob) {
+            const srcConn = activeJob.SourceConnectionString || activeJob.sourceConnectionString || '';
+            const tgtConn = activeJob.TargetConnectionString || activeJob.targetConnectionString || '';
+            const srcDb = parseConnectionStringDb(srcConn);
+            const tgtDb = parseConnectionStringDb(tgtConn);
+
+            const srcEl = document.getElementById('clean-source-db-text');
+            const tgtEl = document.getElementById('clean-target-db-text');
+            if (srcEl) srcEl.textContent = srcDb;
+            if (tgtEl) tgtEl.textContent = tgtDb;
+        }
+
         document.getElementById('active-job-title').innerHTML = `
             <i class="fa-solid fa-code-fork" style="color: var(--accent-indigo);"></i> 
             Job: <strong>${activeJob.JobName || activeJob.jobName}</strong>
