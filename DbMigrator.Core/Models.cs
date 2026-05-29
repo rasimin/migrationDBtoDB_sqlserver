@@ -12,6 +12,7 @@ namespace DbMigrator.Core
         public DateTime CreatedAt { get; set; }
         public DateTime? LastRunAt { get; set; }
         public string PostMigrationScript { get; set; }
+        public string BackupPath { get; set; }
     }
 
     public class TableMapping

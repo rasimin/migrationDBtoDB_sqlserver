@@ -153,6 +153,14 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
 
         IF NOT EXISTS (
             SELECT * FROM sys.columns 
+            WHERE object_id = OBJECT_ID('dbo.MigrationJobs') AND name = 'BackupPath'
+        )
+        BEGIN
+            ALTER TABLE dbo.MigrationJobs ADD BackupPath NVARCHAR(500) NULL;
+        END
+
+        IF NOT EXISTS (
+            SELECT * FROM sys.columns 
             WHERE object_id = OBJECT_ID('dbo.TableMappings') AND name = 'PostMigrationScript'
         )
         BEGIN
@@ -341,15 +349,15 @@ app.MapPost("/api/jobs", async ([FromBody] MigrationJob job, IConfiguration conf
     {
         await conn.ExecuteAsync(@"
             UPDATE dbo.MigrationJobs 
-            SET JobName = @JobName, SourceConnectionString = @SourceConnectionString, TargetConnectionString = @TargetConnectionString, PostMigrationScript = @PostMigrationScript
+            SET JobName = @JobName, SourceConnectionString = @SourceConnectionString, TargetConnectionString = @TargetConnectionString, PostMigrationScript = @PostMigrationScript, BackupPath = @BackupPath
             WHERE Id = @Id", job);
         return Results.Ok(job);
     }
     else
     {
         int newId = await conn.QuerySingleAsync<int>(@"
-            INSERT INTO dbo.MigrationJobs (JobName, SourceConnectionString, TargetConnectionString, PostMigrationScript)
-            VALUES (@JobName, @SourceConnectionString, @TargetConnectionString, @PostMigrationScript);
+            INSERT INTO dbo.MigrationJobs (JobName, SourceConnectionString, TargetConnectionString, PostMigrationScript, BackupPath)
+            VALUES (@JobName, @SourceConnectionString, @TargetConnectionString, @PostMigrationScript, @BackupPath);
             SELECT CAST(SCOPE_IDENTITY() as int);", job);
         job.Id = newId;
         return Results.Created($"/api/jobs/{newId}", job);
@@ -800,10 +808,31 @@ app.MapGet("/api/db/columns", async ([FromQuery] int jobId, [FromQuery] string d
     {
         using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
-        var columns = await conn.QueryAsync(
-            "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @TableName ORDER BY ORDINAL_POSITION",
+        var columns = await conn.QueryAsync(@"
+            SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_NAME = @TableName 
+            ORDER BY ORDINAL_POSITION",
             new { TableName = tableName });
-        return Results.Ok(columns.Select(c => new { Name = c.COLUMN_NAME, Type = c.DATA_TYPE }));
+            
+        var result = columns.Select(c => {
+            string dataType = (string)c.DATA_TYPE;
+            string formattedType = dataType;
+            long? maxLen = c.CHARACTER_MAXIMUM_LENGTH != null ? Convert.ToInt64(c.CHARACTER_MAXIMUM_LENGTH) : (long?)null;
+            int? numPrec = c.NUMERIC_PRECISION != null ? Convert.ToInt32(c.NUMERIC_PRECISION) : (int?)null;
+            int? numScale = c.NUMERIC_SCALE != null ? Convert.ToInt32(c.NUMERIC_SCALE) : (int?)null;
+
+            if (dataType == "varchar" || dataType == "nvarchar" || dataType == "char" || dataType == "nchar" || dataType == "varbinary")
+            {
+                formattedType = maxLen == -1 ? $"{dataType}(max)" : $"{dataType}({maxLen})";
+            }
+            else if (dataType == "decimal" || dataType == "numeric")
+            {
+                formattedType = $"{dataType}({numPrec},{numScale})";
+            }
+            return new { Name = (string)c.COLUMN_NAME, Type = formattedType, RawType = dataType };
+        });
+        return Results.Ok(result);
     }
     catch (Exception ex)
     {
@@ -882,6 +911,230 @@ app.MapPost("/api/jobs/{id:int}/cancel", (int id) =>
         }
     }
     return Results.NotFound($"Tidak ada proses migrasi aktif yang ditemukan untuk Job {id}");
+});
+
+// ============================================================================
+// DYNAMIC DB BACKUP & RESTORE ENDPOINTS [NEW]
+// ============================================================================
+
+// 1. BACKUP DB TARGET
+app.MapPost("/api/jobs/{id:int}/backup", async (int id, IConfiguration config) =>
+{
+    using var configConn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var job = await configConn.QuerySingleOrDefaultAsync<MigrationJob>("SELECT * FROM dbo.MigrationJobs WHERE Id = @Id", new { Id = id });
+    if (job == null) return Results.NotFound($"Job {id} tidak ditemukan");
+
+    if (string.IsNullOrEmpty(job.BackupPath))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Path backup kosong. Harap atur path backup terlebih dahulu di konfigurasi Job!" });
+    }
+
+    if (string.IsNullOrEmpty(job.TargetConnectionString))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Target Connection String kosong!" });
+    }
+
+    try
+    {
+        var targetDb = GetDatabaseName(job.TargetConnectionString);
+        if (string.IsNullOrEmpty(targetDb))
+        {
+            return Results.BadRequest(new { Success = false, Message = "Gagal mendeteksi nama database target dari connection string." });
+        }
+
+        var path = job.BackupPath.Trim().TrimEnd('\\').TrimEnd('/');
+        var dateStr = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        var filename = $"{targetDb}_{dateStr}.bak";
+        var fullBackupFilePath = $"{path}\\{filename}";
+
+        using var targetConn = new SqlConnection(job.TargetConnectionString);
+        await targetConn.OpenAsync();
+
+        var backupSql = @"
+            BACKUP DATABASE [" + targetDb + @"]
+            TO DISK = @BackupPath
+            WITH COMPRESSION, INIT, STATS = 10;
+        ";
+
+        await targetConn.ExecuteAsync(backupSql, new { BackupPath = fullBackupFilePath }, commandTimeout: 300);
+
+        return Results.Ok(new { Success = true, Message = $"Database '{targetDb}' berhasil di-backup ke file '{filename}'!", Filename = filename, Path = fullBackupFilePath });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = $"Gagal mem-backup database: {ex.Message}" });
+    }
+});
+
+// 2. GET BACKUP FILES
+app.MapGet("/api/jobs/{id:int}/backup-files", async (int id, IConfiguration config) =>
+{
+    using var configConn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var job = await configConn.QuerySingleOrDefaultAsync<MigrationJob>("SELECT * FROM dbo.MigrationJobs WHERE Id = @Id", new { Id = id });
+    if (job == null) return Results.NotFound($"Job {id} tidak ditemukan");
+
+    if (string.IsNullOrEmpty(job.BackupPath))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Path backup kosong. Harap atur path backup terlebih dahulu di konfigurasi Job!" });
+    }
+
+    if (string.IsNullOrEmpty(job.TargetConnectionString))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Target Connection String kosong!" });
+    }
+
+    try
+    {
+        var path = job.BackupPath.Trim().TrimEnd('\\').TrimEnd('/');
+
+        using var targetConn = new SqlConnection(job.TargetConnectionString);
+        await targetConn.OpenAsync();
+
+        var sql = @"
+            DECLARE @Path NVARCHAR(500) = @BackupPath;
+            
+            IF OBJECT_ID('tempdb..#Files') IS NOT NULL DROP TABLE #Files;
+            CREATE TABLE #Files (
+                subdirectory NVARCHAR(512),
+                depth INT,
+                [file] BIT
+            );
+            
+            INSERT INTO #Files (subdirectory, depth, [file])
+            EXEC master.sys.xp_dirtree @Path, 1, 1;
+            
+            SELECT subdirectory AS Filename 
+            FROM #Files 
+            WHERE [file] = 1 AND subdirectory LIKE '%.bak'
+            ORDER BY subdirectory DESC;
+            
+            DROP TABLE #Files;
+        ";
+
+        var files = (await targetConn.QueryAsync<string>(sql, new { BackupPath = path })).ToList();
+        return Results.Ok(new { Success = true, Files = files });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = $"Gagal mendeteksi file backup di server database: {ex.Message}" });
+    }
+});
+
+// 3. RESTORE DB TARGET
+app.MapPost("/api/jobs/{id:int}/restore", async (int id, [FromBody] RestoreRequest request, IConfiguration config) =>
+{
+    if (request == null || string.IsNullOrEmpty(request.BackupFilename))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Filename backup kosong!" });
+    }
+
+    using var configConn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var job = await configConn.QuerySingleOrDefaultAsync<MigrationJob>("SELECT * FROM dbo.MigrationJobs WHERE Id = @Id", new { Id = id });
+    if (job == null) return Results.NotFound($"Job {id} tidak ditemukan");
+
+    if (string.IsNullOrEmpty(job.BackupPath))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Path backup kosong di konfigurasi Job!" });
+    }
+
+    if (string.IsNullOrEmpty(job.TargetConnectionString))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Target Connection String kosong!" });
+    }
+
+    try
+    {
+        var targetDb = GetDatabaseName(job.TargetConnectionString);
+        var path = job.BackupPath.Trim().TrimEnd('\\').TrimEnd('/');
+        var fullBackupFilePath = $"{path}\\{request.BackupFilename}";
+
+        var restoreDbName = string.IsNullOrEmpty(request.RestoreDbName) 
+            ? targetDb 
+            : request.RestoreDbName.Trim();
+
+        var isNewDb = !string.Equals(restoreDbName, targetDb, StringComparison.OrdinalIgnoreCase);
+
+        var masterConnStr = GetMasterConnectionString(job.TargetConnectionString);
+        using var masterConn = new SqlConnection(masterConnStr);
+        await masterConn.OpenAsync();
+
+        if (!isNewDb)
+        {
+            var setSingleUserSql = @"
+                IF EXISTS (SELECT * FROM sys.databases WHERE name = @DbName)
+                BEGIN
+                    ALTER DATABASE [" + restoreDbName + @"] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+                END
+            ";
+            await masterConn.ExecuteAsync(setSingleUserSql, new { DbName = restoreDbName });
+
+            try
+            {
+                var restoreSql = @"
+                    RESTORE DATABASE [" + restoreDbName + @"]
+                    FROM DISK = @BackupPath
+                    WITH REPLACE;
+                ";
+                await masterConn.ExecuteAsync(restoreSql, new { BackupPath = fullBackupFilePath }, commandTimeout: 300);
+            }
+            finally
+            {
+                var setMultiUserSql = @"
+                    IF EXISTS (SELECT * FROM sys.databases WHERE name = @DbName)
+                    BEGIN
+                        ALTER DATABASE [" + restoreDbName + @"] SET MULTI_USER;
+                    END
+                ";
+                await masterConn.ExecuteAsync(setMultiUserSql, new { DbName = restoreDbName });
+            }
+
+            return Results.Ok(new { Success = true, Message = $"Database '{restoreDbName}' berhasil di-restore dengan sukses!" });
+        }
+        else
+        {
+            var fileListSql = "RESTORE FILELISTONLY FROM DISK = @BackupPath;";
+            var files = (await masterConn.QueryAsync(fileListSql, new { BackupPath = fullBackupFilePath })).ToList();
+
+            var moveClauses = new List<string>();
+            var paramDict = new Dictionary<string, object> { { "BackupPath", fullBackupFilePath } };
+
+            int fileIdx = 0;
+            foreach (var file in files)
+            {
+                string logicalName = (string)file.LogicalName;
+                string physicalName = (string)file.PhysicalName;
+                string type = (string)file.Type;
+
+                var lastBackslash = physicalName.LastIndexOf('\\');
+                var dir = lastBackslash >= 0 ? physicalName.Substring(0, lastBackslash) : "C:\\backup";
+                
+                var ext = type.Equals("L", StringComparison.OrdinalIgnoreCase) ? "_log.ldf" : ".mdf";
+                var suffix = fileIdx > 0 && !type.Equals("L", StringComparison.OrdinalIgnoreCase) ? $"_{fileIdx}" : "";
+                var newPhysicalName = $"{dir}\\{restoreDbName}{suffix}{ext}";
+
+                moveClauses.Add("MOVE @LogicalName_" + fileIdx + " TO @PhysicalName_" + fileIdx);
+                paramDict.Add("LogicalName_" + fileIdx, logicalName);
+                paramDict.Add("PhysicalName_" + fileIdx, newPhysicalName);
+                fileIdx++;
+            }
+
+            var moveSqlStr = string.Join(",\n                ", moveClauses);
+            var restoreSql = @"
+                RESTORE DATABASE [" + restoreDbName + @"]
+                FROM DISK = @BackupPath
+                WITH REPLACE,
+                " + moveSqlStr + @";
+            ";
+
+            await masterConn.ExecuteAsync(restoreSql, paramDict, commandTimeout: 300);
+
+            return Results.Ok(new { Success = true, Message = $"Database baru '{restoreDbName}' berhasil dibuat dan di-restore dari backup!" });
+        }
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = $"Gagal me-restore database: {ex.Message}" });
+    }
 });
 
 // FEAT-004 (JSON Export Endpoint)
@@ -2148,4 +2401,20 @@ public class ExportColumnMappingDto
     public string ExpressionSQL { get; set; }
     public string IfNullAction { get; set; }
     public string IfNullParam { get; set; }
+}
+
+public class RestoreRequest
+{
+    public string BackupFilename { get; set; }
+    public string RestoreDbName { get; set; }
+}
+
+public partial class Program
+{
+    private static string GetMasterConnectionString(string connStr)
+    {
+        var builder = new SqlConnectionStringBuilder(connStr);
+        builder.InitialCatalog = "master";
+        return builder.ConnectionString;
+    }
 }

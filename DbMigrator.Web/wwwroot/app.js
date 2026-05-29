@@ -378,6 +378,15 @@ async function selectJob(jobId) {
             const tgtEl = document.getElementById('clean-target-db-text');
             if (srcEl) srcEl.textContent = srcDb;
             if (tgtEl) tgtEl.textContent = tgtDb;
+
+            const backupPath = activeJob.BackupPath || activeJob.backupPath || '';
+            const backupTgtEl = document.getElementById('tool-backup-target-db-text');
+            const backupPathEl = document.getElementById('tool-backup-path-text');
+            const restoreTgtPreviewEl = document.getElementById('tool-restore-target-name-preview');
+
+            if (backupTgtEl) backupTgtEl.textContent = tgtDb || 'Unknown';
+            if (backupPathEl) backupPathEl.textContent = backupPath || 'Belum Diatur (Atur di konfigurasi Edit Job)';
+            if (restoreTgtPreviewEl) restoreTgtPreviewEl.textContent = tgtDb || 'TargetDB';
         }
 
         document.getElementById('active-job-title').innerHTML = `
@@ -426,6 +435,9 @@ function openNewJobForm() {
     document.getElementById('job-name').value = '';
     document.getElementById('source-conn').value = '';
     document.getElementById('target-conn').value = '';
+    if (document.getElementById('job-backup-path')) {
+        document.getElementById('job-backup-path').value = '';
+    }
     if (document.getElementById('post-migration-script')) {
         document.getElementById('post-migration-script').value = '';
     }
@@ -443,6 +455,9 @@ function editActiveJob() {
     document.getElementById('job-name').value = activeJob.JobName || activeJob.jobName || '';
     document.getElementById('source-conn').value = activeJob.SourceConnectionString || activeJob.sourceConnectionString || '';
     document.getElementById('target-conn').value = activeJob.TargetConnectionString || activeJob.targetConnectionString || '';
+    if (document.getElementById('job-backup-path')) {
+        document.getElementById('job-backup-path').value = activeJob.BackupPath || activeJob.backupPath || '';
+    }
     if (document.getElementById('post-migration-script')) {
         document.getElementById('post-migration-script').value = activeJob.PostMigrationScript || activeJob.postMigrationScript || '';
     }
@@ -513,6 +528,7 @@ async function saveJob() {
     const name = document.getElementById('job-name').value.trim();
     const source = document.getElementById('source-conn').value.trim();
     const target = document.getElementById('target-conn').value.trim();
+    const backupPath = document.getElementById('job-backup-path') ? document.getElementById('job-backup-path').value.trim() : '';
     const postScript = document.getElementById('post-migration-script') ? document.getElementById('post-migration-script').value.trim() : null;
 
     if (!name || !source || !target) {
@@ -539,7 +555,8 @@ async function saveJob() {
         JobName: name,
         SourceConnectionString: source,
         TargetConnectionString: target,
-        PostMigrationScript: postScript
+        PostMigrationScript: postScript,
+        BackupPath: backupPath
     };
 
     try {
@@ -2022,9 +2039,11 @@ function switchInnerTab(tab) {
     const dataBtn = document.getElementById('inner-tab-data');
     const objBtn = document.getElementById('inner-tab-object');
     const cleanBtn = document.getElementById('inner-tab-clean');
+    const toolsBtn = document.getElementById('inner-tab-tools');
     const dataContent = document.getElementById('inner-content-data');
     const objContent = document.getElementById('inner-content-object');
     const cleanContent = document.getElementById('inner-content-clean');
+    const toolsContent = document.getElementById('inner-content-tools');
 
     if (!dataBtn || !objBtn || !cleanBtn) return;
 
@@ -2032,11 +2051,13 @@ function switchInnerTab(tab) {
     dataBtn.classList.remove('active');
     objBtn.classList.remove('active');
     cleanBtn.classList.remove('active');
+    if (toolsBtn) toolsBtn.classList.remove('active');
 
     // Hide all contents
     if (dataContent) dataContent.style.display = 'none';
     if (objContent) objContent.style.display = 'none';
     if (cleanContent) cleanContent.style.display = 'none';
+    if (toolsContent) toolsContent.style.display = 'none';
 
     if (tab === 'data') {
         dataBtn.classList.add('active');
@@ -2053,6 +2074,384 @@ function switchInnerTab(tab) {
         if (activeJob) {
             loadCleanTables(activeJob.Id || activeJob.id);
         }
+    } else if (tab === 'tools') {
+        if (toolsBtn) toolsBtn.classList.add('active');
+        if (toolsContent) toolsContent.style.display = 'block';
+        populateToolsTableDatalist();
+        scanBackupFiles();
+    }
+}
+
+// ============================================================================
+// 7B. DEVELOPER TOOLS - STORED PROCEDURE GENERATOR (INSERT/UPDATE) [NEW]
+// ============================================================================
+function populateToolsTableDatalist(forceClear = false) {
+    if (!activeJob) return;
+
+    const dbRadio = document.querySelector('input[name="tool-db-ref"]:checked');
+    if (!dbRadio) return;
+
+    const dbType = dbRadio.value;
+    const currentTables = (dbType === 'source' ? sourceTables : targetTables) || [];
+    const input = document.getElementById('tool-table-name');
+
+    if (forceClear && input) {
+        input.value = '';
+    }
+
+    setupTableAutocomplete('tool-table-name', 'tool-table-options', currentTables);
+}
+
+async function generateToolSpScript(opType) {
+    if (!activeJob) {
+        alert("Harap pilih Job terlebih dahulu!");
+        return;
+    }
+    const tableName = document.getElementById('tool-table-name').value.trim();
+    if (!tableName) {
+        alert("Harap masukkan atau pilih Nama Tabel!");
+        return;
+    }
+
+    const dbRadio = document.querySelector('input[name="tool-db-ref"]:checked');
+    const dbType = dbRadio ? dbRadio.value : 'source';
+    const keyColumn = document.getElementById('tool-key-column').value.trim() || 'Id';
+    const excludeIdentity = document.getElementById('tool-exclude-identity').checked;
+    const jobId = activeJob.Id || activeJob.id;
+
+    try {
+        const res = await fetch(`${API_BASE}/db/columns?jobId=${jobId}&dbType=${dbType}&tableName=${encodeURIComponent(tableName)}`);
+        if (!res.ok) {
+            const errText = await res.text();
+            alert("Gagal memuat kolom tabel: " + errText);
+            return;
+        }
+        const columns = await res.json();
+        if (!columns || columns.length === 0) {
+            alert(`Tidak ada kolom ditemukan pada tabel "${tableName}"! Pastikan nama tabel benar.`);
+            return;
+        }
+
+        let sqlScript = "";
+        const cleanTableName = tableName.replace(/[\[\]]/g, '');
+        const spPrefix = opType === 'insert' ? 'sp_Insert_' : 'sp_Update_';
+        const spName = `${spPrefix}${cleanTableName.replace('.', '_')}`;
+
+        // Format schema & clean table name
+        let schemaName = "dbo";
+        let rawTableName = cleanTableName;
+        if (cleanTableName.includes('.')) {
+            const parts = cleanTableName.split('.');
+            schemaName = parts[0];
+            rawTableName = parts[1];
+        }
+
+        const dateStr = new Date().toLocaleString('id-ID', { timeZoneName: 'short' });
+
+        if (opType === 'insert') {
+            // SP INSERT
+            const colsToInsert = columns.filter(col => {
+                if (excludeIdentity && col.Name.toLowerCase() === keyColumn.toLowerCase()) {
+                    return false;
+                }
+                return true;
+            });
+
+            const spParams = columns.filter(col => {
+                if (excludeIdentity && col.Name.toLowerCase() === keyColumn.toLowerCase()) {
+                    return false;
+                }
+                return true;
+            });
+
+            const paramLines = spParams.map(c => `    @${c.Name} ${c.Type}`).join(",\n");
+            const targetCols = colsToInsert.map(c => `[${c.Name}]`).join(",\n            ");
+            const valuesCols = colsToInsert.map(c => `@${c.Name}`).join(",\n            ");
+
+            sqlScript = `-- ===========================================================================
+-- STORED PROCEDURE: ${spName}
+-- Digenerate secara otomatis oleh DbMigrator.NET (Developer Tools)
+-- Dibuat pada: ${dateStr}
+-- Referensi DB: ${dbType.toUpperCase()} DB
+-- Deskripsi: SP Insert data untuk tabel [${schemaName}].[${rawTableName}]
+-- ===========================================================================
+CREATE OR ALTER PROCEDURE [${schemaName}].[${spName}]
+${paramLines}
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRANSACTION;
+    BEGIN TRY
+
+        INSERT INTO [${schemaName}].[${rawTableName}] (
+            ${targetCols}
+        )
+        VALUES (
+            ${valuesCols}
+        );
+
+        COMMIT TRANSACTION;
+        PRINT 'Data berhasil dimasukkan ke tabel [${schemaName}].[${rawTableName}]!';
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
+        DECLARE @ErrorState INT = ERROR_STATE();
+        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+    END CATCH
+END;
+GO`;
+        } else {
+            // SP UPDATE
+            const paramLines = columns.map(c => `    @${c.Name} ${c.Type}`).join(",\n");
+            const colsToSet = columns.filter(c => c.Name.toLowerCase() !== keyColumn.toLowerCase());
+
+            if (colsToSet.length === 0) {
+                alert("Tidak ada kolom selain Kolom Kunci yang dapat di-update!");
+                return;
+            }
+
+            const setClause = colsToSet.map(c => `[${c.Name}] = @${c.Name}`).join(",\n            ");
+            const pkExists = columns.some(c => c.Name.toLowerCase() === keyColumn.toLowerCase());
+
+            if (!pkExists) {
+                console.warn(`Kolom kunci "${keyColumn}" tidak ada di daftar kolom.`);
+            }
+
+            sqlScript = `-- ===========================================================================
+-- STORED PROCEDURE: ${spName}
+-- Digenerate secara otomatis oleh DbMigrator.NET (Developer Tools)
+-- Dibuat pada: ${dateStr}
+-- Referensi DB: ${dbType.toUpperCase()} DB
+-- Deskripsi: SP Update data untuk tabel [${schemaName}].[${rawTableName}]
+-- ===========================================================================
+CREATE OR ALTER PROCEDURE [${schemaName}].[${spName}]
+${paramLines}
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRANSACTION;
+    BEGIN TRY
+
+        UPDATE [${schemaName}].[${rawTableName}]
+        SET
+            ${setClause}
+        WHERE [${keyColumn}] = @${keyColumn};
+
+        IF @@ROWCOUNT = 0
+        BEGIN
+            PRINT 'Peringatan: Tidak ada baris yang di-update. Pastikan ${keyColumn} benar.';
+        END
+
+        COMMIT TRANSACTION;
+        PRINT 'Data berhasil diperbarui di tabel [${schemaName}].[${rawTableName}]!';
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
+        DECLARE @ErrorState INT = ERROR_STATE();
+        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+    END CATCH
+END;
+GO`;
+        }
+
+        document.getElementById('sp-modal-title').innerText = `Generate SP ${opType.toUpperCase()}: ${spName}`;
+        document.getElementById('sp-sql-textarea').value = sqlScript;
+        document.getElementById('sp-generator-modal').classList.add('active');
+
+    } catch (err) {
+        console.error(err);
+        alert("Terjadi kesalahan saat generate SP: " + err.message);
+    }
+}
+
+// ============================================================================
+// 7C. DEVELOPER TOOLS - DATABASE BACKUP & RESTORE [NEW]
+// ============================================================================
+function toggleRestoreMode() {
+    const restoreMode = document.querySelector('input[name="tool-restore-mode"]:checked').value;
+    const newDbGroup = document.getElementById('tool-restore-new-db-group');
+    if (newDbGroup) {
+        newDbGroup.style.display = restoreMode === 'new' ? 'block' : 'none';
+    }
+}
+
+async function scanBackupFiles() {
+    if (!activeJob) {
+        return;
+    }
+    const jobId = activeJob.Id || activeJob.id;
+    const selectEl = document.getElementById('tool-restore-file-select');
+    if (!selectEl) return;
+
+    selectEl.innerHTML = `<option value="">Mengambil daftar file backup...</option>`;
+
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/backup-files`);
+        if (!res.ok) {
+            selectEl.innerHTML = `<option value="">-- Gagal memindai folder --</option>`;
+            return;
+        }
+
+        const data = await res.json();
+        if (data.Success || data.success) {
+            const files = data.Files || data.files || [];
+            if (files.length === 0) {
+                selectEl.innerHTML = `<option value="">-- Tidak ada file .bak ditemukan --</option>`;
+            } else {
+                selectEl.innerHTML = files.map(file => `<option value="${escapeHtml(file)}">${escapeHtml(file)}</option>`).join('');
+            }
+        } else {
+            selectEl.innerHTML = `<option value="">-- Gagal memindai: ${escapeHtml(data.Message || '')} --</option>`;
+        }
+    } catch (err) {
+        console.error(err);
+        selectEl.innerHTML = `<option value="">-- Error memindai folder --</option>`;
+    }
+}
+
+async function runDatabaseBackup() {
+    if (!activeJob) {
+        alert("Harap pilih Job terlebih dahulu!");
+        return;
+    }
+    
+    const backupPath = activeJob.BackupPath || activeJob.backupPath || '';
+    if (!backupPath) {
+        alert("Path backup kosong! Harap atur path folder backup terlebih dahulu di konfigurasi Edit Job.");
+        return;
+    }
+
+    const targetDb = parseConnectionStringDb(activeJob.TargetConnectionString || activeJob.targetConnectionString || '');
+    if (!confirm(`Apakah Anda yakin ingin mem-backup database target [${targetDb}] ke path:\n"${backupPath}"?`)) {
+        return;
+    }
+
+    const btn = document.getElementById('btn-run-db-backup');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Mem-backup Database...`;
+    btn.disabled = true;
+
+    try {
+        const jobId = activeJob.Id || activeJob.id;
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/backup`, {
+            method: 'POST'
+        });
+
+        if (!res.ok) {
+            const errText = await res.text();
+            alert("Gagal backup: " + errText);
+            return;
+        }
+
+        const data = await res.json();
+        if (data.Success || data.success) {
+            alert(data.Message || "Backup database berhasil diselesaikan!");
+            scanBackupFiles();
+        } else {
+            alert(data.Message || "Gagal backup.");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Terjadi kesalahan koneksi saat backup: " + err.message);
+    } finally {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+    }
+}
+
+async function runDatabaseRestore() {
+    if (!activeJob) {
+        alert("Harap pilih Job terlebih dahulu!");
+        return;
+    }
+
+    const backupFile = document.getElementById('tool-restore-file-select').value;
+    if (!backupFile) {
+        alert("Harap pilih file backup (.bak) yang akan di-restore!");
+        return;
+    }
+
+    const restoreMode = document.querySelector('input[name="tool-restore-mode"]:checked').value;
+    const targetDb = parseConnectionStringDb(activeJob.TargetConnectionString || activeJob.targetConnectionString || '');
+    
+    let restoreDbName = targetDb;
+    if (restoreMode === 'new') {
+        restoreDbName = document.getElementById('tool-restore-new-db-name').value.trim();
+        if (!restoreDbName) {
+            alert("Harap masukkan nama database baru untuk restore!");
+            return;
+        }
+        if (!/^[a-zA-Z0-9_-]+$/.test(restoreDbName)) {
+            alert("Nama database hanya boleh mengandung huruf, angka, underscore (_), atau dash (-).");
+            return;
+        }
+    }
+
+    let confirmMsg = "";
+    if (restoreMode === 'existing') {
+        confirmMsg = `🚨 PERINGATAN CRITICAL! 🚨\n\n` +
+                     `Anda akan me-restore database target [${restoreDbName}] menggunakan file backup:\n` +
+                     `"${backupFile}"\n\n` +
+                     `Tindakan ini akan MENIMPA & MENGHAPUS semua data yang ada saat ini di database target [${restoreDbName}]!\n\n` +
+                     `Apakah Anda yakin dan setuju untuk melanjutkan?`;
+    } else {
+        confirmMsg = `Tindakan ini akan me-restore file backup "${backupFile}" ke database BARU bernama [${restoreDbName}].\n\n` +
+                     `Apakah Anda yakin ingin melanjutkan?`;
+    }
+
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+
+    if (restoreMode === 'existing') {
+        const doubleCheck = prompt(`Harap ketik nama database target "${restoreDbName}" untuk mengonfirmasi penulisan ulang database:`);
+        if (doubleCheck !== restoreDbName) {
+            alert("Konfirmasi gagal. Proses restore dibatalkan.");
+            return;
+        }
+    }
+
+    const btn = document.getElementById('btn-run-db-restore');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Me-restore Database...`;
+    btn.disabled = true;
+
+    try {
+        const jobId = activeJob.Id || activeJob.id;
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                BackupFilename: backupFile,
+                RestoreDbName: restoreDbName
+            })
+        });
+
+        if (!res.ok) {
+            const errText = await res.text();
+            alert("Gagal me-restore: " + errText);
+            return;
+        }
+
+        const data = await res.json();
+        if (data.Success || data.success) {
+            alert(data.Message || "Restore database berhasil diselesaikan!");
+            if (restoreMode === 'new') {
+                alert(`Database baru [${restoreDbName}] telah berhasil dibuat dan aktif.`);
+            }
+        } else {
+            alert(data.Message || "Gagal me-restore database.");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Terjadi kesalahan koneksi saat me-restore database: " + err.message);
+    } finally {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
     }
 }
 
