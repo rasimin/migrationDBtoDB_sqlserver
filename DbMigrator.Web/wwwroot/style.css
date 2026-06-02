@@ -1642,30 +1642,99 @@ textarea.form-control {
 }
 
 /* Diff Viewer Styles */
-.diff-line-row {
+.schema-diff-content {
+    width: min(94vw, 1320px);
+    max-width: min(94vw, 1320px);
+    border-color: var(--accent-purple);
+}
+
+.schema-diff-body {
+    padding: 1rem 1.25rem;
+}
+
+.schema-diff-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0;
+    background: #07090d;
+    border-radius: 8px;
+    border: 1px solid var(--border-flat);
+    overflow: hidden;
+    width: 100%;
+}
+
+.schema-diff-pane {
     display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.schema-diff-pane + .schema-diff-pane {
+    border-left: 1px solid var(--border-flat);
+}
+
+.schema-diff-pane-header {
+    min-height: 42px;
+    padding: 0.65rem 1rem;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid var(--border-flat);
+    font-size: 0.8rem;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    white-space: nowrap;
+}
+
+.schema-diff-pane-header.source {
+    color: var(--accent-teal);
+}
+
+.schema-diff-pane-header.target {
+    color: var(--accent-purple);
+}
+
+.schema-diff-code {
+    margin: 0;
+    padding: 0.5rem 0 0.75rem;
+    overflow: auto;
+    height: min(58vh, 560px);
+    background: transparent;
+    box-sizing: border-box;
+    scrollbar-gutter: stable;
+}
+
+.diff-line-row {
+    display: grid;
+    grid-template-columns: 48px max-content;
     font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
     font-size: 0.82rem;
-    line-height: 1.5;
+    line-height: 1.55;
     white-space: pre;
-    min-height: 1.5em;
+    min-height: 1.55em;
     border-left: 3px solid transparent;
+    width: max-content;
+    min-width: 100%;
 }
 
 .diff-line-num {
-    width: 35px;
     text-align: right;
-    padding-right: 0.75rem;
+    padding: 0 0.75rem 0 0.35rem;
     color: var(--text-muted);
     user-select: none;
     border-right: 1px solid var(--border-flat);
     background: rgba(255, 255, 255, 0.01);
+    position: sticky;
+    left: 0;
+    z-index: 1;
 }
 
 .diff-line-code {
-    padding-left: 0.75rem;
-    flex: 1;
-    overflow-x: auto;
+    padding: 0 1rem 0 0.85rem;
+    overflow: visible;
+    min-width: max-content;
 }
 
 /* Diff Status Highlights */
@@ -1720,7 +1789,27 @@ textarea.form-control {
 
 .modal-content.maximized #schema-diff-source,
 .modal-content.maximized #schema-diff-target {
-    max-height: calc(95vh - 160px) !important;
+    height: calc(95vh - 172px) !important;
+}
+
+@media (max-width: 860px) {
+    .schema-diff-content {
+        width: 96vw;
+        max-width: 96vw;
+    }
+
+    .schema-diff-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .schema-diff-pane + .schema-diff-pane {
+        border-left: 0;
+        border-top: 1px solid var(--border-flat);
+    }
+
+    .schema-diff-code {
+        height: 34vh;
+    }
 }
 
 

@@ -840,6 +840,95 @@ app.MapGet("/api/db/columns", async ([FromQuery] int jobId, [FromQuery] string d
     }
 });
 
+// 10a. DYNAMIC DB METADATA: COMPARE SOURCE VS TARGET SCHEMA
+app.MapGet("/api/db/schema-comparison", async ([FromQuery] int jobId, IConfiguration config) =>
+{
+    if (jobId <= 0) return Results.BadRequest("JobId kosong");
+
+    using var configConn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var job = await configConn.QuerySingleOrDefaultAsync<MigrationJob>("SELECT * FROM dbo.MigrationJobs WHERE Id = @Id", new { Id = jobId });
+    if (job == null) return Results.NotFound($"Job {jobId} tidak ditemukan");
+    if (string.IsNullOrWhiteSpace(job.SourceConnectionString) || string.IsNullOrWhiteSpace(job.TargetConnectionString))
+        return Results.BadRequest("Connection string Source atau Target kosong");
+
+    try
+    {
+        using var sourceConn = new SqlConnection(job.SourceConnectionString);
+        using var targetConn = new SqlConnection(job.TargetConnectionString);
+        await sourceConn.OpenAsync();
+        await targetConn.OpenAsync();
+
+        var sourceObjects = await LoadComparableObjects(sourceConn);
+        var targetObjects = await LoadComparableObjects(targetConn);
+        var items = new List<SchemaComparisonItemDto>();
+
+        foreach (var sourceObj in sourceObjects.Values.OrderBy(o => o.Type).ThenBy(o => o.Name))
+        {
+            targetObjects.TryGetValue(sourceObj.Key, out var targetObj);
+
+            var item = new SchemaComparisonItemDto
+            {
+                Name = sourceObj.Name,
+                Type = sourceObj.DisplayType,
+                SourceDdl = sourceObj.Ddl,
+                TargetDdl = targetObj?.Ddl ?? "-- Objek tidak ditemukan di Target DB --"
+            };
+
+            if (targetObj == null)
+            {
+                item.Status = "Missing";
+                item.Info = "Objek tidak ditemukan sama sekali di Target DB.";
+            }
+            else if (sourceObj.Type == "TABLE")
+            {
+                var differences = CompareTableColumns(sourceObj.Columns, targetObj.Columns);
+                if (differences.Count == 0)
+                {
+                    item.Status = "Match";
+                    item.Info = "Struktur skema identik 100%.";
+                }
+                else
+                {
+                    item.Status = "Mismatch";
+                    item.Info = string.Join("<br>", differences.Select(EscapeHtml));
+                    item.ColumnSync = BuildColumnSyncPlan(sourceObj, targetObj);
+                }
+            }
+            else if (NormalizeDdl(sourceObj.Ddl) == NormalizeDdl(targetObj.Ddl))
+            {
+                item.Status = "Match";
+                item.Info = "Struktur skema identik 100%.";
+            }
+            else
+            {
+                item.Status = "Outdated";
+                item.Info = "Definisi DDL berbeda antara Source DB dan Target DB.";
+            }
+
+            items.Add(item);
+        }
+
+        var summary = new Dictionary<string, SchemaComparisonSummaryDto>();
+        foreach (var type in new[] { "Table", "View", "Stored Procedure", "Function" })
+        {
+            summary[type] = new SchemaComparisonSummaryDto
+            {
+                SourceCount = sourceObjects.Values.Count(o => o.DisplayType == type),
+                TargetCount = targetObjects.Values.Count(o => o.DisplayType == type),
+                MissingCount = items.Count(i => i.Type == type && i.Status == "Missing"),
+                MismatchCount = items.Count(i => i.Type == type && i.Status == "Mismatch"),
+                OutdatedCount = items.Count(i => i.Type == type && i.Status == "Outdated")
+            };
+        }
+
+        return Results.Ok(new { Summary = summary, Items = items });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest($"Gagal membandingkan skema: {ex.Message}");
+    }
+});
+
 // 10b. DYNAMIC DB METADATA: GET ENTIRE SCHEMA (FOR AUTOCOMPLETE)
 app.MapGet("/api/db/schema", async ([FromQuery] int jobId, [FromQuery] string dbType, IConfiguration config) =>
 {
@@ -2669,6 +2758,216 @@ async Task SyncIndexes(SqlConnection srcConn, SqlConnection targetConn, string s
 
 
 // ============================================================================
+// HELPER FUNCTIONS FOR SCHEMA COMPARISON
+// ============================================================================
+async Task<Dictionary<string, ComparableDbObject>> LoadComparableObjects(SqlConnection conn)
+{
+    var result = new Dictionary<string, ComparableDbObject>(StringComparer.OrdinalIgnoreCase);
+
+    var tables = await conn.QueryAsync(@"
+        SELECT s.name AS SchemaName, t.name AS ObjectName
+        FROM sys.tables t
+        JOIN sys.schemas s ON t.schema_id = s.schema_id
+        WHERE t.is_ms_shipped = 0
+        ORDER BY s.name, t.name");
+
+    foreach (var table in tables)
+    {
+        string schema = table.SchemaName;
+        string name = table.ObjectName;
+        var columns = (await conn.QueryAsync<SchemaColumnDto>(@"
+            SELECT c.name AS Name, ty.name AS DataType, c.max_length AS MaxLength,
+                   c.precision AS Precision, c.scale AS Scale, c.is_nullable AS IsNullable,
+                   c.is_identity AS IsIdentity, dc.definition AS DefaultDefinition, c.column_id AS Ordinal
+            FROM sys.columns c
+            JOIN sys.types ty ON c.user_type_id = ty.user_type_id
+            LEFT JOIN sys.default_constraints dc ON c.default_object_id = dc.object_id
+            WHERE c.object_id = OBJECT_ID(@FullName)
+            ORDER BY c.column_id",
+            new { FullName = $"{schema}.{name}" })).ToList();
+
+        var pkColumns = (await conn.QueryAsync<string>(@"
+            SELECT c.name
+            FROM sys.indexes i
+            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+            WHERE i.object_id = OBJECT_ID(@FullName) AND i.is_primary_key = 1
+            ORDER BY ic.key_ordinal",
+            new { FullName = $"{schema}.{name}" })).ToList();
+
+        var obj = new ComparableDbObject
+        {
+            Name = $"{schema}.{name}",
+            Type = "TABLE",
+            DisplayType = "Table",
+            Columns = columns,
+            Ddl = GenerateComparableTableDdl(schema, name, columns, pkColumns)
+        };
+        result[obj.Key] = obj;
+    }
+
+    var programmableObjects = await conn.QueryAsync(@"
+        SELECT s.name AS SchemaName, o.name AS ObjectName, o.type AS ObjectType,
+               OBJECT_DEFINITION(o.object_id) AS Definition
+        FROM sys.objects o
+        JOIN sys.schemas s ON o.schema_id = s.schema_id
+        WHERE o.type IN ('V', 'P', 'FN', 'IF', 'TF', 'FS', 'FT')
+          AND o.is_ms_shipped = 0
+        ORDER BY s.name, o.name");
+
+    foreach (var dbObject in programmableObjects)
+    {
+        string objectType = dbObject.ObjectType;
+        var obj = new ComparableDbObject
+        {
+            Name = $"{dbObject.SchemaName}.{dbObject.ObjectName}",
+            Type = objectType,
+            DisplayType = objectType switch
+            {
+                "V" => "View",
+                "P" => "Stored Procedure",
+                _ => "Function"
+            },
+            Ddl = dbObject.Definition ?? "-- Definisi objek tidak tersedia --"
+        };
+        result[obj.Key] = obj;
+    }
+
+    return result;
+}
+
+List<string> CompareTableColumns(List<SchemaColumnDto> sourceColumns, List<SchemaColumnDto> targetColumns)
+{
+    var differences = new List<string>();
+    var targetByName = targetColumns.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
+    var sourceNames = new HashSet<string>(sourceColumns.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+
+    foreach (var sourceColumn in sourceColumns)
+    {
+        if (!targetByName.TryGetValue(sourceColumn.Name, out var targetColumn))
+        {
+            differences.Add($"Kolom {sourceColumn.Name} {FormatComparableColumnType(sourceColumn)} tidak ditemukan di Target DB.");
+            continue;
+        }
+
+        var sourceDef = FormatComparableColumnDefinition(sourceColumn, includeName: false);
+        var targetDef = FormatComparableColumnDefinition(targetColumn, includeName: false);
+        if (!string.Equals(sourceDef, targetDef, StringComparison.OrdinalIgnoreCase))
+        {
+            differences.Add($"Kolom {sourceColumn.Name} berbeda. Source: {sourceDef}; Target: {targetDef}.");
+        }
+    }
+
+    foreach (var targetColumn in targetColumns)
+    {
+        if (!sourceNames.Contains(targetColumn.Name))
+        {
+            differences.Add($"Kolom {targetColumn.Name} hanya ada di Target DB.");
+        }
+    }
+
+    return differences;
+}
+
+ColumnSyncPlanDto? BuildColumnSyncPlan(ComparableDbObject sourceObj, ComparableDbObject targetObj)
+{
+    var targetNames = new HashSet<string>(targetObj.Columns.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+    var missingColumns = sourceObj.Columns.Where(c => !targetNames.Contains(c.Name)).ToList();
+    if (missingColumns.Count == 0) return null;
+
+    var afterColumns = targetObj.Columns
+        .Select(c => new ColumnPreviewDto { Name = c.Name, Type = FormatComparableColumnDefinition(c, includeName: false), IsNew = false })
+        .ToList();
+
+    foreach (var missingColumn in missingColumns)
+    {
+        afterColumns.Add(new ColumnPreviewDto
+        {
+            Name = missingColumn.Name,
+            Type = FormatComparableColumnDefinition(missingColumn, includeName: false),
+            IsNew = true
+        });
+    }
+
+    var tableName = QuoteMultipartSqlIdentifier(sourceObj.Name);
+    var sql = string.Join(Environment.NewLine, missingColumns.Select(c =>
+        $"ALTER TABLE {tableName} ADD {FormatComparableColumnDefinition(c, includeName: true)};"));
+
+    return new ColumnSyncPlanDto
+    {
+        Before = targetObj.Columns.Select(c => new ColumnPreviewDto { Name = c.Name, Type = FormatComparableColumnDefinition(c, includeName: false) }).ToList(),
+        After = afterColumns,
+        Sql = sql
+    };
+}
+
+string GenerateComparableTableDdl(string schema, string table, List<SchemaColumnDto> columns, List<string> pkColumns)
+{
+    var lines = columns.Select(c => "    " + FormatComparableColumnDefinition(c, includeName: true)).ToList();
+    if (pkColumns.Count > 0)
+    {
+        lines.Add($"    CONSTRAINT [PK_{table}] PRIMARY KEY ({string.Join(", ", pkColumns.Select(c => $"[{c.Replace("]", "]]")}]"))})");
+    }
+
+    return $"CREATE TABLE [{schema.Replace("]", "]]")}].[{table.Replace("]", "]]")}] (\n{string.Join(",\n", lines)}\n);";
+}
+
+string FormatComparableColumnDefinition(SchemaColumnDto column, bool includeName)
+{
+    var parts = new List<string>();
+    if (includeName)
+    {
+        parts.Add($"[{column.Name.Replace("]", "]]")}]");
+    }
+
+    parts.Add(FormatComparableColumnType(column));
+    if (column.IsIdentity) parts.Add("IDENTITY(1,1)");
+    parts.Add(column.IsNullable ? "NULL" : "NOT NULL");
+    if (!string.IsNullOrWhiteSpace(column.DefaultDefinition)) parts.Add($"DEFAULT {column.DefaultDefinition}");
+    return string.Join(" ", parts);
+}
+
+string FormatComparableColumnType(SchemaColumnDto column)
+{
+    var dataType = column.DataType?.ToLowerInvariant() ?? "";
+    if (dataType is "varchar" or "char" or "varbinary" or "binary")
+    {
+        return column.MaxLength == -1 ? $"{dataType}(MAX)" : $"{dataType}({column.MaxLength})";
+    }
+    if (dataType is "nvarchar" or "nchar")
+    {
+        return column.MaxLength == -1 ? $"{dataType}(MAX)" : $"{dataType}({column.MaxLength / 2})";
+    }
+    if (dataType is "decimal" or "numeric")
+    {
+        return $"{dataType}({column.Precision},{column.Scale})";
+    }
+    if (dataType is "datetime2" or "datetimeoffset" or "time")
+    {
+        return $"{dataType}({column.Scale})";
+    }
+
+    return dataType;
+}
+
+string NormalizeDdl(string ddl)
+{
+    if (string.IsNullOrWhiteSpace(ddl)) return string.Empty;
+    return System.Text.RegularExpressions.Regex.Replace(ddl.Trim(), @"\s+", " ").ToLowerInvariant();
+}
+
+string EscapeHtml(string value)
+{
+    return System.Net.WebUtility.HtmlEncode(value);
+}
+
+string QuoteMultipartSqlIdentifier(string name)
+{
+    return string.Join(".", name.Split('.', StringSplitOptions.RemoveEmptyEntries)
+        .Select(part => $"[{part.Replace("[", "").Replace("]", "]]")}]"));
+}
+
+// ============================================================================
 // HELPER FUNCTIONS FOR STORED PROCEDURE GENERATION
 // ============================================================================
 string GetDatabaseName(string connectionString)
@@ -2711,6 +3010,63 @@ public class ReorderItemDto
 {
     public int Id { get; set; }
     public int ExecutionOrder { get; set; }
+}
+
+public class SchemaComparisonSummaryDto
+{
+    public int SourceCount { get; set; }
+    public int TargetCount { get; set; }
+    public int MissingCount { get; set; }
+    public int MismatchCount { get; set; }
+    public int OutdatedCount { get; set; }
+}
+
+public class SchemaComparisonItemDto
+{
+    public string Name { get; set; }
+    public string Type { get; set; }
+    public string Status { get; set; }
+    public string Info { get; set; }
+    public string SourceDdl { get; set; }
+    public string TargetDdl { get; set; }
+    public ColumnSyncPlanDto? ColumnSync { get; set; }
+}
+
+public class ColumnSyncPlanDto
+{
+    public List<ColumnPreviewDto> Before { get; set; } = new();
+    public List<ColumnPreviewDto> After { get; set; } = new();
+    public string Sql { get; set; }
+}
+
+public class ColumnPreviewDto
+{
+    public string Name { get; set; }
+    public string Type { get; set; }
+    public bool IsNew { get; set; }
+}
+
+public class SchemaColumnDto
+{
+    public string Name { get; set; }
+    public string DataType { get; set; }
+    public short MaxLength { get; set; }
+    public byte Precision { get; set; }
+    public byte Scale { get; set; }
+    public bool IsNullable { get; set; }
+    public bool IsIdentity { get; set; }
+    public string DefaultDefinition { get; set; }
+    public int Ordinal { get; set; }
+}
+
+public class ComparableDbObject
+{
+    public string Name { get; set; }
+    public string Type { get; set; }
+    public string DisplayType { get; set; }
+    public string Ddl { get; set; }
+    public List<SchemaColumnDto> Columns { get; set; } = new();
+    public string Key => $"{DisplayType}:{Name}";
 }
 
 public class ExportJobDto

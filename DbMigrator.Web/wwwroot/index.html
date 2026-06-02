@@ -495,29 +495,29 @@
                                 <div class="schema-summary-card">
                                     <div class="schema-card-title">Tabel (Tables)</div>
                                     <div class="schema-card-stats">
-                                        <span class="schema-card-value" style="color: #ffffff;">45 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 42</span>
-                                        <span class="schema-card-status mismatch"><i class="fa-solid fa-triangle-exclamation"></i> 3 Missing</span>
+                                        <span class="schema-card-value" style="color: #ffffff;">0 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 0</span>
+                                        <span class="schema-card-status match"><i class="fa-solid fa-circle-check"></i> Belum Dipindai</span>
                                     </div>
                                 </div>
                                 <div class="schema-summary-card">
                                     <div class="schema-card-title">Views</div>
                                     <div class="schema-card-stats">
-                                        <span class="schema-card-value" style="color: #ffffff;">12 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 12</span>
-                                        <span class="schema-card-status match"><i class="fa-solid fa-circle-check"></i> Match</span>
+                                        <span class="schema-card-value" style="color: #ffffff;">0 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 0</span>
+                                        <span class="schema-card-status match"><i class="fa-solid fa-circle-check"></i> Belum Dipindai</span>
                                     </div>
                                 </div>
                                 <div class="schema-summary-card">
                                     <div class="schema-card-title">Stored Procedures</div>
                                     <div class="schema-card-stats">
-                                        <span class="schema-card-value" style="color: #ffffff;">18 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 15</span>
-                                        <span class="schema-card-status mismatch"><i class="fa-solid fa-triangle-exclamation"></i> 3 Outdated</span>
+                                        <span class="schema-card-value" style="color: #ffffff;">0 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 0</span>
+                                        <span class="schema-card-status match"><i class="fa-solid fa-circle-check"></i> Belum Dipindai</span>
                                     </div>
                                 </div>
                                 <div class="schema-summary-card">
                                     <div class="schema-card-title">Functions</div>
                                     <div class="schema-card-stats">
-                                        <span class="schema-card-value" style="color: #ffffff;">8 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 7</span>
-                                        <span class="schema-card-status mismatch"><i class="fa-solid fa-triangle-exclamation"></i> 1 Missing</span>
+                                        <span class="schema-card-value" style="color: #ffffff;">0 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 0</span>
+                                        <span class="schema-card-status match"><i class="fa-solid fa-circle-check"></i> Belum Dipindai</span>
                                     </div>
                                 </div>
                             </div>
@@ -1610,7 +1610,7 @@
      MODAL: SCHEMA DDL DIFF VIEWER
      ============================================================================ -->
 <div class="modal-overlay" id="schema-diff-modal">
-    <div class="modal-content" style="max-width: 960px; border-color: var(--accent-purple);">
+    <div class="modal-content schema-diff-content">
         <div class="modal-header">
             <div>
                 <h3 id="schema-diff-title">Perbandingan DDL Objek</h3>
@@ -1621,23 +1621,23 @@
                 <button class="close-btn" onclick="closeSchemaDiffModal()">&times;</button>
             </div>
         </div>
-        <div class="modal-body" style="padding: 1.25rem 1.75rem;">
-            <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; background: #07090d; border-radius: 8px; border: 1px solid var(--border-flat); overflow: hidden; width: 100%;">
+        <div class="modal-body schema-diff-body">
+            <div class="schema-diff-grid">
                 <!-- Source Side -->
-                <div style="border-right: 1px solid var(--border-flat); display: flex; flex-direction: column; min-width: 0; overflow: hidden;">
-                    <div style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-flat); font-size: 0.8rem; color: var(--accent-teal); font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+                <div class="schema-diff-pane">
+                    <div class="schema-diff-pane-header source">
                         <span>Source DB (Referensi Asal)</span>
                         <span style="font-size: 0.72rem; color: var(--text-muted);">DDL Lama / Asal</span>
                     </div>
-                    <div id="schema-diff-source" style="margin: 0; padding: 0.5rem 0; overflow: auto; max-height: 400px; background: transparent; box-sizing: border-box;"></div>
+                    <div id="schema-diff-source" class="schema-diff-code"></div>
                 </div>
                 <!-- Target Side -->
-                <div style="display: flex; flex-direction: column; min-width: 0; overflow: hidden;">
-                    <div style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-flat); font-size: 0.8rem; color: var(--accent-purple); font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+                <div class="schema-diff-pane">
+                    <div class="schema-diff-pane-header target">
                         <span>Target DB (Tujuan)</span>
                         <span style="font-size: 0.72rem; color: var(--text-muted);">DDL Saat Ini / Tujuan</span>
                     </div>
-                    <div id="schema-diff-target" style="margin: 0; padding: 0.5rem 0; overflow: auto; max-height: 400px; background: transparent; box-sizing: border-box;"></div>
+                    <div id="schema-diff-target" class="schema-diff-code"></div>
                 </div>
             </div>
         </div>

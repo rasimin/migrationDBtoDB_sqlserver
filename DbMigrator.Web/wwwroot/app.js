@@ -400,6 +400,11 @@ async function selectJob(jobId) {
         // Load mappings & db schemas
         loadTableMappings(jobId);
         loadDatabaseSchemas();
+        schemaComparisonResults = [];
+        schemaComparisonDdl = {};
+        schemaColumnSyncDetails = {};
+        updateSchemaSummaryCards(null);
+        renderSchemaComparisonTable();
 
     } catch (err) {
         console.error(err);
@@ -5286,9 +5291,17 @@ const schemaDummyResults = [
     }
 })();
 
-function runSchemaComparison() {
+let schemaComparisonResults = [];
+let schemaComparisonDdl = {};
+let schemaColumnSyncDetails = {};
+
+async function runSchemaComparison() {
     const btn = document.querySelector('#inner-content-schema button[onclick="runSchemaComparison()"]');
     if (!btn) return;
+    if (!activeJob) {
+        alert("Pilih job terlebih dahulu sebelum menjalankan pemindaian skema.");
+        return;
+    }
     
     const originalText = btn.innerHTML;
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Memindai Skema...`;
@@ -5306,38 +5319,97 @@ function runSchemaComparison() {
         `;
     }
 
-    setTimeout(() => {
+    try {
+        const jobId = activeJob.Id || activeJob.id;
+        const res = await fetch(`${API_BASE}/db/schema-comparison?jobId=${jobId}`);
+        if (!res.ok) {
+            const msg = await res.text();
+            throw new Error(msg || "Gagal membandingkan skema database.");
+        }
+
+        const data = await res.json();
+        schemaComparisonResults = data.Items || data.items || [];
+        schemaComparisonDdl = {};
+        schemaColumnSyncDetails = {};
+
+        schemaComparisonResults.forEach(item => {
+            const name = item.Name || item.name;
+            schemaComparisonDdl[name] = {
+                source: item.SourceDdl || item.sourceDdl || "-- DDL Source tidak tersedia --",
+                target: item.TargetDdl || item.targetDdl || "-- DDL Target tidak tersedia --",
+                sourceHighlights: {},
+                targetHighlights: {}
+            };
+
+            const columnSync = item.ColumnSync || item.columnSync;
+            if (columnSync) {
+                schemaColumnSyncDetails[name] = {
+                    before: columnSync.Before || columnSync.before || [],
+                    after: columnSync.After || columnSync.after || [],
+                    sql: columnSync.Sql || columnSync.sql || ''
+                };
+            }
+        });
+
+        updateSchemaSummaryCards(data.Summary || data.summary);
+        renderSchemaComparisonTable();
+    } catch (err) {
+        console.error(err);
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" style="color: var(--color-error); text-align: center; padding: 2rem;">
+                        <i class="fa-solid fa-circle-exclamation" style="font-size: 1.8rem; margin-bottom: 0.5rem; display: block;"></i>
+                        ${escapeHtml(err.message || "Gagal membandingkan skema database.")}
+                    </td>
+                </tr>
+            `;
+        }
+        alert("Pemindaian skema gagal: " + (err.message || err));
+    } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
-        
-        renderSchemaComparisonTable();
-        
-        alert("Pemindaian skema selesai! Berhasil membandingkan Source DB vs Target DB.");
-    }, 1500);
+    }
 }
 
 function renderSchemaComparisonTable() {
     const tbody = document.getElementById('schema-comparison-tbody');
     if (!tbody) return;
 
-    tbody.innerHTML = schemaDummyResults.map(item => {
+    if (!schemaComparisonResults.length) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" style="color: var(--text-muted); text-align: center; padding: 2rem;">
+                    Klik tombol <strong>Jalankan Pemindaian Skema</strong> untuk membandingkan skema Source DB vs Target DB.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = schemaComparisonResults.map(item => {
+        const name = item.Name || item.name;
+        const type = item.Type || item.type;
+        const status = item.Status || item.status;
+        const info = item.Info || item.info || '-';
         let statusBadge = `<span class="schema-card-status match"><i class="fa-solid fa-circle-check"></i> Match</span>`;
-        if (item.status === 'Mismatch') {
+        if (status === 'Mismatch') {
             statusBadge = `<span class="schema-card-status mismatch"><i class="fa-solid fa-circle-exclamation"></i> Mismatch</span>`;
-        } else if (item.status === 'Outdated') {
+        } else if (status === 'Outdated') {
             statusBadge = `<span class="schema-card-status mismatch" style="background: rgba(139,92,246,0.1); color: var(--accent-purple);"><i class="fa-solid fa-circle-exclamation"></i> Outdated</span>`;
-        } else if (item.status === 'Missing') {
+        } else if (status === 'Missing') {
             statusBadge = `<span class="schema-card-status mismatch" style="background: rgba(99,102,241,0.1); color: var(--accent-indigo);"><i class="fa-solid fa-circle-exclamation"></i> Missing</span>`;
         }
 
+        const action = buildSchemaAction(name, type, status);
         return `
-            <tr data-status="${item.status}">
+            <tr data-status="${status}">
                 <td class="row-num" style="text-align: center; font-size: 0.8rem;"></td>
-                <td><strong>${item.name}</strong></td>
-                <td>${item.type}</td>
+                <td><strong>${escapeHtml(name)}</strong></td>
+                <td>${escapeHtml(type)}</td>
                 <td>${statusBadge}</td>
-                <td>${item.info}</td>
-                <td>${item.action}</td>
+                <td>${info}</td>
+                <td>${action}</td>
             </tr>
         `;
     }).join('');
@@ -5346,30 +5418,83 @@ function renderSchemaComparisonTable() {
     toggleSchemaMatchVisibility();
 }
 
-function markObjectAsSynced(objName) {
-    // 1. Update schemaDummyResults status to Match
-    const item = schemaDummyResults.find(o => o.name === objName);
-    if (!item) return;
+function buildSchemaAction(name, type, status) {
+    const safeName = String(name).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const diffLabel = status === 'Match' ? 'View DDL' : 'Compare DDL';
+    const buttons = [];
 
-    const oldStatus = item.status;
-    const itemType = item.type;
-
-    item.status = "Match";
-    item.info = "Struktur skema identik 100%.";
-    item.action = `<div style="display: flex; gap: 0.4rem; align-items: center;"><span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span><button class="btn btn-secondary" onclick="openSchemaDiffModal('${objName}')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--text-muted); color: var(--text-muted); background: transparent;"><i class="fa-solid fa-code-compare"></i> View DDL</button></div>`;
-
-    // 2. Align DDL in dummy storage
-    if (schemaDummyDdl[objName]) {
-        schemaDummyDdl[objName].target = schemaDummyDdl[objName].source;
-        schemaDummyDdl[objName].targetHighlights = {};
-        schemaDummyDdl[objName].sourceHighlights = {};
+    if (status === 'Mismatch' && schemaColumnSyncDetails[name]) {
+        buttons.push(`<button class="btn btn-secondary" onclick="openColumnSyncModal('${safeName}')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-teal); color: var(--accent-teal); background: rgba(0,173,181,0.05);"><i class="fa-solid fa-wand-magic-sparkles"></i> Sinkronisasi Kolom</button>`);
+    } else if (status === 'Missing') {
+        buttons.push(`<button class="btn btn-secondary" onclick="openSchemaDiffModal('${safeName}')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06);"><i class="fa-solid fa-plus"></i> Buat Baru</button>`);
+    } else if (status === 'Outdated') {
+        const label = type === 'Stored Procedure' ? 'Update SP' : 'Update DDL';
+        buttons.push(`<button class="btn btn-secondary" onclick="openSchemaDiffModal('${safeName}')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);"><i class="fa-solid fa-arrows-spin"></i> ${label}</button>`);
+    } else if (status === 'Match') {
+        buttons.push(`<span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span>`);
     }
 
-    // 3. Update stats cards counters
-    updateSchemaStatsCards(oldStatus, itemType);
+    buttons.push(`<button class="btn btn-secondary" onclick="openSchemaDiffModal('${safeName}')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> ${diffLabel}</button>`);
+    return `<div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">${buttons.join('')}</div>`;
+}
 
-    // 4. Re-render table body
+function markObjectAsSynced(objName) {
+    const item = schemaComparisonResults.find(o => (o.Name || o.name) === objName);
+    if (!item) return;
+
+    item.Status = "Match";
+    item.status = "Match";
+    item.Info = "Struktur skema identik 100%.";
+    item.info = "Struktur skema identik 100%.";
+
+    if (schemaComparisonDdl[objName]) {
+        schemaComparisonDdl[objName].target = schemaComparisonDdl[objName].source;
+        schemaComparisonDdl[objName].targetHighlights = {};
+        schemaComparisonDdl[objName].sourceHighlights = {};
+    }
+
     renderSchemaComparisonTable();
+}
+
+function updateSchemaSummaryCards(summary) {
+    const types = ['Table', 'View', 'Stored Procedure', 'Function'];
+    const cards = document.querySelectorAll('.schema-summary-card');
+    if (!cards.length) return;
+
+    types.forEach((type, index) => {
+        const card = cards[index];
+        if (!card) return;
+
+        const data = summary ? (summary[type] || summary[type.replace(' ', '')] || {}) : {};
+        const sourceCount = data.SourceCount ?? data.sourceCount ?? 0;
+        const targetCount = data.TargetCount ?? data.targetCount ?? 0;
+        const missing = data.MissingCount ?? data.missingCount ?? 0;
+        const mismatch = data.MismatchCount ?? data.mismatchCount ?? 0;
+        const outdated = data.OutdatedCount ?? data.outdatedCount ?? 0;
+        const issueCount = missing + mismatch + outdated;
+
+        const valueEl = card.querySelector('.schema-card-value');
+        const statusEl = card.querySelector('.schema-card-status');
+        if (valueEl) {
+            valueEl.innerHTML = `${sourceCount} <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> ${targetCount}`;
+        }
+        if (!statusEl) return;
+
+        if (!summary) {
+            statusEl.className = 'schema-card-status match';
+            statusEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> Belum Dipindai`;
+        } else if (issueCount === 0) {
+            statusEl.className = 'schema-card-status match';
+            statusEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> Match`;
+        } else {
+            const parts = [];
+            if (missing) parts.push(`${missing} Missing`);
+            if (mismatch) parts.push(`${mismatch} Mismatch`);
+            if (outdated) parts.push(`${outdated} Outdated`);
+            statusEl.className = 'schema-card-status mismatch';
+            statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${parts.join(', ')}`;
+        }
+    });
 }
 
 function updateSchemaStatsCards(oldStatus, itemType) {
@@ -5512,7 +5637,7 @@ const columnSyncDetails = {
 };
 
 function openColumnSyncModal(tableName) {
-    const detail = columnSyncDetails[tableName];
+    const detail = schemaColumnSyncDetails[tableName];
     if (!detail) {
         alert("Detail sinkronisasi kolom untuk " + tableName + " tidak tersedia.");
         return;
@@ -5582,7 +5707,7 @@ function closeColumnSyncModal() {
 }
 
 function openSchemaDiffModal(objName) {
-    const ddl = schemaDummyDdl[objName];
+    const ddl = schemaComparisonDdl[objName];
     if (!ddl) {
         alert("Data DDL untuk objek " + objName + " tidak ditemukan!");
         return;
@@ -5606,7 +5731,7 @@ function openSchemaDiffModal(objName) {
     // Apply button configuration
     const applyBtn = document.getElementById('btn-schema-diff-apply');
     if (applyBtn) {
-        if (objName === 'dbo.fn_CalculateTax' || ddl.target.includes('tidak ditemukan')) {
+        if (ddl.target.includes('tidak ditemukan')) {
             applyBtn.innerHTML = `<i class="fa-solid fa-plus"></i> Buat di Target DB`;
             applyBtn.onclick = () => {
                 alert('Objek ' + objName + ' berhasil dibuat di database target!');
@@ -5614,7 +5739,7 @@ function openSchemaDiffModal(objName) {
                 markObjectAsSynced(objName);
             };
             applyBtn.style.display = 'inline-block';
-        } else if (objName === 'dbo.Products' || (ddl.source === ddl.target)) {
+        } else if (ddl.source === ddl.target) {
             applyBtn.style.display = 'none'; // Identik
         } else {
             applyBtn.innerHTML = `<i class="fa-solid fa-arrows-spin"></i> Sinkronisasikan Target DDL`;
@@ -5629,6 +5754,7 @@ function openSchemaDiffModal(objName) {
 
     // Show modal
     modal.classList.add('active');
+    setupSchemaDiffScrollSync();
 }
 
 function closeSchemaDiffModal() {
@@ -5661,6 +5787,28 @@ function toggleSchemaDiffMaximize() {
         maximizeBtn.innerHTML = `<i class="fa-solid fa-maximize"></i>`;
         maximizeBtn.title = `Maksimalkan Ukuran`;
     }
+}
+
+function setupSchemaDiffScrollSync() {
+    const source = document.getElementById('schema-diff-source');
+    const target = document.getElementById('schema-diff-target');
+    if (!source || !target) return;
+
+    source.scrollTop = 0;
+    source.scrollLeft = 0;
+    target.scrollTop = 0;
+    target.scrollLeft = 0;
+
+    let syncing = false;
+    const sync = (from, to) => {
+        if (syncing) return;
+        syncing = true;
+        to.scrollTop = from.scrollTop;
+        requestAnimationFrame(() => { syncing = false; });
+    };
+
+    source.onscroll = () => sync(source, target);
+    target.onscroll = () => sync(target, source);
 }
 
 function renderDiffSide(containerId, codeText, highlights) {
