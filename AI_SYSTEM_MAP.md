@@ -183,6 +183,16 @@ connection.on('ReceiveError', (errorObj) => {
 *   **Active Table Progress Card:** Displays `#active-table-progress-card` with `#active-table-bar` showing dynamic row-by-row throughput (`A / B Rows (C%)`) of the current active table, seamlessly transitioning as the runner moves to the next table.
 *   **Dual Single & Mass Adaptability:** JavaScript logic automatically handles mass run total sizing based on `dataMappingsCache` active filters and defaults single mapping runs to `1` table, providing unified, elegant layout compliance under all scenarios.
 
+### 🛠️ F-04: Top Navigation Bar & Multi-Screen Dashboard Tabs
+*   **Top Navigation Bar:** Added `<nav class="top-nav">` with `.nav-item` elements (Migration, Schema Comparison, Query Console, Settings) styled with modern flat Glassmorphism layout.
+*   **Tab Switching Logic:** Implemented `switchMainTab(tabId)` in `app.js` and `.main-screen` wrappers in `index.html` to toggle views.
+*   **Mock Screens:** Added interactive mock implementations for Schema Comparison stat cards & grid, Query Console T-SQL editor & data tables, and Settings panel linked with `localStorage`.
+
+### 🛠️ F-05: SSMS-Lite Query Console Autocomplete
+*   **Complete Schema Ingestion:** Added `/api/db/schema` in `Program.cs` to return all tables, views, stored procedures, functions, and columns in a single, token-efficient query.
+*   **Autocomplete UI & Engine:** Implemented real-time token tracking in `app.js` and `#query-autocomplete-box` in `index.html` to suggest T-SQL keywords, schema objects, and specific columns (supporting table-dot notation like `Customers.Name`).
+*   **Schema Preloading:** Caches schema structures on loading the Query Console tab or connection change with a visual `#query-schema-loader` loading indicator to keep typing execution lag-free.
+
 ---
 
 ## 📖 8. Essential Rules for AI Agent Development

@@ -2039,10 +2039,12 @@ function switchInnerTab(tab) {
     const dataBtn = document.getElementById('inner-tab-data');
     const objBtn = document.getElementById('inner-tab-object');
     const cleanBtn = document.getElementById('inner-tab-clean');
+    const schemaBtn = document.getElementById('inner-tab-schema');
     const toolsBtn = document.getElementById('inner-tab-tools');
     const dataContent = document.getElementById('inner-content-data');
     const objContent = document.getElementById('inner-content-object');
     const cleanContent = document.getElementById('inner-content-clean');
+    const schemaContent = document.getElementById('inner-content-schema');
     const toolsContent = document.getElementById('inner-content-tools');
 
     if (!dataBtn || !objBtn || !cleanBtn) return;
@@ -2051,12 +2053,14 @@ function switchInnerTab(tab) {
     dataBtn.classList.remove('active');
     objBtn.classList.remove('active');
     cleanBtn.classList.remove('active');
+    if (schemaBtn) schemaBtn.classList.remove('active');
     if (toolsBtn) toolsBtn.classList.remove('active');
 
     // Hide all contents
     if (dataContent) dataContent.style.display = 'none';
     if (objContent) objContent.style.display = 'none';
     if (cleanContent) cleanContent.style.display = 'none';
+    if (schemaContent) schemaContent.style.display = 'none';
     if (toolsContent) toolsContent.style.display = 'none';
 
     if (tab === 'data') {
@@ -2074,6 +2078,9 @@ function switchInnerTab(tab) {
         if (activeJob) {
             loadCleanTables(activeJob.Id || activeJob.id);
         }
+    } else if (tab === 'schema') {
+        if (schemaBtn) schemaBtn.classList.add('active');
+        if (schemaContent) schemaContent.style.display = 'block';
     } else if (tab === 'tools') {
         if (toolsBtn) toolsBtn.classList.add('active');
         if (toolsContent) toolsContent.style.display = 'block';
@@ -4483,7 +4490,7 @@ async function runAppimsRestore() {
         const data = await res.json();
         if (data.Success || data.success) {
             alert(data.Message || "Restore database AppIMS berhasil diselesaikan!");
-            if (restoreMode === 'existing') {
+            if (restoreDbName === 'existing') {
                 window.location.reload();
             }
         } else {
@@ -4496,3 +4503,1285 @@ async function runAppimsRestore() {
         btn.disabled = false;
     }
 }
+
+// ============================================================================
+// TOP NAVIGATION TAB SWITCHING & NEW SCREENS LOGIC
+// ============================================================================
+function switchMainTab(tabId) {
+    // 1. Remove active class from all main nav items
+    document.querySelectorAll('.top-nav .nav-item').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // 2. Add active class to selected nav item
+    const activeNav = document.getElementById(`main-nav-${tabId}`);
+    if (activeNav) {
+        activeNav.classList.add('active');
+    }
+    
+    // 3. Hide all main screens
+    document.querySelectorAll('.main-screen').forEach(screen => {
+        screen.style.display = 'none';
+    });
+    
+    // 4. Show selected main screen
+    const targetScreen = document.getElementById(`main-screen-${tabId}`);
+    if (targetScreen) {
+        targetScreen.style.display = 'block';
+    }
+
+    // 5. Populate jobs in Query Console connection panel
+    if (tabId === 'query') {
+        populateQueryConnJobs();
+    }
+}
+
+// ── Query Console connection panel and syntax highlighting logic ──
+let queryConsoleActiveJob = null;
+let queryConsoleActiveDbType = 'target';
+
+async function populateQueryConnJobs() {
+    const select = document.getElementById('query-conn-job-select');
+    if (!select) return;
+    
+    select.innerHTML = '<option value="">-- Memuat Migration Job... --</option>';
+    
+    try {
+        const res = await fetch(`${API_BASE}/jobs`);
+        if (!res.ok) throw new Error("Gagal mengambil data");
+        const jobs = await res.json();
+        
+        if (jobs.length === 0) {
+            select.innerHTML = '<option value="">-- Belum ada Migration Job --</option>';
+            return;
+        }
+        
+        select.innerHTML = '<option value="">-- Pilih Migration Job --</option>' + 
+            jobs.map(job => `<option value="${job.Id || job.id}">${escapeHtml(job.JobName || job.jobName)}</option>`).join('');
+    } catch (err) {
+        console.error(err);
+        select.innerHTML = '<option value="">-- Error memuat Migration Job --</option>';
+    }
+}
+
+async function connectQueryConsole() {
+    const jobSelect = document.getElementById('query-conn-job-select');
+    const dbTypeSelect = document.getElementById('query-conn-db-type');
+    if (!jobSelect || !dbTypeSelect) return;
+    
+    const jobId = jobSelect.value;
+    const dbType = dbTypeSelect.value;
+    
+    if (!jobId) {
+        alert("Harap pilih Migration Job terlebih dahulu!");
+        return;
+    }
+    
+    const btn = document.getElementById('btn-query-connect');
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Connecting...`;
+    btn.disabled = true;
+    
+    try {
+        // Fetch job detail to get DB name
+        const resJob = await fetch(`${API_BASE}/jobs/${jobId}`);
+        if (!resJob.ok) throw new Error("Gagal memuat detail job");
+        const job = await resJob.json();
+        
+        // Cache metadata for autocomplete
+        const resSchema = await fetch(`${API_BASE}/db/schema?jobId=${jobId}&dbType=${dbType}`);
+        if (!resSchema.ok) {
+            throw new Error("Gagal memuat skema autocomplete: " + await resSchema.text());
+        }
+        queryConsoleSchema = await resSchema.json();
+        console.log("Database schema metadata loaded for autocomplete:", queryConsoleSchema);
+        
+        queryConsoleActiveJob = job;
+        queryConsoleActiveDbType = dbType;
+        
+        // Hide connection panel, show editor panel
+        document.getElementById('query-connect-panel').style.display = 'none';
+        document.getElementById('query-editor-main-panel').style.display = 'block';
+        
+        // Set info connection
+        const dbName = getDbName(dbType === 'target' ? (job.TargetConnectionString || job.targetConnectionString) : (job.SourceConnectionString || job.sourceConnectionString));
+        document.getElementById('query-active-conn-info').textContent = `${job.JobName || job.jobName} [${dbName}] (${dbType.toUpperCase()})`;
+        
+        // Initial highlight
+        syncSqlQueryHighlight();
+    } catch (err) {
+        alert("Error: " + err.message);
+    } finally {
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+    }
+}
+
+function disconnectQueryConsole() {
+    queryConsoleActiveJob = null;
+    queryConsoleSchema = { Objects: [], Columns: [] };
+    
+    document.getElementById('query-connect-panel').style.display = 'block';
+    document.getElementById('query-editor-main-panel').style.display = 'none';
+    document.getElementById('query-active-conn-info').textContent = "Belum terhubung";
+}
+
+function syncSqlQueryHighlight() {
+    const textarea = document.getElementById('query-sql-text');
+    const codeEl = document.getElementById('query-sql-highlight');
+    if (!textarea || !codeEl) return;
+    
+    let text = textarea.value;
+    
+    // Add a trailing space or newline if empty or ending with a newline
+    // to prevent Prism from ignoring final lines or collapsing the element height.
+    if (text.endsWith('\n')) {
+        text += ' ';
+    }
+    
+    codeEl.textContent = text;
+    
+    if (window.Prism) {
+        Prism.highlightElement(codeEl);
+    }
+}
+
+function syncQueryScroll() {
+    const textarea = document.getElementById('query-sql-text');
+    const pre = document.querySelector('.highlight-pre');
+    if (textarea && pre) {
+        pre.scrollTop = textarea.scrollTop;
+        pre.scrollLeft = textarea.scrollLeft;
+    }
+}
+
+// ============================================================================
+// SQL EDITOR AUTOCOMPLETE ENGINE (SSMS LITE STYLE)
+// ============================================================================
+let queryConsoleSchema = { Objects: [], Columns: [] };
+let activeQueryAutocompleteIndex = -1;
+let activeQuerySuggestions = [];
+
+async function loadQuerySchema() {
+    if (!activeJob) return;
+    const jobId = activeJob.Id || activeJob.id;
+    const dbType = document.getElementById('query-db-target').value;
+
+    const loader = document.getElementById('query-schema-loader');
+    if (loader) loader.style.display = 'inline-block';
+
+    try {
+        const res = await fetch(`${API_BASE}/db/schema?jobId=${jobId}&dbType=${dbType}`);
+        if (res.ok) {
+            queryConsoleSchema = await res.json();
+            console.log("Database schema metadata loaded for autocomplete:", queryConsoleSchema);
+        } else {
+            console.error("Gagal memuat skema untuk autocomplete:", await res.text());
+        }
+    } catch (err) {
+        console.error("Error memuat skema:", err);
+    } finally {
+        if (loader) loader.style.display = 'none';
+    }
+}
+
+const sqlKeywordsList = [
+    "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "JOIN", "ON",
+    "ORDER BY", "GROUP BY", "IN", "AND", "OR", "AS", "INTO", "VALUES", "SET",
+    "LEFT JOIN", "RIGHT JOIN", "INNER JOIN", "CROSS JOIN", "TOP", "DISTINCT", 
+    "COUNT", "SUM", "AVG", "MIN", "MAX", "HAVING", "LIKE", "IS NULL", "IS NOT NULL"
+];
+
+function handleQueryEditorInput(event) {
+    const textarea = event.target;
+    const selectionStart = textarea.selectionStart;
+    const textBeforeCursor = textarea.value.substring(0, selectionStart);
+    
+    // Get last word being typed (including dots for schema or table notation)
+    const match = textBeforeCursor.match(/[\w\.\[\]]+$/);
+    const lastWord = match ? match[0] : '';
+
+    showQueryAutocompleteFor(lastWord, textarea, false);
+    syncSqlQueryHighlight();
+}
+
+function showQueryAutocompleteFor(lastWord, textarea, forceShowAll = false) {
+    if (!lastWord && !forceShowAll) {
+        hideQueryAutocomplete();
+        return;
+    }
+
+    const box = document.getElementById('query-autocomplete-box');
+    if (!box) return;
+
+    let suggestions = [];
+
+    // Check if user is typing table.column notation (e.g. Customers. or Customers.Name)
+    if (lastWord && lastWord.includes('.')) {
+        const parts = lastWord.split('.');
+        const tableName = parts[parts.length - 2].replace(/[\[\]]/g, '').toLowerCase();
+        const colSearch = parts[parts.length - 1].toLowerCase();
+
+        // Find columns matching this table
+        if (queryConsoleSchema && queryConsoleSchema.Columns) {
+            const tableColumns = queryConsoleSchema.Columns.filter(c => 
+                (c.TableName || c.tableName || '').toLowerCase() === tableName
+            );
+            
+            suggestions = tableColumns
+                .filter(c => (c.ColumnName || c.columnName || '').toLowerCase().startsWith(colSearch))
+                .map(c => ({
+                    text: c.ColumnName || c.columnName,
+                    display: `${c.ColumnName || c.columnName} <span style="font-size:0.75rem; color:var(--text-muted);">(${c.DataType || c.dataType || 'column'})</span>`,
+                    type: 'column'
+                }));
+        }
+    } else {
+        const searchWord = lastWord ? lastWord.toLowerCase() : '';
+
+        // 1. Suggest SQL Keywords
+        const matchingKeywords = sqlKeywordsList
+            .filter(kw => !searchWord || kw.toLowerCase().startsWith(searchWord))
+            .map(kw => ({ text: kw, display: kw, type: 'keyword' }));
+
+        // 2. Suggest Schema Objects (Tables, Views, SPs, Functions)
+        let matchingObjects = [];
+        if (queryConsoleSchema && queryConsoleSchema.Objects) {
+            matchingObjects = queryConsoleSchema.Objects
+                .filter(obj => !searchWord || (obj.Name || obj.name || '').toLowerCase().startsWith(searchWord))
+                .map(obj => {
+                    const name = obj.Name || obj.name;
+                    const type = obj.Type || obj.type || 'OBJECT';
+                    let typeColor = 'var(--accent-teal)';
+                    if (type === 'PROCEDURE') typeColor = 'var(--accent-purple)';
+                    else if (type === 'FUNCTION') typeColor = 'var(--accent-indigo)';
+                    else if (type === 'VIEW') typeColor = '#f59e0b';
+
+                    return {
+                        text: name,
+                        display: `${name} <span class="badge-clean" style="font-size:0.7rem; padding:1px 4px; background:rgba(255,255,255,0.05); color:${typeColor}; border:1px solid ${typeColor};">${type}</span>`,
+                        type: type.toLowerCase()
+                    };
+                });
+        }
+
+        // 3. Suggest Columns (Generic, if typing any part of column name)
+        let matchingColumns = [];
+        if (queryConsoleSchema && queryConsoleSchema.Columns) {
+            // Keep unique column names for general suggestions
+            const uniqueCols = new Set();
+            queryConsoleSchema.Columns.forEach(c => {
+                const colName = c.ColumnName || c.columnName;
+                if (colName && (!searchWord || colName.toLowerCase().startsWith(searchWord))) {
+                    uniqueCols.add(colName);
+                }
+            });
+            matchingColumns = Array.from(uniqueCols).slice(0, 10).map(colName => ({
+                text: colName,
+                display: `${colName} <span style="font-size:0.75rem; color:var(--text-muted);">(Column)</span>`,
+                type: 'column'
+            }));
+        }
+
+        suggestions = [...matchingKeywords, ...matchingObjects, ...matchingColumns];
+    }
+
+    if (suggestions.length === 0) {
+        hideQueryAutocomplete();
+        return;
+    }
+
+    // Limit suggestions count to 15 for speed & readability
+    activeQuerySuggestions = suggestions.slice(0, 15);
+    activeQueryAutocompleteIndex = 0;
+    renderQueryAutocomplete();
+}
+
+function renderQueryAutocomplete() {
+    const box = document.getElementById('query-autocomplete-box');
+    if (!box) return;
+
+    box.innerHTML = activeQuerySuggestions.map((s, idx) => {
+        const isActive = idx === activeQueryAutocompleteIndex;
+        let icon = '<i class="fa-solid fa-key" style="color:#a8a29e; margin-right:0.4rem;"></i>';
+        if (s.type === 'table') icon = '<i class="fa-solid fa-table" style="color:var(--accent-teal); margin-right:0.4rem;"></i>';
+        else if (s.type === 'view') icon = '<i class="fa-solid fa-eye" style="color:#f59e0b; margin-right:0.4rem;"></i>';
+        else if (s.type === 'procedure') icon = '<i class="fa-solid fa-gears" style="color:var(--accent-purple); margin-right:0.4rem;"></i>';
+        else if (s.type === 'function') icon = '<i class="fa-solid fa-code" style="color:var(--accent-indigo); margin-right:0.4rem;"></i>';
+        else if (s.type === 'column') icon = '<i class="fa-solid fa-columns" style="color:var(--text-muted); margin-right:0.4rem;"></i>';
+
+        return `
+            <div class="table-autocomplete-option ${isActive ? 'active' : ''}" onclick="selectQueryAutocomplete(${idx})" style="display:flex; align-items:center; justify-content:space-between; padding:0.45rem 0.6rem;">
+                <span style="display:flex; align-items:center;">
+                    ${icon}
+                    <span>${s.display}</span>
+                </span>
+            </div>
+        `;
+    }).join('');
+
+    box.classList.add('active');
+
+    // Dynamically position suggestions box near the bottom of cursor
+    const container = document.querySelector('.code-editor-container');
+    if (container) {
+        // Position it absolute right below the editor container to prevent overflow:hidden clipping
+        box.style.top = `${container.offsetTop + container.offsetHeight}px`;
+        box.style.left = `${container.offsetLeft}px`;
+        box.style.width = `${container.offsetWidth}px`;
+    }
+}
+
+function handleQueryEditorKeydown(event) {
+    const box = document.getElementById('query-autocomplete-box');
+    
+    // Check for Ctrl + Space manual trigger
+    if (event.ctrlKey && (event.key === ' ' || event.code === 'Space')) {
+        event.preventDefault();
+        const selectionStart = event.target.selectionStart;
+        const textBeforeCursor = event.target.value.substring(0, selectionStart);
+        const match = textBeforeCursor.match(/[\w\.\[\]]+$/);
+        const lastWord = match ? match[0] : '';
+        showQueryAutocompleteFor(lastWord, event.target, true);
+        return;
+    }
+
+    if (!box || !box.classList.contains('active')) {
+        // Execute query on Ctrl+Enter
+        if (event.ctrlKey && event.key === 'Enter') {
+            event.preventDefault();
+            runQueryConsole();
+        }
+        return;
+    }
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        activeQueryAutocompleteIndex = (activeQueryAutocompleteIndex + 1) % activeQuerySuggestions.length;
+        renderQueryAutocomplete();
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        activeQueryAutocompleteIndex = (activeQueryAutocompleteIndex - 1 + activeQuerySuggestions.length) % activeQuerySuggestions.length;
+        renderQueryAutocomplete();
+    } else if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        selectQueryAutocomplete(activeQueryAutocompleteIndex);
+    } else if (event.key === 'Escape') {
+        event.preventDefault();
+        hideQueryAutocomplete();
+    }
+}
+
+function selectQueryAutocomplete(index) {
+    if (index < 0 || index >= activeQuerySuggestions.length) return;
+    const s = activeQuerySuggestions[index];
+
+    const textarea = document.getElementById('query-sql-text');
+    if (!textarea) return;
+
+    const selectionStart = textarea.selectionStart;
+    const textBeforeCursor = textarea.value.substring(0, selectionStart);
+    const textAfterCursor = textarea.value.substring(selectionStart);
+
+    // Find the word boundary before the cursor to replace it
+    const match = textBeforeCursor.match(/[\w\.\[\]]+$/);
+    const lastWord = match ? match[0] : '';
+    
+    let replacement = s.text;
+    
+    // If it's a dot notation, we only replace the column part
+    if (lastWord.includes('.')) {
+        const parts = lastWord.split('.');
+        parts[parts.length - 1] = s.text;
+        replacement = parts.join('.');
+    }
+
+    const newTextBefore = textBeforeCursor.substring(0, textBeforeCursor.length - lastWord.length) + replacement;
+    
+    textarea.value = newTextBefore + textAfterCursor;
+    textarea.selectionStart = textarea.selectionEnd = newTextBefore.length;
+    textarea.focus();
+
+    hideQueryAutocomplete();
+    syncSqlQueryHighlight();
+}
+
+function hideQueryAutocomplete() {
+    const box = document.getElementById('query-autocomplete-box');
+    if (box) {
+        box.classList.remove('active');
+    }
+    activeQuerySuggestions = [];
+    activeQueryAutocompleteIndex = -1;
+}
+
+function hideQueryAutocompleteDelayed() {
+    // Delay hiding to allow click events to register
+    setTimeout(hideQueryAutocomplete, 250);
+}
+
+// ── Schema Comparison Mock Logic & Diff Viewer ──────────────────────────────
+const schemaDummyDdl = {
+    "dbo.Customers": {
+        source: `CREATE TABLE dbo.Customers (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    CustomerName VARCHAR(100) NOT NULL,
+    EmailAddress VARCHAR(255) NULL, -- BARU (Ditambahkan di Source)
+    Balance DECIMAL(18,2) DEFAULT 0,
+    IsActive BIT DEFAULT 1,
+    CreatedAt DATETIME DEFAULT GETDATE()
+);`,
+        target: `CREATE TABLE dbo.Customers (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    CustomerName VARCHAR(100) NOT NULL,
+    -- EmailAddress KOLOM HILANG DI SINI!
+    Balance DECIMAL(18,2) DEFAULT 0,
+    IsActive BIT DEFAULT 1,
+    CreatedAt DATETIME DEFAULT GETDATE()
+);`,
+        sourceHighlights: { 3: "diff-added" },
+        targetHighlights: { 3: "diff-deleted" }
+    },
+    "dbo.Orders": {
+        source: `CREATE TABLE dbo.Orders (
+    OrderId INT PRIMARY KEY IDENTITY(100,1),
+    CustomerId INT NOT NULL,
+    OrderDate DATETIME DEFAULT GETDATE(),
+    TotalAmount DECIMAL(18,2) DEFAULT 0,
+    PromoCode VARCHAR(50) NULL, -- BARU (Ditambahkan di Source)
+    Status VARCHAR(20) DEFAULT 'PENDING'
+);`,
+        target: `CREATE TABLE dbo.Orders (
+    OrderId INT PRIMARY KEY IDENTITY(100,1),
+    CustomerId INT NOT NULL,
+    OrderDate DATETIME DEFAULT GETDATE(),
+    TotalAmount DECIMAL(18,2) DEFAULT 0,
+    -- PromoCode KOLOM HILANG DI SINI!
+    Status VARCHAR(20) DEFAULT 'PENDING'
+);`,
+        sourceHighlights: { 5: "diff-added" },
+        targetHighlights: { 5: "diff-deleted" }
+    },
+    "dbo.sp_GetCustomerReport": {
+        source: `CREATE PROCEDURE dbo.sp_GetCustomerReport
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- Menggunakan query baru dengan performa teroptimasi
+    SELECT c.Id, c.CustomerName, c.EmailAddress, 
+           ISNULL(SUM(o.TotalAmount), 0) AS TotalSpent
+    FROM dbo.Customers c
+    LEFT JOIN dbo.Orders o ON c.Id = o.CustomerId
+    WHERE c.IsActive = 1
+    GROUP BY c.Id, c.CustomerName, c.EmailAddress;
+END;`,
+        target: `CREATE PROCEDURE dbo.sp_GetCustomerReport
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- Query lama lambat tanpa filter IsActive & field EmailAddress
+    SELECT c.Id, c.CustomerName, 
+           ISNULL(SUM(o.TotalAmount), 0) AS TotalSpent
+    FROM dbo.Customers c
+    LEFT JOIN dbo.Orders o ON c.Id = o.CustomerId
+    GROUP BY c.Id, c.CustomerName;
+END;`,
+        sourceHighlights: { 5: "diff-added", 6: "diff-added", 9: "diff-added" },
+        targetHighlights: { 5: "diff-deleted", 8: "diff-deleted" }
+    },
+    "dbo.fn_CalculateTax": {
+        source: `CREATE FUNCTION dbo.fn_CalculateTax (
+    @Amount DECIMAL(18,2),
+    @TaxRate DECIMAL(5,2)
+)
+RETURNS DECIMAL(18,2)
+AS
+BEGIN
+    RETURN @Amount * (@TaxRate / 100.0);
+END;`,
+        target: `-- Objek tidak ditemukan di Target DB --`,
+        sourceHighlights: { 0: "diff-added", 1: "diff-added", 2: "diff-added", 3: "diff-added", 4: "diff-added", 5: "diff-added", 6: "diff-added", 7: "diff-added", 8: "diff-added", 9: "diff-added" },
+        targetHighlights: { 0: "diff-deleted" }
+    },
+    "dbo.CustomerAddresses": {
+        source: `CREATE TABLE dbo.CustomerAddresses (
+    AddressId INT PRIMARY KEY IDENTITY(1,1),
+    CustomerId INT NOT NULL,
+    StreetAddress VARCHAR(255) NOT NULL,
+    City VARCHAR(100) NOT NULL,
+    PostalCode VARCHAR(20) NULL
+);`,
+        target: `-- Objek tidak ditemukan di Target DB --`,
+        sourceHighlights: { 0: "diff-added", 1: "diff-added", 2: "diff-added", 3: "diff-added", 4: "diff-added", 5: "diff-added" },
+        targetHighlights: { 0: "diff-deleted" }
+    },
+    "dbo.InventoryLogs": {
+        source: `CREATE TABLE dbo.InventoryLogs (
+    LogId INT PRIMARY KEY IDENTITY(1,1),
+    ProductId INT NOT NULL,
+    ChangeQty INT NOT NULL,
+    LogDate DATETIME DEFAULT GETDATE()
+);`,
+        target: `-- Objek tidak ditemukan di Target DB --`,
+        sourceHighlights: { 0: "diff-added", 1: "diff-added", 2: "diff-added", 3: "diff-added", 4: "diff-added" },
+        targetHighlights: { 0: "diff-deleted" }
+    },
+    "dbo.SessionTokens": {
+        source: `CREATE TABLE dbo.SessionTokens (
+    TokenId INT PRIMARY KEY IDENTITY(1,1),
+    UserId INT NOT NULL,
+    Token VARCHAR(500) NOT NULL,
+    ExpiryDate DATETIME NOT NULL
+);`,
+        target: `-- Objek tidak ditemukan di Target DB --`,
+        sourceHighlights: { 0: "diff-added", 1: "diff-added", 2: "diff-added", 3: "diff-added", 4: "diff-added" },
+        targetHighlights: { 0: "diff-deleted" }
+    },
+    "dbo.sp_ProcessOrder": {
+        source: `CREATE PROCEDURE dbo.sp_ProcessOrder
+    @OrderId INT
+AS
+BEGIN
+    -- Validasi status dan kurangi stock produk
+    UPDATE dbo.Products 
+    SET Price = Price * 0.95 -- Diskon otomatis saat proses
+    WHERE ProductId IN (SELECT ProductId FROM dbo.Orders WHERE OrderId = @OrderId);
+END;`,
+        target: `CREATE PROCEDURE dbo.sp_ProcessOrder
+    @OrderId INT
+AS
+BEGIN
+    -- Query lama hanya melakukan update status order
+    UPDATE dbo.Orders SET Status = 'PROCESSED' WHERE OrderId = @OrderId;
+END;`,
+        sourceHighlights: { 4: "diff-added", 5: "diff-added", 6: "diff-added" },
+        targetHighlights: { 5: "diff-deleted" }
+    },
+    "dbo.sp_SyncInventory": {
+        source: `CREATE PROCEDURE dbo.sp_SyncInventory
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- Menggunakan join tabel log terbaru
+    UPDATE p SET p.Price = p.Price * 1.05
+    FROM dbo.Products p
+    JOIN dbo.InventoryLogs i ON p.ProductId = i.ProductId;
+END;`,
+        target: `CREATE PROCEDURE dbo.sp_SyncInventory
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- Kosong / belum terimplementasi logika sinkronisasinya
+END;`,
+        sourceHighlights: { 4: "diff-added", 5: "diff-added", 6: "diff-added" },
+        targetHighlights: { 4: "diff-deleted" }
+    },
+    "dbo.Products": {
+        source: `CREATE TABLE dbo.Products (
+    ProductId INT PRIMARY KEY IDENTITY(1,1),
+    ProductName VARCHAR(150) NOT NULL,
+    Price DECIMAL(18,2) NOT NULL
+);`,
+        target: `CREATE TABLE dbo.Products (
+    ProductId INT PRIMARY KEY IDENTITY(1,1),
+    ProductName VARCHAR(150) NOT NULL,
+    Price DECIMAL(18,2) NOT NULL
+);`,
+        sourceHighlights: {},
+        targetHighlights: {}
+    },
+    "dbo.Users": {
+        source: `CREATE TABLE dbo.Users (
+    UserId INT PRIMARY KEY IDENTITY(1,1),
+    Username VARCHAR(50) NOT NULL,
+    PasswordHash VARCHAR(256) NOT NULL,
+    IsActive BIT DEFAULT 1
+);`,
+        target: `CREATE TABLE dbo.Users (
+    UserId INT PRIMARY KEY IDENTITY(1,1),
+    Username VARCHAR(50) NOT NULL,
+    PasswordHash VARCHAR(256) NOT NULL,
+    IsActive BIT DEFAULT 1
+);`,
+        sourceHighlights: {},
+        targetHighlights: {}
+    },
+    "dbo.Payments": {
+        source: `CREATE TABLE dbo.Payments (
+    PaymentId INT PRIMARY KEY IDENTITY(1,1),
+    OrderId INT NOT NULL,
+    Amount DECIMAL(18,2) NOT NULL,
+    PaymentDate DATETIME DEFAULT GETDATE()
+);`,
+        target: `CREATE TABLE dbo.Payments (
+    PaymentId INT PRIMARY KEY IDENTITY(1,1),
+    OrderId INT NOT NULL,
+    Amount DECIMAL(18,2) NOT NULL,
+    PaymentDate DATETIME DEFAULT GETDATE()
+);`,
+        sourceHighlights: {},
+        targetHighlights: {}
+    },
+    "dbo.vw_ActiveCustomers": {
+        source: `CREATE VIEW dbo.vw_ActiveCustomers AS
+SELECT Id, CustomerName, EmailAddress 
+FROM dbo.Customers 
+WHERE IsActive = 1;`,
+        target: `CREATE VIEW dbo.vw_ActiveCustomers AS
+SELECT Id, CustomerName, EmailAddress 
+FROM dbo.Customers 
+WHERE IsActive = 1;`,
+        sourceHighlights: {},
+        targetHighlights: {}
+    },
+    "dbo.vw_MonthlySales": {
+        source: `CREATE VIEW dbo.vw_MonthlySales AS
+SELECT YEAR(OrderDate) AS SalesYear, MONTH(OrderDate) AS SalesMonth, SUM(TotalAmount) AS TotalRevenue
+FROM dbo.Orders
+GROUP BY YEAR(OrderDate), MONTH(OrderDate);`,
+        target: `CREATE VIEW dbo.vw_MonthlySales AS
+SELECT YEAR(OrderDate) AS SalesYear, MONTH(OrderDate) AS SalesMonth, SUM(TotalAmount) AS TotalRevenue
+FROM dbo.Orders
+GROUP BY YEAR(OrderDate), MONTH(OrderDate);`,
+        sourceHighlights: {},
+        targetHighlights: {}
+    },
+    "dbo.fn_GetDateOnly": {
+        source: `CREATE FUNCTION dbo.fn_GetDateOnly (@DateTime DATETIME)
+RETURNS DATE
+AS
+BEGIN
+    RETURN CONVERT(DATE, @DateTime);
+END;`,
+        target: `CREATE FUNCTION dbo.fn_GetDateOnly (@DateTime DATETIME)
+RETURNS DATE
+AS
+BEGIN
+    RETURN CONVERT(DATE, @DateTime);
+END;`,
+        sourceHighlights: {},
+        targetHighlights: {}
+    }
+};
+
+const schemaDummyResults = [
+    // Mismatch Tables (Exists on both, columns mismatch)
+    { name: "dbo.Customers", type: "Table", status: "Mismatch", info: "Kolom <code style='color: #f43f5e; font-family: Consolas;'>EmailAddress VARCHAR(255)</code> tidak ditemukan di Target DB.", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="openColumnSyncModal('dbo.Customers')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-teal); color: var(--accent-teal); background: rgba(0,173,181,0.05);"><i class="fa-solid fa-wand-magic-sparkles"></i> Sinkronisasi Kolom</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.Customers')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
+    { name: "dbo.Orders", type: "Table", status: "Mismatch", info: "Kolom <code style='color: #f43f5e; font-family: Consolas;'>PromoCode VARCHAR(50)</code> tidak ditemukan di Target DB.", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="openColumnSyncModal('dbo.Orders')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-teal); color: var(--accent-teal); background: rgba(0,173,181,0.05);"><i class="fa-solid fa-wand-magic-sparkles"></i> Sinkronisasi Kolom</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.Orders')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
+    
+    // Missing Tables (3 items as shown in stats card)
+    { name: "dbo.CustomerAddresses", type: "Table", status: "Missing", info: "Objek tidak ditemukan sama sekali di Target DB.", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.CustomerAddresses')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06);"><i class="fa-solid fa-plus"></i> Buat Baru</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.CustomerAddresses')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
+    { name: "dbo.InventoryLogs", type: "Table", status: "Missing", info: "Objek tidak ditemukan sama sekali di Target DB.", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.InventoryLogs')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06);"><i class="fa-solid fa-plus"></i> Buat Baru</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.InventoryLogs')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
+    { name: "dbo.SessionTokens", type: "Table", status: "Missing", info: "Objek tidak ditemukan sama sekali di Target DB.", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.SessionTokens')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06);"><i class="fa-solid fa-plus"></i> Buat Baru</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.SessionTokens')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
+
+    // Outdated SPs (3 items as shown in stats card)
+    { name: "dbo.sp_GetCustomerReport", type: "Stored Procedure", status: "Outdated", info: "Hash DDL berbeda (Script source memiliki modifikasi terbaru).", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="alert('Pembaruan Stored Procedure berhasil dieksekusi!')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);"><i class="fa-solid fa-arrows-spin"></i> Update SP</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.sp_GetCustomerReport')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
+    { name: "dbo.sp_ProcessOrder", type: "Stored Procedure", status: "Outdated", info: "Hash DDL berbeda (Script source memiliki modifikasi terbaru).", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="alert('Pembaruan Stored Procedure berhasil dieksekusi!')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);"><i class="fa-solid fa-arrows-spin"></i> Update SP</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.sp_ProcessOrder')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
+    { name: "dbo.sp_SyncInventory", type: "Stored Procedure", status: "Outdated", info: "Hash DDL berbeda (Script source memiliki modifikasi terbaru).", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="alert('Pembaruan Stored Procedure berhasil dieksekusi!')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);"><i class="fa-solid fa-arrows-spin"></i> Update SP</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.sp_SyncInventory')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
+
+    // Missing Function (1 item as shown in stats card)
+    { name: "dbo.fn_CalculateTax", type: "Function", status: "Missing", info: "Objek tidak ditemukan sama sekali di Target DB.", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.fn_CalculateTax')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06);"><i class="fa-solid fa-plus"></i> Buat Baru</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.fn_CalculateTax')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
+
+    // Match Objects (Identical structures)
+    { name: "dbo.Products", type: "Table", status: "Match", info: "Struktur skema identik 100%.", action: `<div style="display: flex; gap: 0.4rem; align-items: center;"><span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.Products')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--text-muted); color: var(--text-muted); background: transparent;"><i class="fa-solid fa-code-compare"></i> View DDL</button></div>` },
+    { name: "dbo.Users", type: "Table", status: "Match", info: "Struktur skema identik 100%.", action: `<div style="display: flex; gap: 0.4rem; align-items: center;"><span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.Users')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--text-muted); color: var(--text-muted); background: transparent;"><i class="fa-solid fa-code-compare"></i> View DDL</button></div>` },
+    { name: "dbo.Payments", type: "Table", status: "Match", info: "Struktur skema identik 100%.", action: `<div style="display: flex; gap: 0.4rem; align-items: center;"><span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.Payments')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--text-muted); color: var(--text-muted); background: transparent;"><i class="fa-solid fa-code-compare"></i> View DDL</button></div>` },
+    { name: "dbo.vw_ActiveCustomers", type: "View", status: "Match", info: "Struktur skema identik 100%.", action: `<div style="display: flex; gap: 0.4rem; align-items: center;"><span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.vw_ActiveCustomers')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--text-muted); color: var(--text-muted); background: transparent;"><i class="fa-solid fa-code-compare"></i> View DDL</button></div>` },
+    { name: "dbo.vw_MonthlySales", type: "View", status: "Match", info: "Struktur skema identik 100%.", action: `<div style="display: flex; gap: 0.4rem; align-items: center;"><span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.vw_MonthlySales')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--text-muted); color: var(--text-muted); background: transparent;"><i class="fa-solid fa-code-compare"></i> View DDL</button></div>` },
+    { name: "dbo.fn_GetDateOnly", type: "Function", status: "Match", info: "Struktur skema identik 100%.", action: `<div style="display: flex; gap: 0.4rem; align-items: center;"><span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.fn_GetDateOnly')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--text-muted); color: var(--text-muted); background: transparent;"><i class="fa-solid fa-code-compare"></i> View DDL</button></div>` }
+];
+
+// Dynamically generate the remaining objects to match the stats cards
+(function generateRemainingDummyObjects() {
+    // 1. Tables (Total: 45, 3 Missing, 2 Mismatch -> 40 Match)
+    const currentTables = schemaDummyResults.filter(o => o.type === 'Table');
+    const matchTablesNeeded = 40 - currentTables.filter(o => o.status === 'Match').length;
+    const additionalTables = [
+        "dbo.Logs", "dbo.AuditTrail", "dbo.Categories", "dbo.Settings", "dbo.Permissions", 
+        "dbo.Vendors", "dbo.Branches", "dbo.Departments", "dbo.Employees", "dbo.Salaries", 
+        "dbo.Transactions", "dbo.Accounts", "dbo.Ledgers", "dbo.Vouchers", "dbo.TaxRates", 
+        "dbo.Currencies", "dbo.Rates", "dbo.Invoices", "dbo.InvoiceItems", "dbo.Shipments", 
+        "dbo.ShipmentDetails", "dbo.Deliveries", "dbo.Suppliers", "dbo.Warehouse", "dbo.Stock", 
+        "dbo.StockHistory", "dbo.Notifications", "dbo.SystemConfig", "dbo.EmailTemplates", "dbo.JobQueue", 
+        "dbo.ErrorLogs", "dbo.Reports", "dbo.ReportSchedules", "dbo.Analytics", "dbo.UserFeedback", 
+        "dbo.ApiTokens", "dbo.ProductReviews", "dbo.AppLogs", "dbo.Metadata", "dbo.LookupValues"
+    ];
+    for (let i = 0; i < matchTablesNeeded && i < additionalTables.length; i++) {
+        const tableName = additionalTables[i];
+        if (!schemaDummyResults.find(o => o.name === tableName)) {
+            schemaDummyResults.push({
+                name: tableName,
+                type: "Table",
+                status: "Match",
+                info: "Struktur skema identik 100%.",
+                action: `<div style="display: flex; gap: 0.4rem; align-items: center;"><span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span><button class="btn btn-secondary" onclick="openSchemaDiffModal('${tableName}')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--text-muted); color: var(--text-muted); background: transparent;"><i class="fa-solid fa-code-compare"></i> View DDL</button></div>`
+            });
+            schemaDummyDdl[tableName] = {
+                source: `CREATE TABLE ${tableName} (\n    Id INT PRIMARY KEY IDENTITY(1,1),\n    Code VARCHAR(50) NOT NULL,\n    IsActive BIT DEFAULT 1,\n    ModifiedAt DATETIME DEFAULT GETDATE()\n);`,
+                target: `CREATE TABLE ${tableName} (\n    Id INT PRIMARY KEY IDENTITY(1,1),\n    Code VARCHAR(50) NOT NULL,\n    IsActive BIT DEFAULT 1,\n    ModifiedAt DATETIME DEFAULT GETDATE()\n);`,
+                sourceHighlights: {},
+                targetHighlights: {}
+            };
+        }
+    }
+
+    // 2. Views (Total: 12, 12 Match)
+    const currentViews = schemaDummyResults.filter(o => o.type === 'View');
+    const matchViewsNeeded = 12 - currentViews.filter(o => o.status === 'Match').length;
+    for (let i = 1; i <= matchViewsNeeded; i++) {
+        const viewName = `dbo.vw_Report_Summary_0${i}`;
+        schemaDummyResults.push({
+            name: viewName,
+            type: "View",
+            status: "Match",
+            info: "Struktur skema identik 100%.",
+            action: `<div style="display: flex; gap: 0.4rem; align-items: center;"><span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span><button class="btn btn-secondary" onclick="openSchemaDiffModal('${viewName}')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--text-muted); color: var(--text-muted); background: transparent;"><i class="fa-solid fa-code-compare"></i> View DDL</button></div>`
+        });
+        schemaDummyDdl[viewName] = {
+            source: `CREATE VIEW ${viewName} AS\nSELECT COUNT(*) AS TotalCount FROM dbo.Customers;`,
+            target: `CREATE VIEW ${viewName} AS\nSELECT COUNT(*) AS TotalCount FROM dbo.Customers;`,
+            sourceHighlights: {},
+            targetHighlights: {}
+        };
+    }
+
+    // 3. Stored Procedures (Total: 18, 3 Outdated -> 15 Match)
+    const currentSps = schemaDummyResults.filter(o => o.type === 'Stored Procedure');
+    const matchSpsNeeded = 15 - currentSps.filter(o => o.status === 'Match').length;
+    for (let i = 1; i <= matchSpsNeeded; i++) {
+        const spName = `dbo.sp_Get_Data_Utility_0${i}`;
+        schemaDummyResults.push({
+            name: spName,
+            type: "Stored Procedure",
+            status: "Match",
+            info: "Struktur skema identik 100%.",
+            action: `<div style="display: flex; gap: 0.4rem; align-items: center;"><span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span><button class="btn btn-secondary" onclick="openSchemaDiffModal('${spName}')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--text-muted); color: var(--text-muted); background: transparent;"><i class="fa-solid fa-code-compare"></i> View DDL</button></div>`
+        });
+        schemaDummyDdl[spName] = {
+            source: `CREATE PROCEDURE ${spName}\nAS\nBEGIN\n    SET NOCOUNT ON;\n    SELECT 1;\nEND;`,
+            target: `CREATE PROCEDURE ${spName}\nAS\nBEGIN\n    SET NOCOUNT ON;\n    SELECT 1;\nEND;`,
+            sourceHighlights: {},
+            targetHighlights: {}
+        };
+    }
+
+    // 4. Functions (Total: 8, 1 Missing -> 7 Match)
+    const currentFuncs = schemaDummyResults.filter(o => o.type === 'Function');
+    const matchFuncsNeeded = 7 - currentFuncs.filter(o => o.status === 'Match').length;
+    for (let i = 1; i <= matchFuncsNeeded; i++) {
+        const funcName = `dbo.fn_Get_Formatted_Date_0${i}`;
+        schemaDummyResults.push({
+            name: funcName,
+            type: "Function",
+            status: "Match",
+            info: "Struktur skema identik 100%.",
+            action: `<div style="display: flex; gap: 0.4rem; align-items: center;"><span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span><button class="btn btn-secondary" onclick="openSchemaDiffModal('${funcName}')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--text-muted); color: var(--text-muted); background: transparent;"><i class="fa-solid fa-code-compare"></i> View DDL</button></div>`
+        });
+        schemaDummyDdl[funcName] = {
+            source: `CREATE FUNCTION ${funcName} (@InputDate DATETIME)\nRETURNS VARCHAR(50)\nAS\nBEGIN\n    RETURN CONVERT(VARCHAR(50), @InputDate, 120);\nEND;`,
+            target: `CREATE FUNCTION ${funcName} (@InputDate DATETIME)\nRETURNS VARCHAR(50)\nAS\nBEGIN\n    RETURN CONVERT(VARCHAR(50), @InputDate, 120);\nEND;`,
+            sourceHighlights: {},
+            targetHighlights: {}
+        };
+    }
+})();
+
+function runSchemaComparison() {
+    const btn = document.querySelector('#inner-content-schema button[onclick="runSchemaComparison()"]');
+    if (!btn) return;
+    
+    const originalText = btn.innerHTML;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Memindai Skema...`;
+    btn.disabled = true;
+
+    const tbody = document.getElementById('schema-comparison-tbody');
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" style="color: var(--text-muted); text-align: center; padding: 3rem;">
+                    <i class="fa-solid fa-spinner fa-spin" style="font-size: 2.2rem; margin-bottom: 0.75rem; display: block; color: var(--accent-teal);"></i>
+                    Sedang membandingkan skema database... Harap tunggu...
+                </td>
+            </tr>
+        `;
+    }
+
+    setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        
+        renderSchemaComparisonTable();
+        
+        alert("Pemindaian skema selesai! Berhasil membandingkan Source DB vs Target DB.");
+    }, 1500);
+}
+
+function renderSchemaComparisonTable() {
+    const tbody = document.getElementById('schema-comparison-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = schemaDummyResults.map(item => {
+        let statusBadge = `<span class="schema-card-status match"><i class="fa-solid fa-circle-check"></i> Match</span>`;
+        if (item.status === 'Mismatch') {
+            statusBadge = `<span class="schema-card-status mismatch"><i class="fa-solid fa-circle-exclamation"></i> Mismatch</span>`;
+        } else if (item.status === 'Outdated') {
+            statusBadge = `<span class="schema-card-status mismatch" style="background: rgba(139,92,246,0.1); color: var(--accent-purple);"><i class="fa-solid fa-circle-exclamation"></i> Outdated</span>`;
+        } else if (item.status === 'Missing') {
+            statusBadge = `<span class="schema-card-status mismatch" style="background: rgba(99,102,241,0.1); color: var(--accent-indigo);"><i class="fa-solid fa-circle-exclamation"></i> Missing</span>`;
+        }
+
+        return `
+            <tr data-status="${item.status}">
+                <td class="row-num" style="text-align: center; font-size: 0.8rem;"></td>
+                <td><strong>${item.name}</strong></td>
+                <td>${item.type}</td>
+                <td>${statusBadge}</td>
+                <td>${item.info}</td>
+                <td>${item.action}</td>
+            </tr>
+        `;
+    }).join('');
+
+    // Apply filter immediately after rendering
+    toggleSchemaMatchVisibility();
+}
+
+function markObjectAsSynced(objName) {
+    // 1. Update schemaDummyResults status to Match
+    const item = schemaDummyResults.find(o => o.name === objName);
+    if (!item) return;
+
+    const oldStatus = item.status;
+    const itemType = item.type;
+
+    item.status = "Match";
+    item.info = "Struktur skema identik 100%.";
+    item.action = `<div style="display: flex; gap: 0.4rem; align-items: center;"><span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 0.5rem;">Tidak butuh aksi</span><button class="btn btn-secondary" onclick="openSchemaDiffModal('${objName}')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--text-muted); color: var(--text-muted); background: transparent;"><i class="fa-solid fa-code-compare"></i> View DDL</button></div>`;
+
+    // 2. Align DDL in dummy storage
+    if (schemaDummyDdl[objName]) {
+        schemaDummyDdl[objName].target = schemaDummyDdl[objName].source;
+        schemaDummyDdl[objName].targetHighlights = {};
+        schemaDummyDdl[objName].sourceHighlights = {};
+    }
+
+    // 3. Update stats cards counters
+    updateSchemaStatsCards(oldStatus, itemType);
+
+    // 4. Re-render table body
+    renderSchemaComparisonTable();
+}
+
+function updateSchemaStatsCards(oldStatus, itemType) {
+    if (oldStatus === 'Match') return;
+
+    const cards = document.querySelectorAll('.schema-summary-card');
+    if (cards.length < 4) return;
+
+    let cardIndex = -1;
+    if (itemType === 'Table') cardIndex = 0;
+    else if (itemType === 'View') cardIndex = 1;
+    else if (itemType === 'Stored Procedure') cardIndex = 2;
+    else if (itemType === 'Function') cardIndex = 3;
+
+    if (cardIndex === -1) return;
+    const card = cards[cardIndex];
+
+    if (itemType === 'Table') {
+        const valSpan = card.querySelector('.schema-card-value');
+        const statusSpan = card.querySelector('.schema-card-status');
+        if (oldStatus === 'Missing' && valSpan && statusSpan) {
+            let text = valSpan.innerHTML;
+            let match = text.match(/(\d+)\s*<span[^>]*>vs<\/span>\s*(\d+)/);
+            if (match) {
+                let src = parseInt(match[1]);
+                let tgt = parseInt(match[2]) + 1;
+                valSpan.innerHTML = `${src} <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> ${tgt}`;
+                
+                let missingCount = src - tgt;
+                if (missingCount > 0) {
+                    statusSpan.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${missingCount} Missing`;
+                } else {
+                    statusSpan.className = 'schema-card-status match';
+                    statusSpan.innerHTML = `<i class="fa-solid fa-circle-check"></i> Match`;
+                }
+            }
+        }
+    } else if (itemType === 'Stored Procedure') {
+        const statusSpan = card.querySelector('.schema-card-status');
+        if (statusSpan) {
+            let text = statusSpan.textContent.trim();
+            let count = parseInt(text);
+            if (!isNaN(count) && count > 0) {
+                count--;
+                if (count > 0) {
+                    statusSpan.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${count} Outdated`;
+                } else {
+                    statusSpan.className = 'schema-card-status match';
+                    statusSpan.innerHTML = `<i class="fa-solid fa-circle-check"></i> Match`;
+                }
+            }
+        }
+    } else if (itemType === 'Function') {
+        const valSpan = card.querySelector('.schema-card-value');
+        const statusSpan = card.querySelector('.schema-card-status');
+        if (oldStatus === 'Missing' && valSpan && statusSpan) {
+            valSpan.innerHTML = `8 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 8`;
+            statusSpan.className = 'schema-card-status match';
+            statusSpan.innerHTML = `<i class="fa-solid fa-circle-check"></i> Match`;
+        }
+    }
+}
+
+function toggleSchemaMatchVisibility() {
+    applySchemaFilters();
+}
+
+function applySchemaFilters() {
+    const searchInput = document.getElementById('schema-search');
+    const typeFilter = document.getElementById('schema-filter-type');
+    const statusFilter = document.getElementById('schema-filter-status');
+    const matchCheckbox = document.getElementById('schema-filter-match');
+
+    const searchVal = searchInput ? (searchInput.value || '').toLowerCase().trim() : '';
+    const typeVal = typeFilter ? typeFilter.value : 'ALL';
+    const statusVal = statusFilter ? statusFilter.value : 'ALL';
+    const showMatch = matchCheckbox ? matchCheckbox.checked : true;
+
+    const rows = document.querySelectorAll('#schema-comparison-tbody tr[data-status]');
+    rows.forEach(row => {
+        const name = (row.cells[1].textContent || '').toLowerCase();
+        const type = row.cells[2].textContent;
+        const status = row.getAttribute('data-status');
+
+        let matchesSearch = name.includes(searchVal);
+        let matchesType = (typeVal === 'ALL' || type === typeVal);
+        let matchesStatus = (statusVal === 'ALL' || status === statusVal);
+        
+        // Respect the Show Match checkbox
+        if (status === 'Match' && !showMatch) {
+            matchesStatus = false;
+        }
+
+        if (matchesSearch && matchesType && matchesStatus) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+// ── Column Sync Detail & Modal Logic ──────────────────────────────────────────
+const columnSyncDetails = {
+    "dbo.Customers": {
+        before: [
+            { name: "Id", type: "INT" },
+            { name: "CustomerName", type: "VARCHAR(100)" },
+            { name: "Balance", type: "DECIMAL(18,2)" },
+            { name: "IsActive", type: "BIT" },
+            { name: "CreatedAt", type: "DATETIME" }
+        ],
+        after: [
+            { name: "Id", type: "INT" },
+            { name: "CustomerName", type: "VARCHAR(100)" },
+            { name: "EmailAddress", type: "VARCHAR(255)", isNew: true },
+            { name: "Balance", type: "DECIMAL(18,2)" },
+            { name: "IsActive", type: "BIT" },
+            { name: "CreatedAt", type: "DATETIME" }
+        ],
+        sql: `ALTER TABLE dbo.Customers ADD EmailAddress VARCHAR(255) NULL;`
+    },
+    "dbo.Orders": {
+        before: [
+            { name: "OrderId", type: "INT" },
+            { name: "CustomerId", type: "INT" },
+            { name: "OrderDate", type: "DATETIME" },
+            { name: "TotalAmount", type: "DECIMAL(18,2)" },
+            { name: "Status", type: "VARCHAR(20)" }
+        ],
+        after: [
+            { name: "OrderId", type: "INT" },
+            { name: "CustomerId", type: "INT" },
+            { name: "OrderDate", type: "DATETIME" },
+            { name: "TotalAmount", type: "DECIMAL(18,2)" },
+            { name: "PromoCode", type: "VARCHAR(50)", isNew: true },
+            { name: "Status", type: "VARCHAR(20)" }
+        ],
+        sql: `ALTER TABLE dbo.Orders ADD PromoCode VARCHAR(50) NULL;`
+    }
+};
+
+function openColumnSyncModal(tableName) {
+    const detail = columnSyncDetails[tableName];
+    if (!detail) {
+        alert("Detail sinkronisasi kolom untuk " + tableName + " tidak tersedia.");
+        return;
+    }
+
+    const modal = document.getElementById('column-sync-modal');
+    if (!modal) return;
+
+    // Set title
+    const titleEl = document.getElementById('column-sync-title');
+    if (titleEl) {
+        titleEl.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent-teal);"></i> Rencana Sinkronisasi Kolom: <span style="color: var(--accent-teal);">${tableName}</span>`;
+    }
+
+    // Populate Before Table
+    const beforeTbody = document.getElementById('column-sync-before-tbody');
+    if (beforeTbody) {
+        beforeTbody.innerHTML = detail.before.map(col => `
+            <tr>
+                <td><code>${col.name}</code></td>
+                <td><span style="color: var(--text-muted); font-size: 0.78rem;">${col.type}</span></td>
+            </tr>
+        `).join('');
+    }
+
+    // Populate After Table
+    const afterTbody = document.getElementById('column-sync-after-tbody');
+    if (afterTbody) {
+        afterTbody.innerHTML = detail.after.map(col => {
+            const style = col.isNew ? `style="background: rgba(46, 160, 67, 0.15); color: #3fb950; font-weight: bold;"` : '';
+            const badge = col.isNew ? ` <span class="schema-card-status match" style="padding: 1px 4px; font-size: 0.65rem; margin-left: 0.25rem;"><i class="fa-solid fa-plus"></i> BARU</span>` : '';
+            return `
+                <tr ${style}>
+                    <td><code>${col.name}</code>${badge}</td>
+                    <td><span style="font-size: 0.78rem;">${col.type}</span></td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // Populate SQL Script
+    const sqlCode = document.getElementById('column-sync-sql');
+    if (sqlCode) {
+        sqlCode.textContent = detail.sql;
+        if (window.Prism) Prism.highlightElement(sqlCode);
+    }
+
+    // Configure execute button
+    const execBtn = document.getElementById('btn-execute-column-sync');
+    if (execBtn) {
+        execBtn.onclick = () => {
+            alert('Sinkronisasi kolom untuk tabel ' + tableName + ' berhasil dieksekusi secara sukses!');
+            closeColumnSyncModal();
+            markObjectAsSynced(tableName);
+        };
+    }
+
+    // Show modal
+    modal.classList.add('active');
+}
+
+function closeColumnSyncModal() {
+    const modal = document.getElementById('column-sync-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+function openSchemaDiffModal(objName) {
+    const ddl = schemaDummyDdl[objName];
+    if (!ddl) {
+        alert("Data DDL untuk objek " + objName + " tidak ditemukan!");
+        return;
+    }
+
+    const modal = document.getElementById('schema-diff-modal');
+    if (!modal) return;
+
+    // Set title
+    const titleEl = document.getElementById('schema-diff-title');
+    if (titleEl) {
+        titleEl.innerHTML = `<i class="fa-solid fa-code-compare" style="color: var(--accent-purple);"></i> Perbandingan DDL: <span style="color: var(--accent-teal);">${objName}</span>`;
+    }
+
+    // Render source side
+    renderDiffSide('schema-diff-source', ddl.source, ddl.sourceHighlights);
+
+    // Render target side
+    renderDiffSide('schema-diff-target', ddl.target, ddl.targetHighlights);
+
+    // Apply button configuration
+    const applyBtn = document.getElementById('btn-schema-diff-apply');
+    if (applyBtn) {
+        if (objName === 'dbo.fn_CalculateTax' || ddl.target.includes('tidak ditemukan')) {
+            applyBtn.innerHTML = `<i class="fa-solid fa-plus"></i> Buat di Target DB`;
+            applyBtn.onclick = () => {
+                alert('Objek ' + objName + ' berhasil dibuat di database target!');
+                closeSchemaDiffModal();
+                markObjectAsSynced(objName);
+            };
+            applyBtn.style.display = 'inline-block';
+        } else if (objName === 'dbo.Products' || (ddl.source === ddl.target)) {
+            applyBtn.style.display = 'none'; // Identik
+        } else {
+            applyBtn.innerHTML = `<i class="fa-solid fa-arrows-spin"></i> Sinkronisasikan Target DDL`;
+            applyBtn.onclick = () => {
+                alert('Definisi DDL target untuk ' + objName + ' berhasil disinkronkan dengan Source DB!');
+                closeSchemaDiffModal();
+                markObjectAsSynced(objName);
+            };
+            applyBtn.style.display = 'inline-block';
+        }
+    }
+
+    // Show modal
+    modal.classList.add('active');
+}
+
+function closeSchemaDiffModal() {
+    const modal = document.getElementById('schema-diff-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        const modalContent = modal.querySelector('.modal-content');
+        if (modalContent) modalContent.classList.remove('maximized');
+        const maximizeBtn = document.getElementById('btn-schema-diff-maximize');
+        if (maximizeBtn) {
+            maximizeBtn.innerHTML = `<i class="fa-solid fa-maximize"></i>`;
+            maximizeBtn.title = `Maksimalkan Ukuran`;
+        }
+    }
+}
+
+function toggleSchemaDiffMaximize() {
+    const modal = document.getElementById('schema-diff-modal');
+    if (!modal) return;
+    const modalContent = modal.querySelector('.modal-content');
+    const maximizeBtn = document.getElementById('btn-schema-diff-maximize');
+    if (!modalContent || !maximizeBtn) return;
+
+    modalContent.classList.toggle('maximized');
+    
+    if (modalContent.classList.contains('maximized')) {
+        maximizeBtn.innerHTML = `<i class="fa-solid fa-minimize"></i>`;
+        maximizeBtn.title = `Pulihkan Ukuran`;
+    } else {
+        maximizeBtn.innerHTML = `<i class="fa-solid fa-maximize"></i>`;
+        maximizeBtn.title = `Maksimalkan Ukuran`;
+    }
+}
+
+function renderDiffSide(containerId, codeText, highlights) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const lines = codeText.split('\n');
+    let html = '';
+    
+    lines.forEach((line, index) => {
+        // Highlight this individual line with Prism
+        const highlighted = Prism.highlight(line, Prism.languages.sql || {}, 'sql');
+        const highlightClass = highlights && highlights[index] ? highlights[index] : '';
+        
+        // Escape empty lines for rendering space
+        const displayLine = line.trim() === '' ? '&nbsp;' : highlighted;
+        
+        html += `
+            <div class="diff-line-row ${highlightClass}">
+                <span class="diff-line-num">${index + 1}</span>
+                <span class="diff-line-code">${displayLine}</span>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+// ── Query Console Mock Logic ──────────────────────────────────────────────
+const queryConsoleDummyResults = {
+    "dbo.Customers": {
+        headers: ["Id", "CustomerName", "EmailAddress", "Balance", "IsActive"],
+        rows: [
+            [1, "Rasimin", "rasimin@hibank.co.id", 50000000.00, "True"],
+            [2, "Budi", "budi@qnb.co.id", 12500000.50, "True"],
+            [3, "Siti", "siti@bankqnb.co.id", 0.00, "False"],
+            [4, "Agus", "agus@hibank.co.id", 8750000.00, "True"],
+            [5, "Dewi", "dewi@hibank.co.id", 150000000.00, "True"]
+        ]
+    },
+    "dbo.Orders": {
+        headers: ["OrderId", "CustomerId", "OrderDate", "TotalAmount", "Status"],
+        rows: [
+            [101, 1, "2026-05-10 10:30:15", 1500000.00, "PAID"],
+            [102, 2, "2026-05-12 14:22:10", 350000.00, "SHIPPED"],
+            [103, 1, "2026-05-15 09:12:00", 2400000.00, "PAID"],
+            [104, 4, "2026-05-18 16:45:30", 120000.00, "PENDING"],
+            [105, 5, "2026-05-20 11:05:00", 890000.00, "CANCELLED"]
+        ]
+    }
+};
+
+function runQueryConsole() {
+    const queryText = (document.getElementById('query-sql-text').value || '').trim();
+    if (!queryText) {
+        alert("Harap masukkan query SQL!");
+        return;
+    }
+
+    const resultsBox = document.getElementById('query-results-box');
+    const thead = document.getElementById('query-thead');
+    const tbody = document.getElementById('query-tbody');
+    const statusText = document.getElementById('query-status-text');
+    const rowsCount = document.getElementById('query-rows-count');
+
+    // Simple parser to pick dummy table
+    let key = "dbo.Customers";
+    if (queryText.toLowerCase().includes("orders")) {
+        key = "dbo.Orders";
+    }
+
+    const data = queryConsoleDummyResults[key];
+
+    thead.innerHTML = `<tr>${data.headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+    tbody.innerHTML = data.rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('');
+
+    statusText.innerText = `Query berhasil dijalankan pada database ${queryConsoleActiveDbType === 'target' ? 'TargetDB' : 'SourceDB'}.`;
+    rowsCount.innerText = `${data.rows.length} baris ditampilkan (8ms)`;
+    resultsBox.style.display = 'block';
+}
+
+function clearQueryConsole() {
+    document.getElementById('query-sql-text').value = '';
+    document.getElementById('query-results-box').style.display = 'none';
+}
+
+function exportQueryResults() {
+    alert("Ekspor CSV berhasil! File 'query_results.csv' telah diunduh.");
+}
+
+// ── Settings Save Logic ───────────────────────────────────────────────────
+function saveGlobalSettings() {
+    const connTimeout = document.getElementById('set-conn-timeout').value;
+    const bulkTimeout = document.getElementById('set-bulk-timeout').value;
+    const batchSize = document.getElementById('set-batch-size').value;
+    const threads = document.getElementById('set-parallel-threads').value;
+    const autoBackup = document.getElementById('set-auto-backup').checked;
+    const enableConstraints = document.getElementById('set-enable-constraints').checked;
+    const autoScroll = document.getElementById('set-auto-scroll').checked;
+
+    const config = { connTimeout, bulkTimeout, batchSize, threads, autoBackup, enableConstraints, autoScroll };
+    localStorage.setItem('dbmigrator_global_settings', JSON.stringify(config));
+    alert("Konfigurasi global berhasil disimpan secara aman!");
+}
+
+// Load settings from localStorage on load if exists
+document.addEventListener('DOMContentLoaded', () => {
+    const saved = localStorage.getItem('dbmigrator_global_settings');
+    if (saved) {
+        try {
+            const config = JSON.parse(saved);
+            if (document.getElementById('set-conn-timeout')) document.getElementById('set-conn-timeout').value = config.connTimeout || 30;
+            if (document.getElementById('set-bulk-timeout')) document.getElementById('set-bulk-timeout').value = config.bulkTimeout || 600;
+            if (document.getElementById('set-batch-size')) document.getElementById('set-batch-size').value = config.batchSize || 5000;
+            if (document.getElementById('set-parallel-threads')) document.getElementById('set-parallel-threads').value = config.threads || 4;
+            if (document.getElementById('set-auto-backup')) document.getElementById('set-auto-backup').checked = config.autoBackup !== false;
+            if (document.getElementById('set-enable-constraints')) document.getElementById('set-enable-constraints').checked = config.enableConstraints !== false;
+            if (document.getElementById('set-auto-scroll')) document.getElementById('set-auto-scroll').checked = config.autoScroll !== false;
+        } catch (e) {
+            console.error("Gagal memuat konfigurasi tersimpan:", e);
+        }
+    }
+});
+

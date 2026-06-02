@@ -7,6 +7,7 @@
     <meta name="description" content="Dynamic Metadata-Driven SQL Server Database Migration Tool — kelola migrasi data dan objek DDL antar database secara visual.">
     <link rel="stylesheet" href="style.css?v=3.6">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
 
@@ -38,9 +39,25 @@
     </header>
 
     <!-- ================================================================ -->
-    <!-- MAIN CONTENT — Single Layout (satu dashboard, tidak ada top-tabs)-->
+    <!-- TOP NAVIGATION MENU BAR -->
     <!-- ================================================================ -->
-    <div class="dashboard-grid">
+    <nav class="top-nav">
+        <button class="nav-item active" id="main-nav-migration" onclick="switchMainTab('migration')">
+            <i class="fa-solid fa-route"></i> Migration
+        </button>
+        <button class="nav-item" id="main-nav-query" onclick="switchMainTab('query')">
+            <i class="fa-solid fa-terminal"></i> Query Console
+        </button>
+        <button class="nav-item" id="main-nav-settings" onclick="switchMainTab('settings')">
+            <i class="fa-solid fa-sliders"></i> Settings
+        </button>
+    </nav>
+
+    <!-- ================================================================ -->
+    <!-- MAIN CONTENT SCREENS -->
+    <!-- ================================================================ -->
+    <div id="main-screen-migration" class="main-screen">
+        <div class="dashboard-grid">
 
         <!-- ============================================================ -->
         <!-- LEFT PANEL: Unified Job List + Form                          -->
@@ -174,6 +191,10 @@
                         <button id="inner-tab-clean" onclick="switchInnerTab('clean')" class="book-tab" title="Clean Target Table" aria-label="Clean Target Table">
                             <i class="fa-solid fa-broom"></i>
                             <span>Clean Target Table</span>
+                        </button>
+                        <button id="inner-tab-schema" onclick="switchInnerTab('schema')" class="book-tab" title="Schema Comparison" aria-label="Schema Comparison">
+                            <i class="fa-solid fa-diagram-project"></i>
+                            <span>Schema Comparison</span>
                         </button>
                         <button id="inner-tab-tools" onclick="switchInnerTab('tools')" class="book-tab" title="Developer Tools" aria-label="Developer Tools">
                             <i class="fa-solid fa-wrench"></i>
@@ -456,12 +477,117 @@
                         </div>
 
                         <!-- ===================================================== -->
+                        <!-- INNER CONTENT: SCHEMA COMPARISON                       -->
+                        <!-- ===================================================== -->
+                        <div id="inner-content-schema" style="display: none; margin-top: 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-flat); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fa-solid fa-diagram-project" style="color: var(--accent-teal);"></i>
+                                    <h3 style="margin: 0; font-size: 1.15rem; color: #ffffff;">Database Schema Comparison</h3>
+                                </div>
+                                <button class="btn btn-primary" onclick="runSchemaComparison()" style="width: auto; padding: 0.5rem 1.25rem;">
+                                    <i class="fa-solid fa-arrows-rotate"></i> Jalankan Pemindaian Skema
+                                </button>
+                            </div>
+
+                            <!-- Stats grid -->
+                            <div class="schema-summary-grid">
+                                <div class="schema-summary-card">
+                                    <div class="schema-card-title">Tabel (Tables)</div>
+                                    <div class="schema-card-stats">
+                                        <span class="schema-card-value" style="color: #ffffff;">45 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 42</span>
+                                        <span class="schema-card-status mismatch"><i class="fa-solid fa-triangle-exclamation"></i> 3 Missing</span>
+                                    </div>
+                                </div>
+                                <div class="schema-summary-card">
+                                    <div class="schema-card-title">Views</div>
+                                    <div class="schema-card-stats">
+                                        <span class="schema-card-value" style="color: #ffffff;">12 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 12</span>
+                                        <span class="schema-card-status match"><i class="fa-solid fa-circle-check"></i> Match</span>
+                                    </div>
+                                </div>
+                                <div class="schema-summary-card">
+                                    <div class="schema-card-title">Stored Procedures</div>
+                                    <div class="schema-card-stats">
+                                        <span class="schema-card-value" style="color: #ffffff;">18 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 15</span>
+                                        <span class="schema-card-status mismatch"><i class="fa-solid fa-triangle-exclamation"></i> 3 Outdated</span>
+                                    </div>
+                                </div>
+                                <div class="schema-summary-card">
+                                    <div class="schema-card-title">Functions</div>
+                                    <div class="schema-card-stats">
+                                        <span class="schema-card-value" style="color: #ffffff;">8 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 7</span>
+                                        <span class="schema-card-status mismatch"><i class="fa-solid fa-triangle-exclamation"></i> 1 Missing</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Filter options -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; gap: 1rem; font-size: 0.82rem; flex-wrap: wrap;">
+                                <div style="display: flex; gap: 0.75rem; align-items: center; flex: 1; min-width: 300px;">
+                                    <!-- Search Input -->
+                                    <div style="position: relative; flex: 1; max-width: 250px;">
+                                        <input type="text" id="schema-search" oninput="applySchemaFilters()" placeholder="Cari nama objek..." class="form-control" style="padding-left: 2.25rem; font-size: 0.82rem; height: 34px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); color: #fff; width: 100%;">
+                                        <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.8rem;"></i>
+                                    </div>
+                                    <!-- Type Filter -->
+                                    <select id="schema-filter-type" onchange="applySchemaFilters()" class="form-control" style="font-size: 0.82rem; height: 34px; border-radius: 6px; background: #0d0f14; border: 1px solid var(--border-flat); padding: 0 0.5rem; color: #fff; width: 140px;">
+                                        <option value="ALL">Semua Tipe</option>
+                                        <option value="Table">Table</option>
+                                        <option value="View">View</option>
+                                        <option value="Stored Procedure">Stored Procedure</option>
+                                        <option value="Function">Function</option>
+                                    </select>
+                                    <!-- Status Filter -->
+                                    <select id="schema-filter-status" onchange="applySchemaFilters()" class="form-control" style="font-size: 0.82rem; height: 34px; border-radius: 6px; background: #0d0f14; border: 1px solid var(--border-flat); padding: 0 0.5rem; color: #fff; width: 140px;">
+                                        <option value="ALL">Semua Status</option>
+                                        <option value="Match">Match</option>
+                                        <option value="Mismatch">Mismatch</option>
+                                        <option value="Outdated">Outdated</option>
+                                        <option value="Missing">Missing</option>
+                                    </select>
+                                </div>
+                                <label style="display: inline-flex; align-items: center; gap: 0.45rem; cursor: pointer; color: rgba(255, 255, 255, 0.75);">
+                                    <input type="checkbox" id="schema-filter-match" checked onchange="toggleSchemaMatchVisibility()" style="width: 15px; height: 15px; accent-color: var(--accent-teal); cursor: pointer;">
+                                    Tampilkan Objek Identik (Match)
+                                </label>
+                            </div>
+
+                            <div class="mapper-table-wrapper" style="overflow-x: auto; background: #07090d; border-radius: 8px; border: 1px solid var(--border-flat); margin-top: 0.75rem;">
+                                <table class="mapper-table" style="margin-bottom: 0;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 50px;">No</th>
+                                            <th>Nama Objek</th>
+                                            <th>Tipe Objek</th>
+                                            <th>Status Skema</th>
+                                            <th>Keterangan Perbedaan</th>
+                                            <th>Aksi Rekomendasi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="schema-comparison-tbody">
+                                        <tr>
+                                            <td colspan="6" style="color: var(--text-muted); text-align: center; padding: 2rem;">
+                                                <i class="fa-solid fa-radar fa-beat" style="font-size: 2rem; margin-bottom: 0.5rem; display: block; color: var(--accent-teal);"></i>
+                                                Klik tombol <strong>Jalankan Pemindaian Skema</strong> di atas untuk membandingkan skema Source DB vs Target DB.
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- ===================================================== -->
                         <!-- INNER CONTENT: DEVELOPER TOOLS                        -->
                         <!-- ===================================================== -->
                         <div id="inner-content-tools" style="display: none; margin-top: 0;">
                             <!-- Panel Header -->
                             <div style="margin-bottom: 1.5rem;">
                                 <h3 style="margin: 0 0 0.5rem 0; font-size: 1.15rem; color: #ffffff; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fa-solid fa-screwdriver-wrench"></i> Developer Tools
+                                </h3>
+                                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Gunakan alat pembantu untuk mempermudah pekerjaan database Anda.</p>
+                            </div>
                             <!-- Tools Grid: SP Generator & Database Backup/Restore [NEW] -->
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 1.5rem; align-items: start;">
                                 
@@ -625,6 +751,202 @@
         </div><!-- end right panel -->
 
     </div><!-- end dashboard-grid -->
+    </div><!-- end main-screen-migration -->
+
+
+
+    <!-- ================================================================ -->
+    <!-- QUERY CONSOLE SCREEN -->
+    <!-- ================================================================ -->
+    <div id="main-screen-query" class="main-screen" style="display: none;">
+        <div class="panel-card">
+            <div class="panel-title" style="border-bottom: 1px solid var(--border-flat); padding-bottom: 0.75rem;">
+                <i class="fa-solid fa-terminal" style="color: var(--accent-teal);"></i>
+                <span>Database Query Console</span>
+            </div>
+
+            <!-- Connection Panel (SSMS Login Style Gateway) -->
+            <div id="query-connect-panel" style="margin-top: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; padding: 2rem; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); border-radius: 12px; backdrop-filter: blur(10px);">
+                <div style="text-align: center; margin-bottom: 1.5rem;">
+                    <i class="fa-solid fa-plug" style="font-size: 2.5rem; color: var(--accent-teal); margin-bottom: 0.75rem;"></i>
+                    <h3 style="margin: 0; font-family: var(--font-heading); color: #ffffff;">Connect to Server</h3>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Pilih Migration Job atau tentukan koneksi kustom Anda.</p>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 1.25rem;">
+                    <label for="query-conn-job-select" style="font-size: 0.85rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Migration Job / Server</label>
+                    <select id="query-conn-job-select" class="form-control" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff;">
+                        <option value="">-- Memuat Migration Job... --</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 1.25rem;">
+                    <label for="query-conn-db-type" style="font-size: 0.85rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Database Type</label>
+                    <select id="query-conn-db-type" class="form-control" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff;">
+                        <option value="target">Target Database (Tujuan)</option>
+                        <option value="source">Source Database (Asal)</option>
+                    </select>
+                </div>
+
+                <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem;">
+                    <button class="btn btn-primary" onclick="connectQueryConsole()" id="btn-query-connect" style="flex: 1; height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; font-weight: 600;">
+                        <i class="fa-solid fa-plug"></i> Connect
+                    </button>
+                </div>
+            </div>
+
+            <!-- Query Editor Main Panel (Hidden by default) -->
+            <div id="query-editor-main-panel" style="display: none;">
+                <!-- Toolbar -->
+                <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 1.25rem; margin-bottom: 1.25rem; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">Koneksi DB Aktif:</span>
+                        <strong id="query-active-conn-info" style="font-size: 0.82rem; color: var(--accent-teal);">Belum terhubung</strong>
+                    </div>
+                    <button class="btn btn-primary" onclick="runQueryConsole()" style="width: auto; height: 36px; padding: 0 1.25rem;">
+                        <i class="fa-solid fa-play"></i> Jalankan SQL
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearQueryConsole()" style="width: auto; height: 36px; padding: 0 1rem;">
+                        <i class="fa-solid fa-trash-can"></i> Bersihkan
+                    </button>
+                    <button class="btn btn-secondary" onclick="exportQueryResults()" style="width: auto; height: 36px; padding: 0 1rem;" title="Download hasil sebagai CSV">
+                        <i class="fa-solid fa-file-csv"></i> Download CSV
+                    </button>
+                    <button class="btn btn-secondary" onclick="disconnectQueryConsole()" style="width: auto; height: 36px; padding: 0 1rem; color: #f43f5e; border-color: rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.05);" title="Putuskan Koneksi">
+                        <i class="fa-solid fa-power-off"></i> Disconnect
+                    </button>
+                </div>
+
+                <!-- Editor Wrapper -->
+                <div class="query-editor-wrapper" style="position: relative;">
+                    <div class="query-editor-header">
+                        <div class="query-editor-title"><i class="fa-solid fa-code" style="color: var(--accent-teal);"></i> Tulis Query T-SQL</div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span id="query-schema-loader" style="font-size: 0.75rem; color: var(--accent-teal); display: none;"><i class="fa-solid fa-spinner fa-spin"></i> Memuat Skema Autocomplete...</span>
+                            <span style="font-size: 0.72rem; color: var(--text-muted);">Tekan Jalankan SQL untuk mengeksekusi</span>
+                        </div>
+                    </div>
+                    <div class="code-editor-container">
+                        <pre class="highlight-pre"><code id="query-sql-highlight" class="language-sql"></code></pre>
+                        <textarea id="query-sql-text" class="sql-textarea" placeholder="SELECT TOP 10 * FROM dbo.Customers ORDER BY Id DESC;" onkeydown="handleQueryEditorKeydown(event)" oninput="handleQueryEditorInput(event)" onscroll="syncQueryScroll()" onblur="hideQueryAutocompleteDelayed()"></textarea>
+                    </div>
+                    <div id="query-autocomplete-box" class="table-autocomplete" style="width: 320px; max-height: 240px; border-color: var(--accent-teal); margin-top: 2px;"></div>
+                </div>
+
+                <!-- Results container -->
+                <div class="query-results-wrapper" id="query-results-box" style="display: none; margin-top: 1.25rem;">
+                    <div style="font-size: 0.82rem; margin-bottom: 0.75rem; color: var(--accent-teal); display: flex; justify-content: space-between; align-items: center;">
+                        <strong id="query-status-text">Query executed successfully in 8ms.</strong>
+                        <span id="query-rows-count" style="color: var(--text-muted);">5 rows returned</span>
+                    </div>
+                    <div class="mapper-table-wrapper" style="overflow-x: auto; background: #07090d; border-radius: 6px; border: 1px solid var(--border-flat);">
+                        <table class="mapper-table" style="margin-bottom: 0;">
+                            <thead id="query-thead">
+                                <!-- Headers loaded dynamically -->
+                            </thead>
+                            <tbody id="query-tbody">
+                                <!-- Rows loaded dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- SETTINGS SCREEN -->
+    <!-- ================================================================ -->
+    <div id="main-screen-settings" class="main-screen" style="display: none;">
+        <div class="panel-card">
+            <div class="panel-title" style="border-bottom: 1px solid var(--border-flat); padding-bottom: 0.75rem;">
+                <i class="fa-solid fa-sliders" style="color: var(--accent-teal);"></i>
+                <span>Konfigurasi Global & Parameter Migrasi</span>
+            </div>
+
+            <div class="settings-grid" style="margin-top: 1.5rem;">
+                
+                <!-- General & Timeouts -->
+                <div class="settings-card">
+                    <h4 class="settings-group-title">
+                        <i class="fa-solid fa-hourglass-half" style="color: var(--accent-teal);"></i>
+                        Timeouts & General Settings
+                    </h4>
+                    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="set-conn-timeout">Connection Timeout (Detik)</label>
+                            <input type="number" id="set-conn-timeout" class="form-control" value="30">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="set-bulk-timeout">Bulk Copy Timeout (Detik)</label>
+                            <input type="number" id="set-bulk-timeout" class="form-control" value="600">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tuning & Performance -->
+                <div class="settings-card">
+                    <h4 class="settings-group-title">
+                        <i class="fa-solid fa-bolt" style="color: var(--accent-purple);"></i>
+                        Migration Performance Tuning
+                    </h4>
+                    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="set-batch-size">Bulk Batch Size (Baris per Batch)</label>
+                            <input type="number" id="set-batch-size" class="form-control" value="5000">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="set-parallel-threads">Max Parallelism (Thread Count)</label>
+                            <input type="number" id="set-parallel-threads" class="form-control" value="4" min="1" max="16">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Toggles & Safety Policies -->
+                <div class="settings-card">
+                    <h4 class="settings-group-title">
+                        <i class="fa-solid fa-shield-halved" style="color: var(--accent-indigo);"></i>
+                        Safety Policies & Logging
+                    </h4>
+                    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                        
+                        <label class="toggle-switch-label">
+                            <div class="toggle-switch-container">
+                                <span class="toggle-switch-title">Auto Backup DDL</span>
+                                <span class="toggle-switch-desc">Backup skema SP/View secara otomatis sebelum ditimpa.</span>
+                            </div>
+                            <input type="checkbox" id="set-auto-backup" class="toggle-switch-input" checked>
+                        </label>
+
+                        <label class="toggle-switch-label">
+                            <div class="toggle-switch-container">
+                                <span class="toggle-switch-title">Enable Constraints</span>
+                                <span class="toggle-switch-desc">Pengecekan FK constraint setelah bulk copy.</span>
+                            </div>
+                            <input type="checkbox" id="set-enable-constraints" class="toggle-switch-input" checked>
+                        </label>
+
+                        <label class="toggle-switch-label">
+                            <div class="toggle-switch-container">
+                                <span class="toggle-switch-title">Auto-Scroll Console Logs</span>
+                                <span class="toggle-switch-desc">Gulirkan log otomatis ke baris paling bawah.</span>
+                            </div>
+                            <input type="checkbox" id="set-auto-scroll" class="toggle-switch-input" checked>
+                        </label>
+
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Save Action Button -->
+            <div style="display: flex; justify-content: flex-end; margin-top: 1.5rem; border-top: 1px solid var(--border-flat); padding-top: 1.25rem;">
+                <button class="btn btn-primary" onclick="saveGlobalSettings()" style="width: auto; padding: 0.6rem 2rem;">
+                    <i class="fa-solid fa-floppy-disk"></i> Simpan Semua Pengaturan
+                </button>
+            </div>
+        </div>
+    </div>
 
 </div><!-- end app-container -->
 
@@ -1284,8 +1606,124 @@
     </div>
 </div>
 
-<!-- SignalR CDN & Application Script -->
+<!-- ============================================================================
+     MODAL: SCHEMA DDL DIFF VIEWER
+     ============================================================================ -->
+<div class="modal-overlay" id="schema-diff-modal">
+    <div class="modal-content" style="max-width: 960px; border-color: var(--accent-purple);">
+        <div class="modal-header">
+            <div>
+                <h3 id="schema-diff-title">Perbandingan DDL Objek</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Membandingkan definisi kode SQL objek database antara Source DB vs Target DB.</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <button class="close-btn" id="btn-schema-diff-maximize" onclick="toggleSchemaDiffMaximize()" title="Maksimalkan Ukuran" style="font-size: 0.95rem; color: var(--text-muted);"><i class="fa-solid fa-maximize"></i></button>
+                <button class="close-btn" onclick="closeSchemaDiffModal()">&times;</button>
+            </div>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem;">
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; background: #07090d; border-radius: 8px; border: 1px solid var(--border-flat); overflow: hidden; width: 100%;">
+                <!-- Source Side -->
+                <div style="border-right: 1px solid var(--border-flat); display: flex; flex-direction: column; min-width: 0; overflow: hidden;">
+                    <div style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-flat); font-size: 0.8rem; color: var(--accent-teal); font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+                        <span>Source DB (Referensi Asal)</span>
+                        <span style="font-size: 0.72rem; color: var(--text-muted);">DDL Lama / Asal</span>
+                    </div>
+                    <div id="schema-diff-source" style="margin: 0; padding: 0.5rem 0; overflow: auto; max-height: 400px; background: transparent; box-sizing: border-box;"></div>
+                </div>
+                <!-- Target Side -->
+                <div style="display: flex; flex-direction: column; min-width: 0; overflow: hidden;">
+                    <div style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-flat); font-size: 0.8rem; color: var(--accent-purple); font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+                        <span>Target DB (Tujuan)</span>
+                        <span style="font-size: 0.72rem; color: var(--text-muted);">DDL Saat Ini / Tujuan</span>
+                    </div>
+                    <div id="schema-diff-target" style="margin: 0; padding: 0.5rem 0; overflow: auto; max-height: 400px; background: transparent; box-sizing: border-box;"></div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeSchemaDiffModal()" style="width: auto;">Tutup</button>
+            <button class="btn btn-primary" id="btn-schema-diff-apply" onclick="" style="width: auto;">
+                <i class="fa-solid fa-arrows-spin"></i> Update Target DDL
+            </button>
+        </div>
+</div>
+</div>
+
+<!-- ============================================================================
+     MODAL: COLUMN SYNC BEFORE/AFTER VIEW
+     ============================================================================ -->
+<div class="modal-overlay" id="column-sync-modal">
+    <div class="modal-content" style="max-width: 780px; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3 id="column-sync-title">Rencana Sinkronisasi Kolom</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Menampilkan perbandingan skema kolom tabel sebelum (Before) vs sesudah (After) sinkronisasi.</p>
+            </div>
+            <button class="close-btn" onclick="closeColumnSyncModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                <!-- BEFORE (Current Target DB) -->
+                <div>
+                    <h5 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: var(--accent-purple); display: flex; align-items: center; gap: 0.35rem; font-weight: 600;">
+                        <i class="fa-solid fa-triangle-exclamation"></i> BEFORE (Target DB Saat Ini)
+                    </h5>
+                    <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-flat); border-radius: 6px; padding: 0.75rem; max-height: 320px; overflow-y: auto;">
+                        <table class="mapper-table" style="margin: 0; font-size: 0.8rem; width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>Nama Kolom</th>
+                                    <th>Tipe Data</th>
+                                </tr>
+                            </thead>
+                            <tbody id="column-sync-before-tbody">
+                                <!-- Loaded dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- AFTER (Proposed Schema) -->
+                <div>
+                    <h5 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: var(--accent-teal); display: flex; align-items: center; gap: 0.35rem; font-weight: 600;">
+                        <i class="fa-solid fa-circle-check"></i> AFTER (Source DB / Hasil Akhir)
+                    </h5>
+                    <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-flat); border-radius: 6px; padding: 0.75rem; max-height: 320px; overflow-y: auto;">
+                        <table class="mapper-table" style="margin: 0; font-size: 0.8rem; width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>Nama Kolom</th>
+                                    <th>Tipe Data</th>
+                                </tr>
+                            </thead>
+                            <tbody id="column-sync-after-tbody">
+                                <!-- Loaded dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SQL Script Preview -->
+            <div style="margin-top: 1.25rem;">
+                <h5 style="margin: 0 0 0.4rem 0; font-size: 0.82rem; color: #ffffff; font-weight: 600;">Script SQL Eksekusi:</h5>
+                <pre style="margin: 0; padding: 0.75rem; background: #07090d; border-radius: 6px; border: 1px solid var(--border-flat); overflow-x: auto; font-family: Consolas, monospace; font-size: 0.82rem;"><code id="column-sync-sql" class="language-sql"></code></pre>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeColumnSyncModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" id="btn-execute-column-sync" style="width: auto; background: var(--accent-teal); color: #0d0f14; border-color: var(--accent-teal);">
+                <i class="fa-solid fa-play"></i> Jalankan Eksekusi Sinkronisasi
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- SignalR & PrismJS CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
 <script src="app.js?v=3.7"></script>
 
 </body>

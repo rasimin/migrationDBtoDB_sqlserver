@@ -840,6 +840,63 @@ app.MapGet("/api/db/columns", async ([FromQuery] int jobId, [FromQuery] string d
     }
 });
 
+// 10b. DYNAMIC DB METADATA: GET ENTIRE SCHEMA (FOR AUTOCOMPLETE)
+app.MapGet("/api/db/schema", async ([FromQuery] int jobId, [FromQuery] string dbType, IConfiguration config) =>
+{
+    if (jobId <= 0 || string.IsNullOrEmpty(dbType)) return Results.BadRequest("JobId atau dbType kosong");
+    
+    using var configConn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var job = await configConn.QuerySingleOrDefaultAsync<MigrationJob>("SELECT * FROM dbo.MigrationJobs WHERE Id = @Id", new { Id = jobId });
+    if (job == null) return Results.NotFound($"Job {jobId} tidak ditemukan");
+
+    string connectionString = dbType.Equals("source", StringComparison.OrdinalIgnoreCase) 
+        ? job.SourceConnectionString 
+        : job.TargetConnectionString;
+
+    if (string.IsNullOrEmpty(connectionString)) return Results.BadRequest("Connection string kosong");
+
+    try
+    {
+        using var conn = new SqlConnection(connectionString);
+        await conn.OpenAsync();
+        
+        var objects = await conn.QueryAsync(@"
+            SELECT 
+                o.name AS Name,
+                CASE o.type_desc 
+                    WHEN 'SQL_STORED_PROCEDURE' THEN 'PROCEDURE'
+                    WHEN 'SQL_SCALAR_FUNCTION' THEN 'FUNCTION'
+                    WHEN 'SQL_TABLE_VALUED_FUNCTION' THEN 'FUNCTION'
+                    WHEN 'SQL_INLINE_TABLE_VALUED_FUNCTION' THEN 'FUNCTION'
+                    WHEN 'VIEW' THEN 'VIEW'
+                    WHEN 'USER_TABLE' THEN 'TABLE'
+                    ELSE o.type_desc
+                END AS Type
+            FROM sys.objects o
+            WHERE o.type IN ('P','FN','IF','TF','V','U')
+              AND o.is_ms_shipped = 0
+            ORDER BY o.name");
+
+        var columns = await conn.QueryAsync(@"
+            SELECT 
+                t.name AS TableName,
+                c.name AS ColumnName,
+                typ.name AS DataType
+            FROM sys.columns c
+            JOIN sys.objects t ON c.object_id = t.object_id
+            JOIN sys.types typ ON c.user_type_id = typ.user_type_id
+            WHERE t.type IN ('U','V') 
+              AND t.is_ms_shipped = 0
+            ORDER BY t.name, c.column_id");
+
+        return Results.Ok(new { Objects = objects, Columns = columns });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest($"Gagal mengambil skema database: {ex.Message}");
+    }
+});
+
 // 11. RUN MIGRATION JOB (BACKGROUND PROCESS WITH REAL-TIME SIGNALR BROADCAST)
 app.MapPost("/api/jobs/{id:int}/run", (int id, [FromQuery] int? mappingId, [FromQuery] bool checkConstraints, IConfiguration config, IHubContext<MigrationHub> hubContext, IHostApplicationLifetime appLifetime) =>
 {
