@@ -190,8 +190,69 @@ connection.on('ReceiveError', (errorObj) => {
 
 ### 🛠️ F-05: SSMS-Lite Query Console Autocomplete
 *   **Complete Schema Ingestion:** Added `/api/db/schema` in `Program.cs` to return all tables, views, stored procedures, functions, and columns in a single, token-efficient query.
-*   **Autocomplete UI & Engine:** Implemented real-time token tracking in `app.js` and `#query-autocomplete-box` in `index.html` to suggest T-SQL keywords, schema objects, and specific columns (supporting table-dot notation like `Customers.Name`).
+*   **Autocomplete UI & Engine:** Implemented real-time token tracking in `app.js` using Monaco's completion item providers to suggest T-SQL keywords, schema objects, and specific columns (supporting table-dot notation like `Customers.Name`).
 *   **Schema Preloading:** Caches schema structures on loading the Query Console tab or connection change with a visual `#query-schema-loader` loading indicator to keep typing execution lag-free.
+
+### 🛠️ F-06: Monaco Editor Integration (Offline)
+*   **Offline Local Asset Storage:** Due to environment constraints blocking npm installation scripts on target environments, the minified Monaco Editor package (`v0.39.0`) was programmatically downloaded and placed locally at `DbMigrator.Web/wwwroot/lib/monaco-editor/min/vs`.
+*   **Offline Loader Integration:** Linked in `index.html` via `<script src="lib/monaco-editor/min/vs/loader.js"></script>` and configured in `app.js` using local paths:
+    ```javascript
+    require.config({ paths: { vs: 'lib/monaco-editor/min/vs' } });
+    ```
+*   **Developer Guide & Coding Template (Plugin Usage):**
+    To use Monaco Editor or Monaco Diff Editor offline in other screens/features of the codebase:
+    
+    #### 1. Inisialisasi Monaco Editor Standar (Single Editor)
+    ```javascript
+    require(['vs/editor/editor.main'], function() {
+        const editor = monaco.editor.create(document.getElementById('container-id'), {
+            value: '-- Tulis SQL kueri di sini\n',
+            language: 'sql',
+            theme: 'vs-dark',
+            automaticLayout: true,
+            minimap: { enabled: false }
+        });
+        
+        // Mengambil teks dari editor
+        const code = editor.getValue();
+        
+        // Memasukkan teks baru ke editor
+        editor.setValue('SELECT * FROM Users;');
+    });
+    ```
+
+    #### 2. Inisialisasi Monaco Diff Editor (Perbandingan Skema / Script)
+    ```javascript
+    require(['vs/editor/editor.main'], function() {
+        const diffEditor = monaco.editor.createDiffEditor(document.getElementById('diff-container-id'), {
+            originalEditable: false, // Script asli (kiri) tidak bisa diedit
+            readOnly: false,         // Script hasil banding (kanan)
+            theme: 'vs-dark',
+            automaticLayout: true
+        });
+
+        // Load model untuk kiri (original) dan kanan (modified)
+        diffEditor.setModel({
+            original: monaco.editor.createModel('SELECT * FROM SourceTable;', 'sql'),
+            modified: monaco.editor.createModel('SELECT * FROM TargetTable;', 'sql')
+        });
+
+        // Mengambil teks hasil modifikasi (kanan)
+        const modifiedCode = diffEditor.getModel().modified.getValue();
+    });
+    ```
+
+### 🛠️ F-07: SSMS-Like Connection & Dynamic Database Selector
+*   **SSMS Gateway Dialog:** Implemented a replica of the Microsoft SQL Server Management Studio connection gateway dialog in `index.html` (#query-connect-panel) supporting inputs for Server Name, Authentication type (SQL or Windows), Login, and Password. Includes a pre-fill option that parses target/source connection strings of existing migration jobs to pre-populate credentials instantly.
+*   **Live Database Selection & Switch:** Once connected, `/api/query/connect` queries and returns the server's online databases, populating the database selection combobox (`#query-db-select`) next to the Execute/Clear buttons. Swapping the active catalog reloads the Monaco Editor autocomplete IntelliSense by posting to `/api/query/schema`.
+*   **Dynamic Query Execution:** Executing queries via `runQueryConsole()` sends the SQL text and connection credentials to `/api/query/execute` which uses ADO.NET and `SqlDataReader` to execute the query against the selected database in real-time, dynamically rendering the headers and grid cells, and supporting UPDATE/INSERT/DELETE queries by displaying affected row counts.
+
+### 🛠️ F-08: Searchable DB Dropdown & Browser Connection Persistence
+*   **Searchable Database Selector:** Replaced the default database select dropdown with a custom searchable dropdown component. Features a glassmorphic toggle trigger button, a real-time keyword search filter input, and dynamic list rendering of matching database catalogs.
+*   **Browser Connection Persistence:** Connection state, credentials (server, authentication, login, password), active tab, and currently selected database are automatically persisted to the browser's `localStorage` on connection.
+*   **Silent Auto-Reconnect & State Restoration:** On page reload, the app switches to the last active tab, reads the saved connection state, and executes a background (silent) reconnect to fetch databases, reload Monaco autocomplete IntelliSense, and display the editor panel automatically.
+*   **Monaco Query Autosave:** Added an `onDidChangeModelContent` listener to the Monaco Query Editor that autosaves the SQL text buffer to `localStorage`, which is restored when the console initializes, ensuring query text is never lost on refresh.
+*   **Session Cleanup:** Clicking the **Disconnect** button performs a thorough sweep of all session-related keys from `localStorage`, returning the interface to a clean SSMS login gateway state.
 
 ---
 

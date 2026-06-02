@@ -986,6 +986,204 @@ app.MapGet("/api/db/schema", async ([FromQuery] int jobId, [FromQuery] string db
     }
 });
 
+// ============================================================================
+// SSMS-LITE QUERY CONSOLE ENDPOINTS
+// ============================================================================
+
+// A. CONNECT TO SERVER (Gets list of databases)
+app.MapPost("/api/query/connect", async ([FromBody] QueryConnectRequest request) =>
+{
+    if (string.IsNullOrEmpty(request?.ServerName))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Server name tidak boleh kosong" });
+    }
+
+    string connectionString = "";
+    try
+    {
+        var builder = new SqlConnectionStringBuilder
+        {
+            DataSource = request.ServerName,
+            InitialCatalog = "master",
+            TrustServerCertificate = true,
+            ConnectTimeout = 10
+        };
+
+        if (string.Equals(request.Authentication, "SQL", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.IntegratedSecurity = false;
+            builder.UserID = request.Login;
+            builder.Password = request.Password;
+        }
+        else
+        {
+            builder.IntegratedSecurity = true;
+        }
+
+        connectionString = builder.ConnectionString;
+
+        using var conn = new SqlConnection(connectionString);
+        await conn.OpenAsync();
+
+        // Get list of online databases
+        var databases = await conn.QueryAsync<string>(
+            "SELECT name FROM sys.databases WHERE state = 0 ORDER BY name");
+
+        return Results.Ok(new { Success = true, Databases = databases, DefaultDatabase = "master" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = $"Gagal terhubung ke server: {ex.Message}" });
+    }
+});
+
+// B. GET SCHEMA FOR AUTOCOMPLETE (For a specific selected database)
+app.MapPost("/api/query/schema", async ([FromBody] QuerySchemaRequest request) =>
+{
+    if (string.IsNullOrEmpty(request?.ServerName) || string.IsNullOrEmpty(request?.Database))
+    {
+        return Results.BadRequest("ServerName dan Database tidak boleh kosong");
+    }
+
+    try
+    {
+        var builder = new SqlConnectionStringBuilder
+        {
+            DataSource = request.ServerName,
+            InitialCatalog = request.Database,
+            TrustServerCertificate = true,
+            ConnectTimeout = 10
+        };
+
+        if (string.Equals(request.Authentication, "SQL", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.IntegratedSecurity = false;
+            builder.UserID = request.Login;
+            builder.Password = request.Password;
+        }
+        else
+        {
+            builder.IntegratedSecurity = true;
+        }
+
+        using var conn = new SqlConnection(builder.ConnectionString);
+        await conn.OpenAsync();
+
+        var objects = await conn.QueryAsync(@"
+            SELECT 
+                o.name AS Name,
+                CASE o.type_desc 
+                    WHEN 'SQL_STORED_PROCEDURE' THEN 'PROCEDURE'
+                    WHEN 'SQL_SCALAR_FUNCTION' THEN 'FUNCTION'
+                    WHEN 'SQL_TABLE_VALUED_FUNCTION' THEN 'FUNCTION'
+                    WHEN 'SQL_INLINE_TABLE_VALUED_FUNCTION' THEN 'FUNCTION'
+                    WHEN 'VIEW' THEN 'VIEW'
+                    WHEN 'USER_TABLE' THEN 'TABLE'
+                    ELSE o.type_desc
+                END AS Type
+            FROM sys.objects o
+            WHERE o.type IN ('P','FN','IF','TF','V','U')
+              AND o.is_ms_shipped = 0
+            ORDER BY o.name");
+
+        var columns = await conn.QueryAsync(@"
+            SELECT 
+                t.name AS TableName,
+                c.name AS ColumnName,
+                typ.name AS DataType
+            FROM sys.columns c
+            JOIN sys.objects t ON c.object_id = t.object_id
+            JOIN sys.types typ ON c.user_type_id = typ.user_type_id
+            WHERE t.type IN ('U','V') 
+              AND t.is_ms_shipped = 0
+            ORDER BY t.name, c.column_id");
+
+        return Results.Ok(new { Objects = objects, Columns = columns });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest($"Gagal mengambil skema database: {ex.Message}");
+    }
+});
+
+// C. EXECUTE QUERY
+app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request) =>
+{
+    if (string.IsNullOrEmpty(request?.ServerName) || string.IsNullOrEmpty(request?.Database) || string.IsNullOrEmpty(request?.QueryText))
+    {
+        return Results.BadRequest(new { Success = false, Message = "ServerName, Database, dan QueryText tidak boleh kosong" });
+    }
+
+    try
+    {
+        var builder = new SqlConnectionStringBuilder
+        {
+            DataSource = request.ServerName,
+            InitialCatalog = request.Database,
+            TrustServerCertificate = true,
+            ConnectTimeout = 15
+        };
+
+        if (string.Equals(request.Authentication, "SQL", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.IntegratedSecurity = false;
+            builder.UserID = request.Login;
+            builder.Password = request.Password;
+        }
+        else
+        {
+            builder.IntegratedSecurity = true;
+        }
+
+        using var conn = new SqlConnection(builder.ConnectionString);
+        await conn.OpenAsync();
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        using var command = new SqlCommand(request.QueryText, conn);
+        using var reader = await command.ExecuteReaderAsync();
+
+        var headers = new List<string>();
+        var rows = new List<List<object>>();
+
+        if (reader.FieldCount == 0)
+        {
+            // Command completed without returning a result set (e.g. UPDATE, INSERT, DELETE)
+            headers.Add("Info");
+            rows.Add(new List<object> { $"{reader.RecordsAffected} baris terpengaruh." });
+        }
+        else
+        {
+            for (int i = 0; i < reader.FieldCount; i++)
+            {
+                headers.Add(reader.GetName(i));
+            }
+
+            while (await reader.ReadAsync())
+            {
+                var row = new List<object>();
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    var val = reader.GetValue(i);
+                    row.Add(val == DBNull.Value ? null : val);
+                }
+                rows.Add(row);
+            }
+        }
+        stopwatch.Stop();
+
+        return Results.Ok(new { 
+            Success = true, 
+            Headers = headers, 
+            Rows = rows, 
+            ExecutionTimeMs = stopwatch.ElapsedMilliseconds 
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = ex.Message });
+    }
+});
+
 // 11. RUN MIGRATION JOB (BACKGROUND PROCESS WITH REAL-TIME SIGNALR BROADCAST)
 app.MapPost("/api/jobs/{id:int}/run", (int id, [FromQuery] int? mappingId, [FromQuery] bool checkConstraints, IConfiguration config, IHubContext<MigrationHub> hubContext, IHostApplicationLifetime appLifetime) =>
 {
@@ -3115,6 +3313,33 @@ public class RestoreRequest
 public class GeneralAppSettings
 {
     public string AppimsBackupPath { get; set; } = string.Empty;
+}
+
+public class QueryConnectRequest
+{
+    public string ServerName { get; set; }
+    public string Authentication { get; set; } // "SQL" or "Windows"
+    public string Login { get; set; }
+    public string Password { get; set; }
+}
+
+public class QuerySchemaRequest
+{
+    public string ServerName { get; set; }
+    public string Authentication { get; set; }
+    public string Login { get; set; }
+    public string Password { get; set; }
+    public string Database { get; set; }
+}
+
+public class QueryExecuteRequest
+{
+    public string ServerName { get; set; }
+    public string Authentication { get; set; }
+    public string Login { get; set; }
+    public string Password { get; set; }
+    public string Database { get; set; }
+    public string QueryText { get; set; }
 }
 
 public partial class Program

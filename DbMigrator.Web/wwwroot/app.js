@@ -30,6 +30,36 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load view mode preference from localStorage on startup
     activeViewMode = localStorage.getItem('activeViewMode') || 'list';
     setViewMode(activeViewMode);
+
+    // Switch to active tab if saved
+    const savedTab = localStorage.getItem('dbmigrator_active_tab');
+    if (savedTab) {
+        switchMainTab(savedTab);
+    }
+
+    // Silent auto-reconnect if query console was previously connected
+    const wasConnected = localStorage.getItem('queryConsoleConnected') === 'true';
+    if (wasConnected) {
+        const savedServer = localStorage.getItem('queryConsoleServerName');
+        const savedAuth = localStorage.getItem('queryConsoleAuthType');
+        const savedLogin = localStorage.getItem('queryConsoleLogin') || '';
+        const savedPassword = localStorage.getItem('queryConsolePassword') || '';
+        const savedDb = localStorage.getItem('queryConsoleActiveDatabase');
+        
+        if (savedServer) {
+            // Pre-fill connection inputs
+            if (document.getElementById('query-server-name')) document.getElementById('query-server-name').value = savedServer;
+            if (document.getElementById('query-auth-type')) {
+                document.getElementById('query-auth-type').value = savedAuth;
+                toggleQueryAuthFields();
+            }
+            if (document.getElementById('query-login')) document.getElementById('query-login').value = savedLogin;
+            if (document.getElementById('query-password')) document.getElementById('query-password').value = savedPassword;
+            
+            // Execute silent reconnect
+            connectQueryConsole(true, savedDb);
+        }
+    }
 });
 
 // ============================================================================
@@ -4535,15 +4565,104 @@ function switchMainTab(tabId) {
         targetScreen.style.display = 'block';
     }
 
+    // Persist active tab in localStorage
+    localStorage.setItem('dbmigrator_active_tab', tabId);
+
     // 5. Populate jobs in Query Console connection panel
     if (tabId === 'query') {
         populateQueryConnJobs();
+        // Refresh Monaco Editor layout if already connected and initialized
+        if (localStorage.getItem('queryConsoleConnected') === 'true') {
+            initMonacoQueryEditor();
+        }
     }
 }
 
 // ── Query Console connection panel and syntax highlighting logic ──
-let queryConsoleActiveJob = null;
-let queryConsoleActiveDbType = 'target';
+let queryConsoleActiveServer = "";
+let queryConsoleActiveAuth = "";
+let queryConsoleActiveLogin = "";
+let queryConsoleActivePassword = "";
+let queryConsoleActiveDatabase = "";
+let queryConsoleDatabases = [];
+let queryConsoleEditor = null;
+let queryConsoleEditorInitializing = false;
+let monacoSqlCompletionProvider = null;
+let queryConsoleSchema = { Objects: [], Columns: [] };
+
+function parseConnectionString(connStr) {
+    if (!connStr) return {};
+    const parts = connStr.split(';');
+    const result = {};
+    parts.forEach(part => {
+        const eqIdx = part.indexOf('=');
+        if (eqIdx > 0) {
+            const key = part.substring(0, eqIdx).trim().toLowerCase();
+            const val = part.substring(eqIdx + 1).trim();
+            result[key] = val;
+        }
+    });
+    return result;
+}
+
+async function prefillQueryConnection() {
+    const jobSelect = document.getElementById('query-conn-job-select');
+    if (!jobSelect) return;
+    const jobId = jobSelect.value;
+    
+    const serverInput = document.getElementById('query-server-name');
+    const authSelect = document.getElementById('query-auth-type');
+    const loginInput = document.getElementById('query-login');
+    const passwordInput = document.getElementById('query-password');
+    
+    if (!jobId) {
+        serverInput.value = '';
+        authSelect.value = 'SQL';
+        loginInput.value = '';
+        passwordInput.value = '';
+        toggleQueryAuthFields();
+        return;
+    }
+    
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}`);
+        if (!res.ok) throw new Error("Gagal memuat detail job");
+        const job = await res.json();
+        
+        // Default to Target connection string first
+        const connStr = job.TargetConnectionString || job.targetConnectionString || job.SourceConnectionString || job.sourceConnectionString;
+        const connObj = parseConnectionString(connStr);
+        
+        const server = connObj['server'] || connObj['data source'] || connObj['datasource'] || '';
+        const userId = connObj['user id'] || connObj['uid'] || '';
+        const pwd = connObj['password'] || connObj['pwd'] || '';
+        const integratedSec = connObj['integrated security'] || '';
+        
+        serverInput.value = server;
+        if (integratedSec.toLowerCase() === 'true' || integratedSec.toLowerCase() === 'sspi') {
+            authSelect.value = 'Windows';
+        } else {
+            authSelect.value = 'SQL';
+        }
+        
+        loginInput.value = userId;
+        passwordInput.value = pwd;
+        
+        toggleQueryAuthFields();
+    } catch (err) {
+        console.error("Error prefilling connection:", err);
+    }
+}
+
+function toggleQueryAuthFields() {
+    const authType = document.getElementById('query-auth-type').value;
+    const credsSection = document.getElementById('query-auth-credentials-section');
+    if (authType === 'Windows') {
+        credsSection.style.display = 'none';
+    } else {
+        credsSection.style.display = 'block';
+    }
+}
 
 async function populateQueryConnJobs() {
     const select = document.getElementById('query-conn-job-select');
@@ -4561,7 +4680,7 @@ async function populateQueryConnJobs() {
             return;
         }
         
-        select.innerHTML = '<option value="">-- Pilih Migration Job --</option>' + 
+        select.innerHTML = '<option value="">-- Pilih Job untuk isi otomatis --</option>' + 
             jobs.map(job => `<option value="${job.Id || job.id}">${escapeHtml(job.JobName || job.jobName)}</option>`).join('');
     } catch (err) {
         console.error(err);
@@ -4569,360 +4688,433 @@ async function populateQueryConnJobs() {
     }
 }
 
-async function connectQueryConsole() {
-    const jobSelect = document.getElementById('query-conn-job-select');
-    const dbTypeSelect = document.getElementById('query-conn-db-type');
-    if (!jobSelect || !dbTypeSelect) return;
+async function connectQueryConsole(isSilent = false, targetDatabase = null) {
+    const serverName = document.getElementById('query-server-name').value.trim();
+    const authType = document.getElementById('query-auth-type').value;
+    const login = document.getElementById('query-login').value.trim();
+    const password = document.getElementById('query-password').value;
     
-    const jobId = jobSelect.value;
-    const dbType = dbTypeSelect.value;
+    if (!serverName) {
+        if (!isSilent) alert("Harap masukkan Server Name!");
+        return;
+    }
     
-    if (!jobId) {
-        alert("Harap pilih Migration Job terlebih dahulu!");
+    if (authType === 'SQL' && !login) {
+        if (!isSilent) alert("Harap masukkan Login username!");
         return;
     }
     
     const btn = document.getElementById('btn-query-connect');
-    const origHtml = btn.innerHTML;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Connecting...`;
-    btn.disabled = true;
+    let origHtml = "";
+    if (btn) {
+        origHtml = btn.innerHTML;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Connecting...`;
+        btn.disabled = true;
+    }
     
     try {
-        // Fetch job detail to get DB name
-        const resJob = await fetch(`${API_BASE}/jobs/${jobId}`);
-        if (!resJob.ok) throw new Error("Gagal memuat detail job");
-        const job = await resJob.json();
+        const payload = {
+            ServerName: serverName,
+            Authentication: authType,
+            Login: login,
+            Password: password
+        };
         
-        // Cache metadata for autocomplete
-        const resSchema = await fetch(`${API_BASE}/db/schema?jobId=${jobId}&dbType=${dbType}`);
-        if (!resSchema.ok) {
-            throw new Error("Gagal memuat skema autocomplete: " + await resSchema.text());
+        const res = await fetch(`${API_BASE}/query/connect`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) throw new Error("Gagal terhubung: " + await res.text());
+        const data = await res.json();
+        
+        if (!data.Success) {
+            throw new Error(data.Message || "Gagal terhubung ke server");
         }
-        queryConsoleSchema = await resSchema.json();
-        console.log("Database schema metadata loaded for autocomplete:", queryConsoleSchema);
         
-        queryConsoleActiveJob = job;
-        queryConsoleActiveDbType = dbType;
+        // Save active connection state
+        queryConsoleActiveServer = serverName;
+        queryConsoleActiveAuth = authType;
+        queryConsoleActiveLogin = login;
+        queryConsoleActivePassword = password;
+        
+        // Determine the database to select
+        if (targetDatabase && data.Databases.includes(targetDatabase)) {
+            queryConsoleActiveDatabase = targetDatabase;
+        } else {
+            queryConsoleActiveDatabase = data.DefaultDatabase || "master";
+        }
+        
+        // Save connection state to localStorage
+        localStorage.setItem('queryConsoleConnected', 'true');
+        localStorage.setItem('queryConsoleServerName', serverName);
+        localStorage.setItem('queryConsoleAuthType', authType);
+        localStorage.setItem('queryConsoleLogin', login);
+        localStorage.setItem('queryConsolePassword', password);
+        localStorage.setItem('queryConsoleActiveDatabase', queryConsoleActiveDatabase);
+        
+        // Populate DB Custom Searchable Dropdown
+        renderDatabaseDropdown(data.Databases, queryConsoleActiveDatabase);
         
         // Hide connection panel, show editor panel
         document.getElementById('query-connect-panel').style.display = 'none';
         document.getElementById('query-editor-main-panel').style.display = 'block';
         
-        // Set info connection
-        const dbName = getDbName(dbType === 'target' ? (job.TargetConnectionString || job.targetConnectionString) : (job.SourceConnectionString || job.sourceConnectionString));
-        document.getElementById('query-active-conn-info').textContent = `${job.JobName || job.jobName} [${dbName}] (${dbType.toUpperCase()})`;
+        // Set connection badge text
+        document.getElementById('query-active-conn-info').textContent = serverName;
         
-        // Initial highlight
-        syncSqlQueryHighlight();
+        // Initialize Monaco Editor
+        initMonacoQueryEditor();
+        
+        // Load initial autocomplete schema
+        await loadQueryConsoleSchema();
     } catch (err) {
-        alert("Error: " + err.message);
+        if (!isSilent) {
+            alert("Koneksi Gagal: " + err.message);
+        } else {
+            console.error("Auto-connect failed:", err.message);
+            disconnectQueryConsole();
+        }
     } finally {
-        btn.innerHTML = origHtml;
-        btn.disabled = false;
+        if (btn) {
+            btn.innerHTML = origHtml;
+            btn.disabled = false;
+        }
     }
 }
 
+async function loadQueryConsoleSchema() {
+    const loader = document.getElementById('query-schema-loader');
+    if (loader) loader.style.display = 'inline-block';
+    
+    try {
+        const payload = {
+            ServerName: queryConsoleActiveServer,
+            Authentication: queryConsoleActiveAuth,
+            Login: queryConsoleActiveLogin,
+            Password: queryConsoleActivePassword,
+            Database: queryConsoleActiveDatabase
+        };
+        
+        const res = await fetch(`${API_BASE}/query/schema`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) throw new Error("Gagal mengambil skema database");
+        queryConsoleSchema = await res.json();
+        console.log("Database schema autocomplete reloaded:", queryConsoleSchema);
+    } catch (err) {
+        console.error("Gagal memuat autocomplete:", err);
+    } finally {
+        if (loader) loader.style.display = 'none';
+    }
+}
+
+async function changeQueryDatabase() {
+    // Reload autocomplete schema for this database
+    await loadQueryConsoleSchema();
+}
+
+function toggleDatabaseDropdown(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('query-db-dropdown');
+    if (!dropdown) return;
+    const isVisible = dropdown.style.display === 'block';
+    dropdown.style.display = isVisible ? 'none' : 'block';
+    if (!isVisible) {
+        const searchInput = document.getElementById('query-db-search');
+        if (searchInput) {
+            searchInput.value = '';
+            filterDatabaseList('');
+            searchInput.focus();
+        }
+    }
+}
+
+function renderDatabaseDropdown(databases, selectedDb) {
+    queryConsoleDatabases = databases || [];
+    queryConsoleActiveDatabase = selectedDb || "master";
+    
+    // Update hidden input compatibility
+    const dbSelect = document.getElementById('query-db-select');
+    if (dbSelect) {
+        dbSelect.value = queryConsoleActiveDatabase;
+    }
+    
+    // Update trigger text
+    const triggerText = document.getElementById('query-db-trigger-text');
+    if (triggerText) {
+        triggerText.textContent = queryConsoleActiveDatabase;
+    }
+    
+    // Clear search input
+    const searchInput = document.getElementById('query-db-search');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    
+    // Render list items
+    filterDatabaseList('');
+}
+
+function filterDatabaseList(searchQuery) {
+    const listContainer = document.getElementById('query-db-list');
+    if (!listContainer) return;
+    
+    const query = (searchQuery || '').toLowerCase().trim();
+    const filtered = queryConsoleDatabases.filter(db => db.toLowerCase().includes(query));
+    
+    if (filtered.length === 0) {
+        listContainer.innerHTML = `<div style="padding: 0.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;">Tidak ditemukan</div>`;
+        return;
+    }
+    
+    listContainer.innerHTML = filtered.map(db => {
+        const isSelected = db === queryConsoleActiveDatabase;
+        return `
+            <div class="db-item ${isSelected ? 'selected' : ''}" 
+                 onclick="selectDatabase('${escapeHtml(db)}')" 
+                 style="color: ${isSelected ? '#0d1117' : '#cbd5e1'}; background: ${isSelected ? 'var(--accent-teal)' : 'transparent'}; font-weight: ${isSelected ? '600' : 'normal'};"
+                 title="${escapeHtml(db)}">
+                ${escapeHtml(db)}
+            </div>
+        `;
+    }).join('');
+}
+
+async function selectDatabase(dbName) {
+    queryConsoleActiveDatabase = dbName;
+    
+    // Update trigger text
+    const triggerText = document.getElementById('query-db-trigger-text');
+    if (triggerText) {
+        triggerText.textContent = dbName;
+    }
+    
+    // Update hidden input compatibility
+    const dbSelect = document.getElementById('query-db-select');
+    if (dbSelect) {
+        dbSelect.value = dbName;
+    }
+    
+    // Save to localStorage
+    localStorage.setItem('queryConsoleActiveDatabase', dbName);
+    
+    // Close dropdown
+    const dropdown = document.getElementById('query-db-dropdown');
+    if (dropdown) {
+        dropdown.style.display = 'none';
+    }
+    
+    // Reload autocomplete schema for this database
+    await changeQueryDatabase();
+}
+
 function disconnectQueryConsole() {
-    queryConsoleActiveJob = null;
+    queryConsoleActiveServer = "";
+    queryConsoleActiveAuth = "";
+    queryConsoleActiveLogin = "";
+    queryConsoleActivePassword = "";
+    queryConsoleActiveDatabase = "";
+    queryConsoleDatabases = [];
     queryConsoleSchema = { Objects: [], Columns: [] };
+    
+    // Clear LocalStorage connection values
+    localStorage.removeItem('queryConsoleConnected');
+    localStorage.removeItem('queryConsoleServerName');
+    localStorage.removeItem('queryConsoleAuthType');
+    localStorage.removeItem('queryConsoleLogin');
+    localStorage.removeItem('queryConsolePassword');
+    localStorage.removeItem('queryConsoleActiveDatabase');
+    localStorage.removeItem('queryConsoleLastQuery');
     
     document.getElementById('query-connect-panel').style.display = 'block';
     document.getElementById('query-editor-main-panel').style.display = 'none';
     document.getElementById('query-active-conn-info').textContent = "Belum terhubung";
 }
 
-function syncSqlQueryHighlight() {
-    const textarea = document.getElementById('query-sql-text');
-    const codeEl = document.getElementById('query-sql-highlight');
-    if (!textarea || !codeEl) return;
-    
-    let text = textarea.value;
-    
-    // Add a trailing space or newline if empty or ending with a newline
-    // to prevent Prism from ignoring final lines or collapsing the element height.
-    if (text.endsWith('\n')) {
-        text += ' ';
-    }
-    
-    codeEl.textContent = text;
-    
-    if (window.Prism) {
-        Prism.highlightElement(codeEl);
-    }
-}
-
-function syncQueryScroll() {
-    const textarea = document.getElementById('query-sql-text');
-    const pre = document.querySelector('.highlight-pre');
-    if (textarea && pre) {
-        pre.scrollTop = textarea.scrollTop;
-        pre.scrollLeft = textarea.scrollLeft;
-    }
-}
-
-// ============================================================================
-// SQL EDITOR AUTOCOMPLETE ENGINE (SSMS LITE STYLE)
-// ============================================================================
-let queryConsoleSchema = { Objects: [], Columns: [] };
-let activeQueryAutocompleteIndex = -1;
-let activeQuerySuggestions = [];
-
-async function loadQuerySchema() {
-    if (!activeJob) return;
-    const jobId = activeJob.Id || activeJob.id;
-    const dbType = document.getElementById('query-db-target').value;
-
-    const loader = document.getElementById('query-schema-loader');
-    if (loader) loader.style.display = 'inline-block';
-
-    try {
-        const res = await fetch(`${API_BASE}/db/schema?jobId=${jobId}&dbType=${dbType}`);
-        if (res.ok) {
-            queryConsoleSchema = await res.json();
-            console.log("Database schema metadata loaded for autocomplete:", queryConsoleSchema);
-        } else {
-            console.error("Gagal memuat skema untuk autocomplete:", await res.text());
+// Add global click listener to close dropdown on clicking outside
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('query-db-dropdown');
+    const trigger = document.getElementById('query-db-trigger');
+    if (dropdown && dropdown.style.display === 'block') {
+        if (!dropdown.contains(e.target) && !trigger.contains(e.target)) {
+            dropdown.style.display = 'none';
         }
-    } catch (err) {
-        console.error("Error memuat skema:", err);
-    } finally {
-        if (loader) loader.style.display = 'none';
     }
-}
+});
 
-const sqlKeywordsList = [
-    "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "JOIN", "ON",
-    "ORDER BY", "GROUP BY", "IN", "AND", "OR", "AS", "INTO", "VALUES", "SET",
-    "LEFT JOIN", "RIGHT JOIN", "INNER JOIN", "CROSS JOIN", "TOP", "DISTINCT", 
-    "COUNT", "SUM", "AVG", "MIN", "MAX", "HAVING", "LIKE", "IS NULL", "IS NOT NULL"
-];
-
-function handleQueryEditorInput(event) {
-    const textarea = event.target;
-    const selectionStart = textarea.selectionStart;
-    const textBeforeCursor = textarea.value.substring(0, selectionStart);
-    
-    // Get last word being typed (including dots for schema or table notation)
-    const match = textBeforeCursor.match(/[\w\.\[\]]+$/);
-    const lastWord = match ? match[0] : '';
-
-    showQueryAutocompleteFor(lastWord, textarea, false);
-    syncSqlQueryHighlight();
-}
-
-function showQueryAutocompleteFor(lastWord, textarea, forceShowAll = false) {
-    if (!lastWord && !forceShowAll) {
-        hideQueryAutocomplete();
+function initMonacoQueryEditor() {
+    if (queryConsoleEditor) {
+        // Refresh layout if editor already exists
+        setTimeout(() => {
+            queryConsoleEditor.layout();
+        }, 50);
         return;
     }
 
-    const box = document.getElementById('query-autocomplete-box');
-    if (!box) return;
-
-    let suggestions = [];
-
-    // Check if user is typing table.column notation (e.g. Customers. or Customers.Name)
-    if (lastWord && lastWord.includes('.')) {
-        const parts = lastWord.split('.');
-        const tableName = parts[parts.length - 2].replace(/[\[\]]/g, '').toLowerCase();
-        const colSearch = parts[parts.length - 1].toLowerCase();
-
-        // Find columns matching this table
-        if (queryConsoleSchema && queryConsoleSchema.Columns) {
-            const tableColumns = queryConsoleSchema.Columns.filter(c => 
-                (c.TableName || c.tableName || '').toLowerCase() === tableName
-            );
-            
-            suggestions = tableColumns
-                .filter(c => (c.ColumnName || c.columnName || '').toLowerCase().startsWith(colSearch))
-                .map(c => ({
-                    text: c.ColumnName || c.columnName,
-                    display: `${c.ColumnName || c.columnName} <span style="font-size:0.75rem; color:var(--text-muted);">(${c.DataType || c.dataType || 'column'})</span>`,
-                    type: 'column'
-                }));
-        }
-    } else {
-        const searchWord = lastWord ? lastWord.toLowerCase() : '';
-
-        // 1. Suggest SQL Keywords
-        const matchingKeywords = sqlKeywordsList
-            .filter(kw => !searchWord || kw.toLowerCase().startsWith(searchWord))
-            .map(kw => ({ text: kw, display: kw, type: 'keyword' }));
-
-        // 2. Suggest Schema Objects (Tables, Views, SPs, Functions)
-        let matchingObjects = [];
-        if (queryConsoleSchema && queryConsoleSchema.Objects) {
-            matchingObjects = queryConsoleSchema.Objects
-                .filter(obj => !searchWord || (obj.Name || obj.name || '').toLowerCase().startsWith(searchWord))
-                .map(obj => {
-                    const name = obj.Name || obj.name;
-                    const type = obj.Type || obj.type || 'OBJECT';
-                    let typeColor = 'var(--accent-teal)';
-                    if (type === 'PROCEDURE') typeColor = 'var(--accent-purple)';
-                    else if (type === 'FUNCTION') typeColor = 'var(--accent-indigo)';
-                    else if (type === 'VIEW') typeColor = '#f59e0b';
-
-                    return {
-                        text: name,
-                        display: `${name} <span class="badge-clean" style="font-size:0.7rem; padding:1px 4px; background:rgba(255,255,255,0.05); color:${typeColor}; border:1px solid ${typeColor};">${type}</span>`,
-                        type: type.toLowerCase()
-                    };
-                });
-        }
-
-        // 3. Suggest Columns (Generic, if typing any part of column name)
-        let matchingColumns = [];
-        if (queryConsoleSchema && queryConsoleSchema.Columns) {
-            // Keep unique column names for general suggestions
-            const uniqueCols = new Set();
-            queryConsoleSchema.Columns.forEach(c => {
-                const colName = c.ColumnName || c.columnName;
-                if (colName && (!searchWord || colName.toLowerCase().startsWith(searchWord))) {
-                    uniqueCols.add(colName);
-                }
-            });
-            matchingColumns = Array.from(uniqueCols).slice(0, 10).map(colName => ({
-                text: colName,
-                display: `${colName} <span style="font-size:0.75rem; color:var(--text-muted);">(Column)</span>`,
-                type: 'column'
-            }));
-        }
-
-        suggestions = [...matchingKeywords, ...matchingObjects, ...matchingColumns];
-    }
-
-    if (suggestions.length === 0) {
-        hideQueryAutocomplete();
+    if (queryConsoleEditorInitializing) {
         return;
     }
 
-    // Limit suggestions count to 15 for speed & readability
-    activeQuerySuggestions = suggestions.slice(0, 15);
-    activeQueryAutocompleteIndex = 0;
-    renderQueryAutocomplete();
-}
-
-function renderQueryAutocomplete() {
-    const box = document.getElementById('query-autocomplete-box');
-    if (!box) return;
-
-    box.innerHTML = activeQuerySuggestions.map((s, idx) => {
-        const isActive = idx === activeQueryAutocompleteIndex;
-        let icon = '<i class="fa-solid fa-key" style="color:#a8a29e; margin-right:0.4rem;"></i>';
-        if (s.type === 'table') icon = '<i class="fa-solid fa-table" style="color:var(--accent-teal); margin-right:0.4rem;"></i>';
-        else if (s.type === 'view') icon = '<i class="fa-solid fa-eye" style="color:#f59e0b; margin-right:0.4rem;"></i>';
-        else if (s.type === 'procedure') icon = '<i class="fa-solid fa-gears" style="color:var(--accent-purple); margin-right:0.4rem;"></i>';
-        else if (s.type === 'function') icon = '<i class="fa-solid fa-code" style="color:var(--accent-indigo); margin-right:0.4rem;"></i>';
-        else if (s.type === 'column') icon = '<i class="fa-solid fa-columns" style="color:var(--text-muted); margin-right:0.4rem;"></i>';
-
-        return `
-            <div class="table-autocomplete-option ${isActive ? 'active' : ''}" onclick="selectQueryAutocomplete(${idx})" style="display:flex; align-items:center; justify-content:space-between; padding:0.45rem 0.6rem;">
-                <span style="display:flex; align-items:center;">
-                    ${icon}
-                    <span>${s.display}</span>
-                </span>
-            </div>
-        `;
-    }).join('');
-
-    box.classList.add('active');
-
-    // Dynamically position suggestions box near the bottom of cursor
-    const container = document.querySelector('.code-editor-container');
-    if (container) {
-        // Position it absolute right below the editor container to prevent overflow:hidden clipping
-        box.style.top = `${container.offsetTop + container.offsetHeight}px`;
-        box.style.left = `${container.offsetLeft}px`;
-        box.style.width = `${container.offsetWidth}px`;
+    if (typeof require === 'undefined') {
+        console.error("Monaco loader is not loaded yet.");
+        return;
     }
-}
 
-function handleQueryEditorKeydown(event) {
-    const box = document.getElementById('query-autocomplete-box');
+    queryConsoleEditorInitializing = true;
+
+    require.config({ paths: { vs: 'lib/monaco-editor/min/vs' } });
     
-    // Check for Ctrl + Space manual trigger
-    if (event.ctrlKey && (event.key === ' ' || event.code === 'Space')) {
-        event.preventDefault();
-        const selectionStart = event.target.selectionStart;
-        const textBeforeCursor = event.target.value.substring(0, selectionStart);
-        const match = textBeforeCursor.match(/[\w\.\[\]]+$/);
-        const lastWord = match ? match[0] : '';
-        showQueryAutocompleteFor(lastWord, event.target, true);
-        return;
-    }
+    require(['vs/editor/editor.main'], function() {
+        queryConsoleEditorInitializing = false;
 
-    if (!box || !box.classList.contains('active')) {
-        // Execute query on Ctrl+Enter
-        if (event.ctrlKey && event.key === 'Enter') {
-            event.preventDefault();
+        // Double check in case it was created concurrently
+        if (queryConsoleEditor) return;
+
+        const container = document.getElementById('query-editor');
+        if (!container) return;
+
+        // Double check if the container has already been initialized with Monaco child nodes
+        if (container.firstElementChild) {
+            console.warn("Monaco editor container already populated.");
+            return;
+        }
+
+        const savedQuery = localStorage.getItem('queryConsoleLastQuery');
+        const initialValue = savedQuery !== null ? savedQuery : "SELECT TOP 10 * FROM dbo.Customers ORDER BY Id DESC;";
+
+        queryConsoleEditor = monaco.editor.create(container, {
+            value: initialValue,
+            language: 'sql',
+            theme: 'vs-dark',
+            automaticLayout: true,
+            minimap: { enabled: false },
+            fontSize: 13,
+            fontFamily: 'Consolas, Monaco, monospace',
+            lineHeight: 18,
+            padding: { top: 8, bottom: 8 }
+        });
+
+        // Listen for content changes to auto-save to localStorage
+        queryConsoleEditor.onDidChangeModelContent(() => {
+            localStorage.setItem('queryConsoleLastQuery', queryConsoleEditor.getValue());
+        });
+
+        // Register custom SQL autocomplete provider
+        registerMonacoSqlAutocomplete();
+        
+        // Add shortcut key (Ctrl+Enter) to run query console
+        queryConsoleEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function() {
             runQueryConsole();
+        });
+    });
+}
+
+function registerMonacoSqlAutocomplete() {
+    if (monacoSqlCompletionProvider) return; // Prevent double registration
+
+    const sqlKeywordsList = [
+        "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "JOIN", "ON",
+        "ORDER BY", "GROUP BY", "IN", "AND", "OR", "AS", "INTO", "VALUES", "SET",
+        "LEFT JOIN", "RIGHT JOIN", "INNER JOIN", "CROSS JOIN", "TOP", "DISTINCT", 
+        "COUNT", "SUM", "AVG", "MIN", "MAX", "HAVING", "LIKE", "IS NULL", "IS NOT NULL"
+    ];
+
+    monacoSqlCompletionProvider = monaco.languages.registerCompletionItemProvider('sql', {
+        triggerCharacters: ['.'],
+        provideCompletionItems: function(model, position) {
+            const textUntilPosition = model.getValueInRange({
+                startLineNumber: position.lineNumber,
+                startColumn: 1,
+                endLineNumber: position.lineNumber,
+                endColumn: position.column
+            });
+
+            // Check if user is typing table.column notation (e.g. Customers. or Customers.Name)
+            const matchDot = textUntilPosition.match(/([\w\[\]\.]+)\.$/);
+            
+            if (matchDot) {
+                const fullPrefix = matchDot[1].replace(/[\[\]]/g, '').toLowerCase();
+                const parts = fullPrefix.split('.');
+                const tableName = parts[parts.length - 1];
+                
+                if (queryConsoleSchema && queryConsoleSchema.Columns) {
+                    const tableColumns = queryConsoleSchema.Columns.filter(c => {
+                        const cTable = (c.TableName || c.tableName || '').replace(/[\[\]]/g, '').toLowerCase();
+                        return cTable === tableName || (parts.length > 1 && cTable === fullPrefix);
+                    });
+
+                    const suggestions = tableColumns.map(c => {
+                        const name = c.ColumnName || c.columnName;
+                        const dataType = c.DataType || c.dataType || 'column';
+                        return {
+                            label: name,
+                            kind: monaco.languages.CompletionItemKind.Field,
+                            detail: dataType,
+                            insertText: name
+                        };
+                    });
+
+                    return { suggestions: suggestions };
+                }
+            }
+
+            // General suggestions (Keywords, Tables, Views, Generic Columns)
+            const suggestions = [];
+
+            // 1. Keywords
+            sqlKeywordsList.forEach(kw => {
+                suggestions.push({
+                    label: kw,
+                    kind: monaco.languages.CompletionItemKind.Keyword,
+                    insertText: kw
+                });
+            });
+
+            // 2. Tables & Views
+            if (queryConsoleSchema && queryConsoleSchema.Objects) {
+                queryConsoleSchema.Objects.forEach(obj => {
+                    const name = obj.Name || obj.name;
+                    const type = (obj.Type || obj.type || 'TABLE').toUpperCase();
+                    let kind = monaco.languages.CompletionItemKind.Class;
+                    if (type === 'VIEW') kind = monaco.languages.CompletionItemKind.Interface;
+                    else if (type === 'PROCEDURE') kind = monaco.languages.CompletionItemKind.Method;
+                    else if (type === 'FUNCTION') kind = monaco.languages.CompletionItemKind.Function;
+
+                    suggestions.push({
+                        label: name,
+                        kind: kind,
+                        detail: type,
+                        insertText: name
+                    });
+                });
+            }
+
+            // 3. Generic Columns
+            if (queryConsoleSchema && queryConsoleSchema.Columns) {
+                const uniqueCols = new Set();
+                queryConsoleSchema.Columns.forEach(c => {
+                    const colName = c.ColumnName || c.columnName;
+                    if (colName) uniqueCols.add(colName);
+                });
+                
+                uniqueCols.forEach(colName => {
+                    suggestions.push({
+                        label: colName,
+                        kind: monaco.languages.CompletionItemKind.Field,
+                        detail: 'Column',
+                        insertText: colName
+                    });
+                });
+            }
+
+            return { suggestions: suggestions };
         }
-        return;
-    }
-
-    if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        activeQueryAutocompleteIndex = (activeQueryAutocompleteIndex + 1) % activeQuerySuggestions.length;
-        renderQueryAutocomplete();
-    } else if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        activeQueryAutocompleteIndex = (activeQueryAutocompleteIndex - 1 + activeQuerySuggestions.length) % activeQuerySuggestions.length;
-        renderQueryAutocomplete();
-    } else if (event.key === 'Enter' || event.key === 'Tab') {
-        event.preventDefault();
-        selectQueryAutocomplete(activeQueryAutocompleteIndex);
-    } else if (event.key === 'Escape') {
-        event.preventDefault();
-        hideQueryAutocomplete();
-    }
-}
-
-function selectQueryAutocomplete(index) {
-    if (index < 0 || index >= activeQuerySuggestions.length) return;
-    const s = activeQuerySuggestions[index];
-
-    const textarea = document.getElementById('query-sql-text');
-    if (!textarea) return;
-
-    const selectionStart = textarea.selectionStart;
-    const textBeforeCursor = textarea.value.substring(0, selectionStart);
-    const textAfterCursor = textarea.value.substring(selectionStart);
-
-    // Find the word boundary before the cursor to replace it
-    const match = textBeforeCursor.match(/[\w\.\[\]]+$/);
-    const lastWord = match ? match[0] : '';
-    
-    let replacement = s.text;
-    
-    // If it's a dot notation, we only replace the column part
-    if (lastWord.includes('.')) {
-        const parts = lastWord.split('.');
-        parts[parts.length - 1] = s.text;
-        replacement = parts.join('.');
-    }
-
-    const newTextBefore = textBeforeCursor.substring(0, textBeforeCursor.length - lastWord.length) + replacement;
-    
-    textarea.value = newTextBefore + textAfterCursor;
-    textarea.selectionStart = textarea.selectionEnd = newTextBefore.length;
-    textarea.focus();
-
-    hideQueryAutocomplete();
-    syncSqlQueryHighlight();
-}
-
-function hideQueryAutocomplete() {
-    const box = document.getElementById('query-autocomplete-box');
-    if (box) {
-        box.classList.remove('active');
-    }
-    activeQuerySuggestions = [];
-    activeQueryAutocompleteIndex = -1;
-}
-
-function hideQueryAutocompleteDelayed() {
-    // Delay hiding to allow click events to register
-    setTimeout(hideQueryAutocomplete, 250);
+    });
 }
 
 // ── Schema Comparison Mock Logic & Diff Viewer ──────────────────────────────
@@ -5861,8 +6053,8 @@ const queryConsoleDummyResults = {
     }
 };
 
-function runQueryConsole() {
-    const queryText = (document.getElementById('query-sql-text').value || '').trim();
+async function runQueryConsole() {
+    const queryText = (queryConsoleEditor ? queryConsoleEditor.getValue() : '').trim();
     if (!queryText) {
         alert("Harap masukkan query SQL!");
         return;
@@ -5874,29 +6066,145 @@ function runQueryConsole() {
     const statusText = document.getElementById('query-status-text');
     const rowsCount = document.getElementById('query-rows-count');
 
-    // Simple parser to pick dummy table
-    let key = "dbo.Customers";
-    if (queryText.toLowerCase().includes("orders")) {
-        key = "dbo.Orders";
-    }
-
-    const data = queryConsoleDummyResults[key];
-
-    thead.innerHTML = `<tr>${data.headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
-    tbody.innerHTML = data.rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('');
-
-    statusText.innerText = `Query berhasil dijalankan pada database ${queryConsoleActiveDbType === 'target' ? 'TargetDB' : 'SourceDB'}.`;
-    rowsCount.innerText = `${data.rows.length} baris ditampilkan (8ms)`;
+    statusText.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Mengeksekusi kueri...`;
+    statusText.style.color = 'var(--accent-teal)';
+    rowsCount.textContent = "";
     resultsBox.style.display = 'block';
+
+    thead.innerHTML = "";
+    tbody.innerHTML = "";
+
+    try {
+        const payload = {
+            ServerName: queryConsoleActiveServer,
+            Authentication: queryConsoleActiveAuth,
+            Login: queryConsoleActiveLogin,
+            Password: queryConsoleActivePassword,
+            Database: queryConsoleActiveDatabase,
+            QueryText: queryText
+        };
+
+        const res = await fetch(`${API_BASE}/query/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) throw new Error("API Error: " + await res.text());
+        const data = await res.json();
+
+        if (!data.Success) {
+            statusText.textContent = "Error: " + (data.Message || "Kesalahan eksekusi SQL");
+            statusText.style.color = '#f43f5e';
+            rowsCount.textContent = "Gagal (0 baris)";
+            return;
+        }
+
+        // Render headers
+        thead.innerHTML = `<tr>${data.Headers.map(h => `<th style="position: relative;">${escapeHtml(h)}<div class="resizer"></div></th>`).join('')}</tr>`;
+
+        // Render rows
+        if (data.Rows.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="${data.Headers.length}" style="text-align: center; color: var(--text-muted);">Tidak ada baris yang dikembalikan.</td></tr>`;
+        } else {
+            tbody.innerHTML = data.Rows.map(row => 
+                `<tr>${row.map(cell => {
+                    if (cell === null) {
+                        return `<td title="NULL"><span style="color: rgba(255,255,255,0.15); font-style: italic;">NULL</span></td>`;
+                    }
+                    const strVal = cell.toString();
+                    return `<td title="${escapeHtml(strVal)}">${escapeHtml(strVal)}</td>`;
+                }).join('')}</tr>`
+            ).join('');
+        }
+
+        // Initialize drag-resize columns
+        initTableResizers(document.querySelector('.query-results-table'));
+
+        statusText.textContent = "Kueri berhasil dijalankan.";
+        statusText.style.color = 'var(--accent-teal)';
+        rowsCount.textContent = `${data.Rows.length} baris ditampilkan (${data.ExecutionTimeMs}ms)`;
+
+        // Cache columns in global variable for export function
+        window.lastQueryResults = data;
+    } catch (err) {
+        statusText.textContent = "Error: " + err.message;
+        statusText.style.color = '#f43f5e';
+        rowsCount.textContent = "Gagal";
+    }
 }
 
 function clearQueryConsole() {
-    document.getElementById('query-sql-text').value = '';
+    if (queryConsoleEditor) {
+        queryConsoleEditor.setValue('');
+    }
     document.getElementById('query-results-box').style.display = 'none';
 }
 
 function exportQueryResults() {
-    alert("Ekspor CSV berhasil! File 'query_results.csv' telah diunduh.");
+    const data = window.lastQueryResults;
+    if (!data || !data.Headers || !data.Rows || data.Rows.length === 0) {
+        alert("Tidak ada data hasil kueri untuk diekspor!");
+        return;
+    }
+
+    let csvContent = "data:text/csv;charset=utf-8,";
+    // Headers
+    csvContent += data.Headers.map(h => `"${h.replace(/"/g, '""')}"`).join(",") + "\n";
+    // Rows
+    data.Rows.forEach(row => {
+        csvContent += row.map(cell => {
+            const strVal = cell === null ? "" : cell.toString();
+            return `"${strVal.replace(/"/g, '""')}"`;
+        }).join(",") + "\n";
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `query_results_${queryConsoleActiveDatabase}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+function initTableResizers(table) {
+    if (!table) return;
+
+    // Cap initial column widths and freeze layout in fixed mode to enable ellipsis text-clipping
+    const cols = table.querySelectorAll('th');
+    cols.forEach(c => {
+        const currentWidth = c.offsetWidth;
+        c.style.width = Math.min(250, Math.max(80, currentWidth)) + 'px';
+    });
+    table.style.tableLayout = 'fixed';
+
+    const resizers = table.querySelectorAll('.resizer');
+    resizers.forEach(resizer => {
+        resizer.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const th = e.target.parentElement;
+            const startWidth = th.offsetWidth;
+            const startX = e.clientX;
+
+            resizer.classList.add('dragging');
+
+            function onMouseMove(moveEvent) {
+                const width = startWidth + (moveEvent.clientX - startX);
+                th.style.width = Math.max(60, width) + 'px';
+            }
+
+            function onMouseUp() {
+                resizer.classList.remove('dragging');
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            }
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+    });
 }
 
 // ── Settings Save Logic ───────────────────────────────────────────────────

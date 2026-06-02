@@ -1489,58 +1489,6 @@ textarea.form-control {
     gap: 0.4rem;
 }
 
-.code-editor-container {
-    position: relative;
-    height: 240px;
-    background: #07090d;
-    overflow: hidden;
-}
-
-.highlight-pre {
-    margin: 0 !important;
-    padding: 1rem !important;
-    position: absolute !important;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    overflow: hidden !important;
-    box-sizing: border-box;
-    background: transparent !important;
-}
-
-.highlight-pre code {
-    font-family: Consolas, Monaco, monospace !important;
-    font-size: 0.88rem !important;
-    line-height: 1.5 !important;
-    white-space: pre-wrap !important;
-    word-wrap: break-word !important;
-    background: transparent !important;
-    padding: 0 !important;
-}
-
-.sql-textarea {
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    top: 0;
-    left: 0;
-    background: transparent !important;
-    color: transparent !important;
-    caret-color: #ffffff !important;
-    border: none;
-    outline: none;
-    font-family: Consolas, Monaco, monospace !important;
-    font-size: 0.88rem !important;
-    padding: 1rem !important;
-    resize: none;
-    line-height: 1.5 !important;
-    box-sizing: border-box;
-    overflow-y: auto;
-    white-space: pre-wrap !important;
-    word-wrap: break-word !important;
-}
 
 .query-results-wrapper {
     background: var(--bg-card);
@@ -1810,6 +1758,198 @@ textarea.form-control {
     .schema-diff-code {
         height: 34vh;
     }
+}
+
+/* Custom Searchable Database Dropdown */
+.query-db-custom-select {
+    position: relative;
+    width: 180px;
+    user-select: none;
+}
+
+#query-db-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    height: 32px;
+    border-radius: 6px;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border-flat);
+    color: #ffffff;
+    width: 100%;
+    padding: 0 0.6rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+#query-db-trigger:hover {
+    border-color: var(--border-flat-hover);
+    background: rgba(255,255,255,0.02);
+}
+
+#query-db-dropdown {
+    display: none;
+    position: absolute;
+    top: 36px;
+    left: 0;
+    width: 240px;
+    background: rgba(13, 17, 23, 0.98);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-flat);
+    border-radius: 8px;
+    z-index: 1100;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    padding: 0.6rem;
+}
+
+#query-db-search {
+    font-size: 0.8rem;
+    height: 30px;
+    width: 100%;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-flat);
+    color: #ffffff;
+    padding: 0 0.6rem;
+    margin-bottom: 0.6rem;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+#query-db-search:focus {
+    border-color: var(--accent-teal);
+}
+
+#query-db-list {
+    max-height: 180px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+/* Custom Scrollbar for dropdown list */
+#query-db-list::-webkit-scrollbar {
+    width: 6px;
+}
+#query-db-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+#query-db-list::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.1);
+    border-radius: 3px;
+}
+#query-db-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.25);
+}
+
+.db-item {
+    font-family: var(--font-primary), sans-serif;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    padding: 0.45rem 0.6rem;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #cbd5e1;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    flex-shrink: 0;
+}
+
+.db-item:hover {
+    background: rgba(0, 173, 181, 0.15); /* 0, 173, 181 is #00adb5 */
+    color: #ffffff;
+}
+
+.db-item.selected {
+    background: var(--accent-teal);
+    color: #0d1117;
+    font-weight: 600;
+}
+
+/* Query Console Results Grid */
+.query-results-grid-wrapper {
+    max-height: 380px;
+    overflow: auto;
+    background: #07090d;
+    border-radius: 6px;
+    border: 1px solid var(--border-flat);
+    position: relative;
+}
+
+/* Custom Scrollbar for results grid */
+.query-results-grid-wrapper::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.query-results-grid-wrapper::-webkit-scrollbar-track {
+    background: rgba(255,255,255,0.01);
+}
+.query-results-grid-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+}
+.query-results-grid-wrapper::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.25);
+}
+
+.query-results-table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    table-layout: auto; /* starts as auto for initial render measure, then toggles to fixed */
+}
+
+.query-results-table th, 
+.query-results-table td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+    border-bottom: 1px solid var(--border-flat);
+    border-right: 1px solid rgba(255, 255, 255, 0.05); /* separate columns visually */
+    box-sizing: border-box;
+}
+
+/* SSMS style header columns */
+.query-results-table th {
+    background: #11151d;
+    color: var(--text-muted);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 2; /* sticky headers */
+    border-bottom: 2px solid var(--border-flat);
+    text-align: left;
+    user-select: none;
+}
+
+/* Stable column resizer handle */
+.resizer {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 10;
+    background: transparent;
+    transition: background 0.15s ease;
+}
+
+.resizer:hover, .resizer.dragging {
+    background: var(--accent-teal);
+}
+
+.query-results-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.02);
 }
 
 

@@ -766,26 +766,50 @@
             </div>
 
             <!-- Connection Panel (SSMS Login Style Gateway) -->
-            <div id="query-connect-panel" style="margin-top: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; padding: 2rem; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); border-radius: 12px; backdrop-filter: blur(10px);">
+            <div id="query-connect-panel" style="margin-top: 1.5rem; max-width: 550px; margin-left: auto; margin-right: auto; padding: 2rem; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); border-radius: 12px; backdrop-filter: blur(10px);">
                 <div style="text-align: center; margin-bottom: 1.5rem;">
                     <i class="fa-solid fa-plug" style="font-size: 2.5rem; color: var(--accent-teal); margin-bottom: 0.75rem;"></i>
                     <h3 style="margin: 0; font-family: var(--font-heading); color: #ffffff;">Connect to Server</h3>
-                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Pilih Migration Job atau tentukan koneksi kustom Anda.</p>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Tentukan server SQL dan kredensial koneksi Anda.</p>
                 </div>
 
-                <div class="form-group" style="margin-bottom: 1.25rem;">
-                    <label for="query-conn-job-select" style="font-size: 0.85rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Migration Job / Server</label>
-                    <select id="query-conn-job-select" class="form-control" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff;">
-                        <option value="">-- Memuat Migration Job... --</option>
+                <div class="form-group" style="margin-bottom: 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 1.25rem;">
+                    <label for="query-conn-job-select" style="font-size: 0.82rem; font-weight: 600; color: var(--accent-teal); display: block; margin-bottom: 0.4rem;">Pre-fill from Job Connection (Optional)</label>
+                    <select id="query-conn-job-select" class="form-control" onchange="prefillQueryConnection()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff;">
+                        <option value="">-- Pilih Job untuk isi otomatis --</option>
                     </select>
                 </div>
 
-                <div class="form-group" style="margin-bottom: 1.25rem;">
-                    <label for="query-conn-db-type" style="font-size: 0.85rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Database Type</label>
-                    <select id="query-conn-db-type" class="form-control" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff;">
-                        <option value="target">Target Database (Tujuan)</option>
-                        <option value="source">Source Database (Asal)</option>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="query-server-type" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Server type:</label>
+                    <select id="query-server-type" class="form-control" disabled style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-flat); width: 100%; color: var(--text-muted);">
+                        <option value="engine">Database Engine</option>
                     </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="query-server-name" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Server name:</label>
+                    <input type="text" id="query-server-name" class="form-control" placeholder="RASIMIN\MSSQLSERVER2022" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="query-auth-type" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Authentication:</label>
+                    <select id="query-auth-type" class="form-control" onchange="toggleQueryAuthFields()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff;">
+                        <option value="SQL">SQL Server Authentication</option>
+                        <option value="Windows">Windows Authentication</option>
+                    </select>
+                </div>
+
+                <div id="query-auth-credentials-section">
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label for="query-login" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Login:</label>
+                        <input type="text" id="query-login" class="form-control" placeholder="sa" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;">
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 1.25rem;">
+                        <label for="query-password" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Password:</label>
+                        <input type="password" id="query-password" class="form-control" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;">
+                    </div>
                 </div>
 
                 <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem;">
@@ -797,23 +821,49 @@
 
             <!-- Query Editor Main Panel (Hidden by default) -->
             <div id="query-editor-main-panel" style="display: none;">
-                <!-- Toolbar -->
-                <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 1.25rem; margin-bottom: 1.25rem; flex-wrap: wrap;">
+                <!-- Toolbar (SSMS Style) -->
+                <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 1.25rem; margin-bottom: 1.25rem; flex-wrap: wrap; background: rgba(255,255,255,0.02); padding: 0.5rem 1rem; border: 1px solid var(--border-flat); border-radius: 8px;">
+                    
+                    <!-- DB Selector Custom Dropdown -->
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">Koneksi DB Aktif:</span>
-                        <strong id="query-active-conn-info" style="font-size: 0.82rem; color: var(--accent-teal);">Belum terhubung</strong>
+                        <i class="fa-solid fa-database" style="color: var(--accent-teal); font-size: 0.85rem;"></i>
+                        <div class="query-db-custom-select">
+                            <div id="query-db-trigger" onclick="toggleDatabaseDropdown(event)">
+                                <span id="query-db-trigger-text">master</span>
+                                <i class="fa-solid fa-chevron-down" style="font-size: 0.7rem; opacity: 0.7;"></i>
+                            </div>
+                            <div id="query-db-dropdown">
+                                <input type="text" id="query-db-search" placeholder="Cari database..." oninput="filterDatabaseList(this.value)" autocomplete="off">
+                                <div id="query-db-list">
+                                    <!-- Items loaded dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                        <input type="hidden" id="query-db-select" value="master">
                     </div>
-                    <button class="btn btn-primary" onclick="runQueryConsole()" style="width: auto; height: 36px; padding: 0 1.25rem;">
-                        <i class="fa-solid fa-play"></i> Jalankan SQL
+
+                    <div style="height: 20px; width: 1px; background: var(--border-flat); margin: 0 0.25rem;"></div>
+
+                    <button class="btn btn-primary" onclick="runQueryConsole()" style="width: auto; height: 32px; padding: 0 1rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+                        <i class="fa-solid fa-play" style="font-size: 0.75rem;"></i> Execute
                     </button>
-                    <button class="btn btn-secondary" onclick="clearQueryConsole()" style="width: auto; height: 36px; padding: 0 1rem;">
-                        <i class="fa-solid fa-trash-can"></i> Bersihkan
+                    <button class="btn btn-secondary" onclick="clearQueryConsole()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+                        <i class="fa-solid fa-trash-can" style="font-size: 0.75rem;"></i> Clear
                     </button>
-                    <button class="btn btn-secondary" onclick="exportQueryResults()" style="width: auto; height: 36px; padding: 0 1rem;" title="Download hasil sebagai CSV">
-                        <i class="fa-solid fa-file-csv"></i> Download CSV
+                    <button class="btn btn-secondary" onclick="exportQueryResults()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Download hasil sebagai CSV">
+                        <i class="fa-solid fa-file-csv" style="font-size: 0.75rem;"></i> Export CSV
                     </button>
-                    <button class="btn btn-secondary" onclick="disconnectQueryConsole()" style="width: auto; height: 36px; padding: 0 1rem; color: #f43f5e; border-color: rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.05);" title="Putuskan Koneksi">
-                        <i class="fa-solid fa-power-off"></i> Disconnect
+
+                    <div style="height: 20px; width: 1px; background: var(--border-flat); margin: 0 0.25rem; flex-grow: 1; border: none;"></div>
+
+                    <!-- Server Connection Info Badge -->
+                    <div style="display: flex; align-items: center; gap: 0.4rem; background: rgba(255, 255, 255, 0.03); padding: 0.25rem 0.75rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05);">
+                        <i class="fa-solid fa-server" style="color: var(--accent-teal); font-size: 0.75rem;"></i>
+                        <span id="query-active-conn-info" style="font-size: 0.78rem; color: #ffffff; font-weight: 500;">Belum terhubung</span>
+                    </div>
+
+                    <button class="btn btn-secondary" onclick="disconnectQueryConsole()" style="width: auto; height: 32px; padding: 0 0.75rem; font-size: 0.8rem; color: #f43f5e; border-color: rgba(244, 63, 94, 0.2); background: rgba(244, 63, 94, 0.05); display: inline-flex; align-items: center; gap: 0.35rem;" title="Disconnect">
+                        <i class="fa-solid fa-power-off" style="font-size: 0.75rem;"></i> Disconnect
                     </button>
                 </div>
 
@@ -826,11 +876,7 @@
                             <span style="font-size: 0.72rem; color: var(--text-muted);">Tekan Jalankan SQL untuk mengeksekusi</span>
                         </div>
                     </div>
-                    <div class="code-editor-container">
-                        <pre class="highlight-pre"><code id="query-sql-highlight" class="language-sql"></code></pre>
-                        <textarea id="query-sql-text" class="sql-textarea" placeholder="SELECT TOP 10 * FROM dbo.Customers ORDER BY Id DESC;" onkeydown="handleQueryEditorKeydown(event)" oninput="handleQueryEditorInput(event)" onscroll="syncQueryScroll()" onblur="hideQueryAutocompleteDelayed()"></textarea>
-                    </div>
-                    <div id="query-autocomplete-box" class="table-autocomplete" style="width: 320px; max-height: 240px; border-color: var(--accent-teal); margin-top: 2px;"></div>
+                    <div id="query-editor" style="height: 300px; border: 1px solid var(--border-flat); border-radius: 8px; overflow: hidden; background: #07090d;"></div>
                 </div>
 
                 <!-- Results container -->
@@ -839,8 +885,8 @@
                         <strong id="query-status-text">Query executed successfully in 8ms.</strong>
                         <span id="query-rows-count" style="color: var(--text-muted);">5 rows returned</span>
                     </div>
-                    <div class="mapper-table-wrapper" style="overflow-x: auto; background: #07090d; border-radius: 6px; border: 1px solid var(--border-flat);">
-                        <table class="mapper-table" style="margin-bottom: 0;">
+                    <div class="query-results-grid-wrapper">
+                        <table class="mapper-table query-results-table" style="margin-bottom: 0;">
                             <thead id="query-thead">
                                 <!-- Headers loaded dynamically -->
                             </thead>
@@ -1720,8 +1766,9 @@
     </div>
 </div>
 
-<!-- SignalR & PrismJS CDN -->
+<!-- SignalR, Monaco Editor & PrismJS CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
+<script src="lib/monaco-editor/min/vs/loader.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
 <script src="app.js?v=3.7"></script>
