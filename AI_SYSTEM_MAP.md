@@ -283,6 +283,7 @@ connection.on('ReceiveError', (errorObj) => {
 *   **Identity Insert Detection:** Automatically scans the table schema via `reader.GetSchemaTable()`. If an `IDENTITY` column is present, it automatically wraps the generated INSERT statements inside `SET IDENTITY_INSERT [Table] ON;` and `OFF;` wrappers.
 *   **Computed/Read-Only Column Filtering:** Automatically queries the column schema table via `GetSchemaTable()`. Any column marked as read-only (`IsReadOnly = true`) that is NOT an identity column (such as computed columns or rowversion fields) is excluded from both the columns declaration and value mapping list, preventing execution exceptions.
 *   **Pop-up Setup Dialogue Modal:** Integrates a glassmorphic `#generate-insert-modal` window to select tables (dynamically populated from the database's schema) and specify query filter WHERE conditions.
+*   **T-SQL Variables Generation Option:** Added a "Gunakan Variabel T-SQL" checkbox. When active, it declares SQL variables (`DECLARE @ColumnName sqlType`) at the beginning of the script, assigns row values using `SET`, and executes `INSERT` statements using variables, preventing batch redeclaration errors and improving script readability.
 *   **Monaco Insertion Integration:** Inserts the generated script directly at the user's cursor position in Monaco editor using the Monaco Edit API `queryConsoleEditor.executeEdits()`.
 
 ### 🛠️ F-15: Edit Native SQL Mappings

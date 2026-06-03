@@ -1331,9 +1331,40 @@ app.MapPost("/api/query/generate-inserts", async ([FromBody] QueryGenerateInsert
         using var cmd = new SqlCommand(sql, conn);
         using var reader = await cmd.ExecuteReaderAsync();
 
-        var inserts = new List<string>();
         bool hasIdentity = false;
         var readOnlyColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var columnTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        string GetSqlDeclarationType(string dataTypeName, int columnSize, int precision, int scale)
+        {
+            dataTypeName = dataTypeName.ToLower();
+            if (dataTypeName == "varchar" || dataTypeName == "char")
+            {
+                string size = columnSize <= 0 || columnSize > 8000 ? "max" : columnSize.ToString();
+                return $"{dataTypeName}({size})";
+            }
+            if (dataTypeName == "nvarchar" || dataTypeName == "nchar")
+            {
+                string size = columnSize <= 0 || columnSize > 4000 ? "max" : columnSize.ToString();
+                return $"{dataTypeName}({size})";
+            }
+            if (dataTypeName == "decimal" || dataTypeName == "numeric")
+            {
+                return $"{dataTypeName}({precision},{scale})";
+            }
+            if (dataTypeName == "varbinary" || dataTypeName == "binary")
+            {
+                string size = columnSize <= 0 || columnSize > 8000 ? "max" : columnSize.ToString();
+                return $"{dataTypeName}({size})";
+            }
+            return dataTypeName;
+        }
+
+        string GetSqlVariableName(string columnName)
+        {
+            var clean = System.Text.RegularExpressions.Regex.Replace(columnName, @"[^a-zA-Z0-9_]", "_");
+            return "@" + clean;
+        }
 
         var schemaTable = reader.GetSchemaTable();
         if (schemaTable != null)
@@ -1355,10 +1386,20 @@ app.MapPost("/api/query/generate-inserts", async ([FromBody] QueryGenerateInsert
                     isReadOnly = (bool)row["IsReadOnly"];
                 }
 
-                // If column is read-only and NOT an identity column, it is a computed column or rowversion. Exclude it!
                 if (isReadOnly && !isId)
                 {
                     readOnlyColumns.Add(columnName);
+                }
+                else
+                {
+                    // Resolve database type for variable declaration
+                    var dataTypeName = schemaTable.Columns.Contains("DataTypeName") ? row["DataTypeName"]?.ToString() : "nvarchar";
+                    var columnSize = schemaTable.Columns.Contains("ColumnSize") && row["ColumnSize"] != DBNull.Value ? Convert.ToInt32(row["ColumnSize"]) : -1;
+                    var precision = schemaTable.Columns.Contains("NumericPrecision") && row["NumericPrecision"] != DBNull.Value ? Convert.ToInt32(row["NumericPrecision"]) : -1;
+                    var scale = schemaTable.Columns.Contains("NumericScale") && row["NumericScale"] != DBNull.Value ? Convert.ToInt32(row["NumericScale"]) : -1;
+                    
+                    var sqlType = GetSqlDeclarationType(dataTypeName ?? "nvarchar", columnSize, precision, scale);
+                    columnTypes[columnName] = sqlType;
                 }
             }
         }
@@ -1382,41 +1423,76 @@ app.MapPost("/api/query/generate-inserts", async ([FromBody] QueryGenerateInsert
         }
 
         string columnsPart = string.Join(", ", columns.Select(c => $"[{c}]"));
+        int rowCount = 0;
+        var sb = new System.Text.StringBuilder();
 
-        while (await reader.ReadAsync())
+        if (request.UseVariables)
         {
-            var values = new List<string>();
-            foreach (var ordinal in columnOrdinals)
+            // 1. Declarations
+            foreach (var col in columns)
             {
-                values.Add(FormatValueForSql(reader.GetValue(ordinal)));
+                var varName = GetSqlVariableName(col);
+                var sqlType = columnTypes.TryGetValue(col, out var t) ? t : "nvarchar(max)";
+                sb.AppendLine($"DECLARE {varName} {sqlType};");
             }
-            inserts.Add($"INSERT INTO {escapedTable} ({columnsPart}) VALUES ({string.Join(", ", values)});");
+            sb.AppendLine();
+
+            // 2. Rows assignment & inserts
+            while (await reader.ReadAsync())
+            {
+                rowCount++;
+                for (int i = 0; i < columns.Count; i++)
+                {
+                    var col = columns[i];
+                    var ordinal = columnOrdinals[i];
+                    var varName = GetSqlVariableName(col);
+                    var valueStr = FormatValueForSql(reader.GetValue(ordinal));
+                    sb.AppendLine($"SET {varName} = {valueStr};");
+                }
+
+                // Insert statement using variables
+                var varNamesPart = string.Join(", ", columns.Select(c => GetSqlVariableName(c)));
+                sb.AppendLine($"INSERT INTO {escapedTable} ({columnsPart}) VALUES ({varNamesPart});");
+                sb.AppendLine();
+            }
+        }
+        else
+        {
+            // Standard direct inserts
+            while (await reader.ReadAsync())
+            {
+                rowCount++;
+                var values = new List<string>();
+                foreach (var ordinal in columnOrdinals)
+                {
+                    values.Add(FormatValueForSql(reader.GetValue(ordinal)));
+                }
+                sb.AppendLine($"INSERT INTO {escapedTable} ({columnsPart}) VALUES ({string.Join(", ", values)});");
+            }
         }
 
-        if (inserts.Count == 0)
+        if (rowCount == 0)
         {
             return Results.Ok(new { Success = true, Script = "-- Tidak ada data yang cocok dengan kriteria WHERE --", RowCount = 0 });
         }
 
-        var sb = new System.Text.StringBuilder();
+        // Wrap with IDENTITY_INSERT if needed
+        var finalSb = new System.Text.StringBuilder();
         if (hasIdentity)
         {
-            sb.AppendLine($"SET IDENTITY_INSERT {escapedTable} ON;");
-            sb.AppendLine();
+            finalSb.AppendLine($"SET IDENTITY_INSERT {escapedTable} ON;");
+            finalSb.AppendLine();
         }
 
-        foreach (var ins in inserts)
-        {
-            sb.AppendLine(ins);
-        }
+        finalSb.Append(sb.ToString());
 
         if (hasIdentity)
         {
-            sb.AppendLine();
-            sb.AppendLine($"SET IDENTITY_INSERT {escapedTable} OFF;");
+            finalSb.AppendLine();
+            finalSb.AppendLine($"SET IDENTITY_INSERT {escapedTable} OFF;");
         }
 
-        return Results.Ok(new { Success = true, Script = sb.ToString(), RowCount = inserts.Count });
+        return Results.Ok(new { Success = true, Script = finalSb.ToString(), RowCount = rowCount });
     }
     catch (Exception ex)
     {
@@ -3592,6 +3668,7 @@ public class QueryGenerateInsertsRequest
     public string Database { get; set; }
     public string TableName { get; set; }
     public string WhereClause { get; set; }
+    public bool UseVariables { get; set; }
 }
 
 public class QueryExecuteRequest

@@ -6997,6 +6997,9 @@ function closeGenerateInsertModal() {
     const whereInput = document.getElementById('insert-where-clause');
     if (whereInput) whereInput.value = '';
     
+    const useVarsCheckbox = document.getElementById('insert-use-variables');
+    if (useVarsCheckbox) useVarsCheckbox.checked = false;
+    
     const statusDiv = document.getElementById('generate-insert-status');
     if (statusDiv) {
         statusDiv.style.display = 'none';
@@ -7078,6 +7081,7 @@ async function executeGenerateInsertScript() {
     
     const tableName = tableSelect.value;
     const whereClause = document.getElementById('insert-where-clause').value.trim();
+    const useVariables = document.getElementById('insert-use-variables')?.checked ?? false;
     const statusDiv = document.getElementById('generate-insert-status');
     const btn = document.getElementById('btn-generate-insert-exec');
     
@@ -7103,7 +7107,8 @@ async function executeGenerateInsertScript() {
             Password: queryConsoleActivePassword,
             Database: queryConsoleActiveDatabase,
             TableName: tableName,
-            WhereClause: whereClause
+            WhereClause: whereClause,
+            UseVariables: useVariables
         };
         
         const res = await fetch(`${API_BASE}/query/generate-inserts`, {
