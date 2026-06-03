@@ -4588,6 +4588,8 @@ let queryConsoleDatabases = [];
 let queryConsoleEditor = null;
 let queryConsoleEditorInitializing = false;
 let monacoSqlCompletionProvider = null;
+let schemaDiffEditor = null;
+let schemaDiffEditorInitializing = false;
 let queryConsoleSchema = { Objects: [], Columns: [] };
 
 function parseConnectionString(connStr) {
@@ -5914,11 +5916,8 @@ function openSchemaDiffModal(objName) {
         titleEl.innerHTML = `<i class="fa-solid fa-code-compare" style="color: var(--accent-purple);"></i> Perbandingan DDL: <span style="color: var(--accent-teal);">${objName}</span>`;
     }
 
-    // Render source side
-    renderDiffSide('schema-diff-source', ddl.source, ddl.sourceHighlights);
-
-    // Render target side
-    renderDiffSide('schema-diff-target', ddl.target, ddl.targetHighlights);
+    // Initialize/update Monaco Diff Editor
+    initMonacoDiffEditor(ddl.source, ddl.target);
 
     // Apply button configuration
     const applyBtn = document.getElementById('btn-schema-diff-apply');
@@ -5946,7 +5945,6 @@ function openSchemaDiffModal(objName) {
 
     // Show modal
     modal.classList.add('active');
-    setupSchemaDiffScrollSync();
 }
 
 function closeSchemaDiffModal() {
@@ -5979,54 +5977,86 @@ function toggleSchemaDiffMaximize() {
         maximizeBtn.innerHTML = `<i class="fa-solid fa-maximize"></i>`;
         maximizeBtn.title = `Maksimalkan Ukuran`;
     }
+
+    // Force layout calculation for Monaco Diff Editor after the modal transition
+    if (schemaDiffEditor) {
+        setTimeout(() => {
+            schemaDiffEditor.layout();
+        }, 220);
+    }
 }
 
-function setupSchemaDiffScrollSync() {
-    const source = document.getElementById('schema-diff-source');
-    const target = document.getElementById('schema-diff-target');
-    if (!source || !target) return;
+function initMonacoDiffEditor(originalCode, modifiedCode) {
+    if (schemaDiffEditor) {
+        // Create new SQL models
+        const originalModel = monaco.editor.createModel(originalCode, 'sql');
+        const modifiedModel = monaco.editor.createModel(modifiedCode, 'sql');
+        
+        // Dispose old models to prevent memory leak
+        const oldModels = schemaDiffEditor.getModel();
+        if (oldModels) {
+            if (oldModels.original) oldModels.original.dispose();
+            if (oldModels.modified) oldModels.modified.dispose();
+        }
+        
+        schemaDiffEditor.setModel({
+            original: originalModel,
+            modified: modifiedModel
+        });
+        
+        setTimeout(() => {
+            schemaDiffEditor.layout();
+        }, 50);
+        return;
+    }
 
-    source.scrollTop = 0;
-    source.scrollLeft = 0;
-    target.scrollTop = 0;
-    target.scrollLeft = 0;
+    if (schemaDiffEditorInitializing) {
+        return;
+    }
 
-    let syncing = false;
-    const sync = (from, to) => {
-        if (syncing) return;
-        syncing = true;
-        to.scrollTop = from.scrollTop;
-        requestAnimationFrame(() => { syncing = false; });
-    };
+    if (typeof require === 'undefined') {
+        console.error("Monaco loader is not loaded yet.");
+        return;
+    }
 
-    source.onscroll = () => sync(source, target);
-    target.onscroll = () => sync(target, source);
-}
+    schemaDiffEditorInitializing = true;
 
-function renderDiffSide(containerId, codeText, highlights) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-
-    const lines = codeText.split('\n');
-    let html = '';
+    require.config({ paths: { vs: 'lib/monaco-editor/min/vs' } });
     
-    lines.forEach((line, index) => {
-        // Highlight this individual line with Prism
-        const highlighted = Prism.highlight(line, Prism.languages.sql || {}, 'sql');
-        const highlightClass = highlights && highlights[index] ? highlights[index] : '';
-        
-        // Escape empty lines for rendering space
-        const displayLine = line.trim() === '' ? '&nbsp;' : highlighted;
-        
-        html += `
-            <div class="diff-line-row ${highlightClass}">
-                <span class="diff-line-num">${index + 1}</span>
-                <span class="diff-line-code">${displayLine}</span>
-            </div>
-        `;
+    require(['vs/editor/editor.main'], function() {
+        schemaDiffEditorInitializing = false;
+
+        if (schemaDiffEditor) return;
+
+        const container = document.getElementById('schema-diff-monaco-container');
+        if (!container) return;
+
+        container.innerHTML = ''; // Clear container
+
+        const originalModel = monaco.editor.createModel(originalCode, 'sql');
+        const modifiedModel = monaco.editor.createModel(modifiedCode, 'sql');
+
+        schemaDiffEditor = monaco.editor.createDiffEditor(container, {
+            theme: 'vs-dark',
+            automaticLayout: true,
+            minimap: { enabled: false },
+            fontSize: 13,
+            fontFamily: 'Consolas, Monaco, monospace',
+            lineHeight: 18,
+            readOnly: true,
+            originalEditable: false,
+            renderSideBySide: true,
+            scrollbar: {
+                vertical: 'auto',
+                horizontal: 'auto'
+            }
+        });
+
+        schemaDiffEditor.setModel({
+            original: originalModel,
+            modified: modifiedModel
+        });
     });
-    
-    container.innerHTML = html;
 }
 
 // ── Query Console Mock Logic ──────────────────────────────────────────────

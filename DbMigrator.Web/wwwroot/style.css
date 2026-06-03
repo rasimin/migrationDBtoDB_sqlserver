@@ -1735,9 +1735,17 @@ textarea.form-control {
     transition: width 0.2s ease, height 0.2s ease, max-height 0.2s ease;
 }
 
-.modal-content.maximized #schema-diff-source,
-.modal-content.maximized #schema-diff-target {
-    height: calc(95vh - 172px) !important;
+#schema-diff-monaco-container {
+    height: 500px;
+    width: 100%;
+    border-radius: 0 0 8px 8px;
+    border: 1px solid var(--border-flat);
+    overflow: hidden;
+    background: #1e1e1e;
+}
+
+.modal-content.maximized #schema-diff-monaco-container {
+    height: calc(95vh - 180px) !important;
 }
 
 @media (max-width: 860px) {

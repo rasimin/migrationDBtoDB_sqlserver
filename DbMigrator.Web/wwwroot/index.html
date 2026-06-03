@@ -1667,25 +1667,18 @@
                 <button class="close-btn" onclick="closeSchemaDiffModal()">&times;</button>
             </div>
         </div>
-        <div class="modal-body schema-diff-body">
-            <div class="schema-diff-grid">
-                <!-- Source Side -->
-                <div class="schema-diff-pane">
-                    <div class="schema-diff-pane-header source">
-                        <span>Source DB (Referensi Asal)</span>
-                        <span style="font-size: 0.72rem; color: var(--text-muted);">DDL Lama / Asal</span>
-                    </div>
-                    <div id="schema-diff-source" class="schema-diff-code"></div>
+        <div class="modal-body schema-diff-body" style="display: flex; flex-direction: column; gap: 0;">
+            <div class="schema-diff-headers" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--border-flat); border-bottom: none; border-radius: 8px 8px 0 0; overflow: hidden; background: #07090d; flex-shrink: 0;">
+                <div class="schema-diff-pane-header source" style="border-bottom: none;">
+                    <span>Source DB (Referensi Asal)</span>
+                    <span style="font-size: 0.72rem; color: var(--text-muted);">DDL Lama / Asal</span>
                 </div>
-                <!-- Target Side -->
-                <div class="schema-diff-pane">
-                    <div class="schema-diff-pane-header target">
-                        <span>Target DB (Tujuan)</span>
-                        <span style="font-size: 0.72rem; color: var(--text-muted);">DDL Saat Ini / Tujuan</span>
-                    </div>
-                    <div id="schema-diff-target" class="schema-diff-code"></div>
+                <div class="schema-diff-pane-header target" style="border-bottom: none; border-left: 1px solid var(--border-flat);">
+                    <span>Target DB (Tujuan)</span>
+                    <span style="font-size: 0.72rem; color: var(--text-muted);">DDL Saat Ini / Tujuan</span>
                 </div>
             </div>
+            <div id="schema-diff-monaco-container"></div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeSchemaDiffModal()" style="width: auto;">Tutup</button>

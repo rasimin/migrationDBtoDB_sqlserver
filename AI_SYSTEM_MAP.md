@@ -254,6 +254,12 @@ connection.on('ReceiveError', (errorObj) => {
 *   **Monaco Query Autosave:** Added an `onDidChangeModelContent` listener to the Monaco Query Editor that autosaves the SQL text buffer to `localStorage`, which is restored when the console initializes, ensuring query text is never lost on refresh.
 *   **Session Cleanup:** Clicking the **Disconnect** button performs a thorough sweep of all session-related keys from `localStorage`, returning the interface to a clean SSMS login gateway state.
 
+### 🛠️ F-09: Monaco Diff Editor for DDL Schema Comparison
+*   **Monaco Diff Editor Integration:** Replaced the legacy scroll-sync Prism.js code comparison pane inside the **Database Schema Comparison** modal screen with a fully offline Monaco Diff Editor (`monaco.editor.createDiffEditor`).
+*   **Side-by-Side Comparison:** Compares Source DB (original schema) vs Target DB (modified/current schema) in side-by-side SQL editor panels. Features native Monaco diff highlighting (color-coded insertions and deletions), syntax highlighting, and synchronized vertical/horizontal scrolling.
+*   **Responsive Maximize Layout:** Handled responsive resizing when toggling the maximized window style (`.modal-content.maximized`). Utilizes a transition-delayed layout trigger (`schemaDiffEditor.layout()`) in `app.js` to ensure the editor spans the full width and calculated height of the viewport correctly.
+*   **Resource Management:** Disposes of old original/modified editor models on subsequent comparisons of different database objects to prevent memory leaks in long-running user sessions.
+
 ---
 
 ## 📖 8. Essential Rules for AI Agent Development
