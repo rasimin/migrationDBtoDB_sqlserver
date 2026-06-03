@@ -446,7 +446,7 @@ async function selectJob(jobId) {
         // Load mappings & db schemas
         loadTableMappings(jobId);
         loadDatabaseSchemas();
-        loadSchemaComparisonCache(jobId);
+        await loadSchemaComparisonCache(jobId);
 
     } catch (err) {
         console.error(err);
@@ -5502,21 +5502,118 @@ let schemaComparisonDdl = {};
 let schemaColumnSyncDetails = {};
 let schemaComparisonSummary = null;
 
-function loadSchemaComparisonCache(jobId) {
-    const cachedResults = localStorage.getItem(`dbmigrator_schema_compare_results_${jobId}`);
-    const cachedDdl = localStorage.getItem(`dbmigrator_schema_compare_ddl_${jobId}`);
-    const cachedSync = localStorage.getItem(`dbmigrator_schema_column_sync_${jobId}`);
-    const cachedSummary = localStorage.getItem(`dbmigrator_schema_compare_summary_${jobId}`);
+// IndexedDB Helper for Schema Comparison Caching
+const dbMigratorDb = {
+    dbName: "DbMigratorCacheDb",
+    storeName: "SchemaCache",
+    version: 1,
+
+    open() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(this.dbName, this.version);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(this.storeName)) {
+                    db.createObjectStore(this.storeName);
+                }
+            };
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = (e) => reject(e.target.error);
+        });
+    },
+
+    async set(key, value) {
+        try {
+            const db = await this.open();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(this.storeName, "readwrite");
+                const store = transaction.objectStore(this.storeName);
+                const request = store.put(value, key);
+                request.onsuccess = () => resolve();
+                request.onerror = (e) => reject(e.target.error);
+            });
+        } catch (err) {
+            console.error("IndexedDB set error:", err);
+        }
+    },
+
+    async get(key) {
+        try {
+            const db = await this.open();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(this.storeName, "readonly");
+                const store = transaction.objectStore(this.storeName);
+                const request = store.get(key);
+                request.onsuccess = (e) => resolve(e.target.result);
+                request.onerror = (e) => reject(e.target.error);
+            });
+        } catch (err) {
+            console.error("IndexedDB get error:", err);
+            return null;
+        }
+    },
+
+    async delete(key) {
+        try {
+            const db = await this.open();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(this.storeName, "readwrite");
+                const store = transaction.objectStore(this.storeName);
+                const request = store.delete(key);
+                request.onsuccess = () => resolve();
+                request.onerror = (e) => reject(e.target.error);
+            });
+        } catch (err) {
+            console.error("IndexedDB delete error:", err);
+        }
+    }
+};
+
+async function loadSchemaComparisonCache(jobId) {
+    const cachedResults = await dbMigratorDb.get(`results_${jobId}`);
+    const cachedDdl = await dbMigratorDb.get(`ddl_${jobId}`);
+    const cachedSync = await dbMigratorDb.get(`sync_${jobId}`);
+    const cachedSummary = await dbMigratorDb.get(`summary_${jobId}`);
 
     const clearBtn = document.getElementById('btn-schema-clear');
     const scanBtn = document.getElementById('btn-schema-scan');
 
-    if (cachedResults && cachedDdl) {
+    let results = cachedResults;
+    let ddl = cachedDdl;
+    let sync = cachedSync;
+    let summary = cachedSummary;
+
+    // Fallback & Migration from localStorage if IndexedDB is empty
+    if (!results) {
+        const localResults = localStorage.getItem(`dbmigrator_schema_compare_results_${jobId}`);
+        const localDdl = localStorage.getItem(`dbmigrator_schema_compare_ddl_${jobId}`);
+        const localSync = localStorage.getItem(`dbmigrator_schema_column_sync_${jobId}`);
+        const localSummary = localStorage.getItem(`dbmigrator_schema_compare_summary_${jobId}`);
+
+        if (localResults) {
+            try {
+                results = JSON.parse(localResults);
+                ddl = localDdl ? JSON.parse(localDdl) : {};
+                sync = localSync ? JSON.parse(localSync) : {};
+                summary = localSummary ? JSON.parse(localSummary) : null;
+                
+                // Migrate to IndexedDB
+                await dbMigratorDb.set(`results_${jobId}`, results);
+                await dbMigratorDb.set(`ddl_${jobId}`, ddl);
+                await dbMigratorDb.set(`sync_${jobId}`, sync);
+                if (summary) await dbMigratorDb.set(`summary_${jobId}`, summary);
+            } catch (e) {
+                console.error("Error migrating localStorage cache to IndexedDB:", e);
+            }
+        }
+    }
+
+    if (results) {
         try {
-            schemaComparisonResults = JSON.parse(cachedResults);
-            schemaComparisonDdl = JSON.parse(cachedDdl);
-            schemaColumnSyncDetails = cachedSync ? JSON.parse(cachedSync) : {};
-            schemaComparisonSummary = cachedSummary ? JSON.parse(cachedSummary) : null;
+            schemaComparisonResults = results;
+            schemaComparisonDdl = ddl || {};
+            schemaColumnSyncDetails = sync || {};
+            schemaComparisonSummary = summary || null;
             
             updateSchemaSummaryCards(schemaComparisonSummary);
             renderSchemaComparisonTable();
@@ -5529,7 +5626,7 @@ function loadSchemaComparisonCache(jobId) {
             }
             return;
         } catch (e) {
-            console.error("Gagal memuat cache schema comparison:", e);
+            console.error("Gagal memuat cache schema comparison dari IndexedDB:", e);
         }
     }
 
@@ -5550,7 +5647,22 @@ function loadSchemaComparisonCache(jobId) {
     }
 }
 
-function clearSchemaComparison() {
+async function persistSchemaCompareCache(jobId) {
+    if (!jobId) return;
+
+    try {
+        await dbMigratorDb.set(`results_${jobId}`, schemaComparisonResults);
+        await dbMigratorDb.set(`ddl_${jobId}`, schemaComparisonDdl);
+        await dbMigratorDb.set(`sync_${jobId}`, schemaColumnSyncDetails);
+        if (schemaComparisonSummary) {
+            await dbMigratorDb.set(`summary_${jobId}`, schemaComparisonSummary);
+        }
+    } catch (e) {
+        console.error("Failed to save schema comparison cache to IndexedDB:", e);
+    }
+}
+
+async function clearSchemaComparison() {
     if (!activeJob) return;
     const jobId = activeJob.Id || activeJob.id;
 
@@ -5558,7 +5670,13 @@ function clearSchemaComparison() {
         return;
     }
 
-    // Remove from localStorage
+    // Remove from IndexedDB
+    await dbMigratorDb.delete(`results_${jobId}`);
+    await dbMigratorDb.delete(`ddl_${jobId}`);
+    await dbMigratorDb.delete(`sync_${jobId}`);
+    await dbMigratorDb.delete(`summary_${jobId}`);
+
+    // Remove from localStorage just in case
     localStorage.removeItem(`dbmigrator_schema_compare_results_${jobId}`);
     localStorage.removeItem(`dbmigrator_schema_compare_ddl_${jobId}`);
     localStorage.removeItem(`dbmigrator_schema_column_sync_${jobId}`);
@@ -5646,10 +5764,7 @@ async function runSchemaComparison() {
 
         // Persist to localStorage
         if (activeJob) {
-            localStorage.setItem(`dbmigrator_schema_compare_results_${jobId}`, JSON.stringify(schemaComparisonResults));
-            localStorage.setItem(`dbmigrator_schema_compare_ddl_${jobId}`, JSON.stringify(schemaComparisonDdl));
-            localStorage.setItem(`dbmigrator_schema_column_sync_${jobId}`, JSON.stringify(schemaColumnSyncDetails));
-            localStorage.setItem(`dbmigrator_schema_compare_summary_${jobId}`, JSON.stringify(schemaComparisonSummary));
+            await persistSchemaCompareCache(jobId);
         }
 
         // Toggle clear button
@@ -5749,7 +5864,7 @@ function buildSchemaAction(name, type, status) {
     return `<div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">${buttons.join('')}</div>`;
 }
 
-function markObjectAsSynced(objName) {
+async function markObjectAsSynced(objName) {
     const item = schemaComparisonResults.find(o => (o.Name || o.name) === objName);
     if (!item) return;
 
@@ -5794,11 +5909,7 @@ function markObjectAsSynced(objName) {
     // Persist to localStorage
     if (activeJob) {
         const jobId = activeJob.Id || activeJob.id;
-        localStorage.setItem(`dbmigrator_schema_compare_results_${jobId}`, JSON.stringify(schemaComparisonResults));
-        localStorage.setItem(`dbmigrator_schema_compare_ddl_${jobId}`, JSON.stringify(schemaComparisonDdl));
-        if (schemaComparisonSummary) {
-            localStorage.setItem(`dbmigrator_schema_compare_summary_${jobId}`, JSON.stringify(schemaComparisonSummary));
-        }
+        await persistSchemaCompareCache(jobId);
     }
 
     renderSchemaComparisonTable();
