@@ -1970,4 +1970,115 @@ textarea.form-control {
     background: rgba(255, 255, 255, 0.02);
 }
 
+/* Custom Searchable Table Dropdown (F-14) */
+.query-table-custom-select {
+    position: relative;
+    width: 100%;
+    user-select: none;
+}
+
+#query-table-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    height: 38px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-flat);
+    color: #ffffff;
+    width: 100%;
+    padding: 0 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+#query-table-trigger:hover {
+    border-color: var(--border-flat-hover);
+    background: rgba(255,255,255,0.05);
+}
+
+#query-table-dropdown {
+    display: none;
+    position: absolute;
+    top: 42px;
+    left: 0;
+    width: 100%;
+    background: rgba(13, 17, 23, 0.98);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-flat);
+    border-radius: 8px;
+    z-index: 1200;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    padding: 0.6rem;
+}
+
+#query-table-search {
+    font-size: 0.8rem;
+    height: 30px;
+    width: 100%;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-flat);
+    color: #ffffff;
+    padding: 0 0.6rem;
+    margin-bottom: 0.6rem;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+#query-table-search:focus {
+    border-color: var(--accent-teal);
+}
+
+#query-table-list {
+    max-height: 180px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+#query-table-list::-webkit-scrollbar {
+    width: 6px;
+}
+#query-table-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+#query-table-list::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.1);
+    border-radius: 3px;
+}
+#query-table-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.25);
+}
+
+.table-select-item {
+    font-family: var(--font-primary), sans-serif;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    padding: 0.45rem 0.6rem;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #cbd5e1;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    flex-shrink: 0;
+}
+
+.table-select-item:hover {
+    background: rgba(0, 173, 181, 0.15);
+    color: #ffffff;
+}
+
+.table-select-item.selected {
+    background: var(--accent-teal);
+    color: #0d1117;
+    font-weight: 600;
+}
+
 

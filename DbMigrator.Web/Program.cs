@@ -458,11 +458,11 @@ app.MapPost("/api/mappings/tables", async ([FromBody] TableMapping mapping, ICon
     using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
     var isNativeSql = string.Equals(mapping.MappingMode, "NATIVE_SQL", StringComparison.OrdinalIgnoreCase);
     
-    // BUG-CRUD-003: Validation to prevent duplicate source or target table mappings on the same Job
+    // BUG-CRUD-003: Validation to prevent duplicate source or target table mappings on the same Job (ignoring NATIVE_SQL steps)
     if (!isNativeSql && mapping.Id == 0)
     {
         var existing = await conn.QueryFirstOrDefaultAsync<int?>(
-            "SELECT TOP 1 Id FROM dbo.TableMappings WHERE JobId = @JobId AND (SourceTableName = @SourceTableName OR TargetTableName = @TargetTableName)",
+            "SELECT TOP 1 Id FROM dbo.TableMappings WHERE JobId = @JobId AND MappingMode = 'TABLE' AND (SourceTableName = @SourceTableName OR TargetTableName = @TargetTableName)",
             mapping);
         if (existing != null)
         {
@@ -472,7 +472,7 @@ app.MapPost("/api/mappings/tables", async ([FromBody] TableMapping mapping, ICon
     else if (!isNativeSql)
     {
         var existing = await conn.QueryFirstOrDefaultAsync<int?>(
-            "SELECT TOP 1 Id FROM dbo.TableMappings WHERE JobId = @JobId AND Id <> @Id AND (SourceTableName = @SourceTableName OR TargetTableName = @TargetTableName)",
+            "SELECT TOP 1 Id FROM dbo.TableMappings WHERE JobId = @JobId AND Id <> @Id AND MappingMode = 'TABLE' AND (SourceTableName = @SourceTableName OR TargetTableName = @TargetTableName)",
             mapping);
         if (existing != null)
         {
@@ -1276,6 +1276,151 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request)
     catch (Exception ex)
     {
         return Results.Ok(new { Success = false, Message = ex.Message });
+    }
+});
+
+// D. GENERATE INSERT SCRIPT
+app.MapPost("/api/query/generate-inserts", async ([FromBody] QueryGenerateInsertsRequest request) =>
+{
+    if (string.IsNullOrEmpty(request?.ServerName) || string.IsNullOrEmpty(request?.Database) || string.IsNullOrEmpty(request?.TableName))
+    {
+        return Results.BadRequest(new { Success = false, Message = "ServerName, Database, dan TableName tidak boleh kosong" });
+    }
+
+    try
+    {
+        var builder = new SqlConnectionStringBuilder
+        {
+            DataSource = request.ServerName,
+            InitialCatalog = request.Database,
+            TrustServerCertificate = true,
+            ConnectTimeout = 15
+        };
+
+        if (string.Equals(request.Authentication, "SQL", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.IntegratedSecurity = false;
+            builder.UserID = request.Login;
+            builder.Password = request.Password;
+        }
+        else
+        {
+            builder.IntegratedSecurity = true;
+        }
+
+        using var conn = new SqlConnection(builder.ConnectionString);
+        await conn.OpenAsync();
+
+        string whereSql = "";
+        if (!string.IsNullOrWhiteSpace(request.WhereClause))
+        {
+            whereSql = $" WHERE {request.WhereClause}";
+        }
+
+        string escapedTable = request.TableName;
+        if (!escapedTable.StartsWith("[") && !escapedTable.EndsWith("]"))
+        {
+            var parts = escapedTable.Split('.');
+            escapedTable = string.Join(".", parts.Select(p => p.StartsWith("[") ? p : $"[{p}]"));
+        }
+
+        // Limit results to 1000 if where clause is empty to prevent memory overflow
+        string topClause = string.IsNullOrWhiteSpace(request.WhereClause) ? "TOP 1000 " : "";
+        string sql = $"SELECT {topClause}* FROM {escapedTable}{whereSql}";
+        
+        using var cmd = new SqlCommand(sql, conn);
+        using var reader = await cmd.ExecuteReaderAsync();
+
+        var inserts = new List<string>();
+        bool hasIdentity = false;
+        var readOnlyColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var schemaTable = reader.GetSchemaTable();
+        if (schemaTable != null)
+        {
+            foreach (DataRow row in schemaTable.Rows)
+            {
+                var columnName = row["ColumnName"]?.ToString();
+                if (string.IsNullOrEmpty(columnName)) continue;
+
+                var isId = row["IsIdentity"] != DBNull.Value && (bool)row["IsIdentity"];
+                if (isId)
+                {
+                    hasIdentity = true;
+                }
+
+                var isReadOnly = false;
+                if (schemaTable.Columns.Contains("IsReadOnly") && row["IsReadOnly"] != DBNull.Value)
+                {
+                    isReadOnly = (bool)row["IsReadOnly"];
+                }
+
+                // If column is read-only and NOT an identity column, it is a computed column or rowversion. Exclude it!
+                if (isReadOnly && !isId)
+                {
+                    readOnlyColumns.Add(columnName);
+                }
+            }
+        }
+
+        var columns = new List<string>();
+        var columnOrdinals = new List<int>();
+        for (int i = 0; i < reader.FieldCount; i++)
+        {
+            var colName = reader.GetName(i);
+            if (readOnlyColumns.Contains(colName))
+            {
+                continue; // Skip computed/read-only columns
+            }
+            columns.Add(colName);
+            columnOrdinals.Add(i);
+        }
+
+        if (columns.Count == 0)
+        {
+            return Results.Ok(new { Success = true, Script = "-- Tidak ada kolom yang dapat disisipkan --", RowCount = 0 });
+        }
+
+        string columnsPart = string.Join(", ", columns.Select(c => $"[{c}]"));
+
+        while (await reader.ReadAsync())
+        {
+            var values = new List<string>();
+            foreach (var ordinal in columnOrdinals)
+            {
+                values.Add(FormatValueForSql(reader.GetValue(ordinal)));
+            }
+            inserts.Add($"INSERT INTO {escapedTable} ({columnsPart}) VALUES ({string.Join(", ", values)});");
+        }
+
+        if (inserts.Count == 0)
+        {
+            return Results.Ok(new { Success = true, Script = "-- Tidak ada data yang cocok dengan kriteria WHERE --", RowCount = 0 });
+        }
+
+        var sb = new System.Text.StringBuilder();
+        if (hasIdentity)
+        {
+            sb.AppendLine($"SET IDENTITY_INSERT {escapedTable} ON;");
+            sb.AppendLine();
+        }
+
+        foreach (var ins in inserts)
+        {
+            sb.AppendLine(ins);
+        }
+
+        if (hasIdentity)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"SET IDENTITY_INSERT {escapedTable} OFF;");
+        }
+
+        return Results.Ok(new { Success = true, Script = sb.ToString(), RowCount = inserts.Count });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = $"Gagal generate insert script: {ex.Message}" });
     }
 });
 
@@ -3438,6 +3583,17 @@ public class QuerySchemaRequest
     public string Database { get; set; }
 }
 
+public class QueryGenerateInsertsRequest
+{
+    public string ServerName { get; set; }
+    public string Authentication { get; set; }
+    public string Login { get; set; }
+    public string Password { get; set; }
+    public string Database { get; set; }
+    public string TableName { get; set; }
+    public string WhereClause { get; set; }
+}
+
 public class QueryExecuteRequest
 {
     public string ServerName { get; set; }
@@ -3455,5 +3611,28 @@ public partial class Program
         var builder = new SqlConnectionStringBuilder(connStr);
         builder.InitialCatalog = "master";
         return builder.ConnectionString;
+    }
+
+    private static string FormatValueForSql(object val)
+    {
+        if (val == null || val == DBNull.Value)
+            return "NULL";
+
+        if (val is string s)
+            return "'" + s.Replace("'", "''") + "'";
+
+        if (val is DateTime dt)
+            return "'" + dt.ToString("yyyy-MM-dd HH:mm:ss.fff") + "'";
+
+        if (val is Guid g)
+            return "'" + g.ToString() + "'";
+
+        if (val is bool b)
+            return b ? "1" : "0";
+
+        if (val is byte[] bytes)
+            return "0x" + BitConverter.ToString(bytes).Replace("-", "");
+
+        return Convert.ToString(val, System.Globalization.CultureInfo.InvariantCulture);
     }
 }

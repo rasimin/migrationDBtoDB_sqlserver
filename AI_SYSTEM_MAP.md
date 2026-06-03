@@ -277,6 +277,19 @@ connection.on('ReceiveError', (errorObj) => {
 *   **Checkbox Save Integration:** Adds a "Simpan koneksi ini untuk orang lain" checkbox that reveals a connection naming text field. Upon successful connection validation (response `Success = true`), the credentials are automatically saved/updated in the shared database.
 *   **Complete Disconnect Sweeper:** Clicking disconnect clears all LocalStorage query data and resets all pre-fill selects, checkboxes, and input names to their default initial states.
 
+### 🛠️ F-14: INSERT Script Generator Tool (Query Console)
+*   **Table Data Fetch API:** Exposes `POST /api/query/generate-inserts` to run a parameterized select query on a specific table using optional WHERE clauses, automatically wrapping the fetch limit to TOP 1000 if empty.
+*   **Smart SQL Literals Formatting:** Added helper `FormatValueForSql(object val)` to accurately map SQL values to string literals (escaping single quotes, formatting ISO datetimes, converting bit booleans, exporting byte-arrays to hex format `0x...`, and displaying `NULL` for missing data).
+*   **Identity Insert Detection:** Automatically scans the table schema via `reader.GetSchemaTable()`. If an `IDENTITY` column is present, it automatically wraps the generated INSERT statements inside `SET IDENTITY_INSERT [Table] ON;` and `OFF;` wrappers.
+*   **Computed/Read-Only Column Filtering:** Automatically queries the column schema table via `GetSchemaTable()`. Any column marked as read-only (`IsReadOnly = true`) that is NOT an identity column (such as computed columns or rowversion fields) is excluded from both the columns declaration and value mapping list, preventing execution exceptions.
+*   **Pop-up Setup Dialogue Modal:** Integrates a glassmorphic `#generate-insert-modal` window to select tables (dynamically populated from the database's schema) and specify query filter WHERE conditions.
+*   **Monaco Insertion Integration:** Inserts the generated script directly at the user's cursor position in Monaco editor using the Monaco Edit API `queryConsoleEditor.executeEdits()`.
+
+### 🛠️ F-15: Edit Native SQL Mappings
+*   **Action Edit Button:** Added an Edit button (pen icon) to Native SQL mapping cards in the dashboard, next to the run (Play) button.
+*   **Dynamic Modal Binding:** Enhanced the `#data-native-sql-modal` in `index.html` to house a hidden ID input (`#data-native-sql-id`) and an ID-mapped save button (`#data-native-sql-submit-btn`), allowing the modal to serve as both an "Add" and an "Edit" interface.
+*   **State Persistence & Update:** Implemented `editNativeSqlMapping(id)` in `app.js` which populates the form inputs with the existing configuration, toggles the modal's title and button texts, and updates the backend records via `POST /api/mappings/tables` while keeping execution order and status parameters intact.
+
 ---
 
 ## 📖 8. Essential Rules for AI Agent Development

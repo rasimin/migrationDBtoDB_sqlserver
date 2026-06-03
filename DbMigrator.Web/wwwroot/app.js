@@ -744,6 +744,9 @@ function renderTableMappings(mappings, isFilterActive) {
                     <button class="btn-icon" onclick="runSingleMapping(${mapId})" title="Jalankan Native SQL Ini" style="color: var(--accent-teal);">
                         <i class="fa-solid fa-play"></i>
                     </button>
+                    <button class="btn-icon" onclick="editNativeSqlMapping(${mapId})" title="Edit Native SQL">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
                     <button class="btn-icon delete" onclick="deleteTableMapping(${mapId})" title="Hapus Native SQL">
                         <i class="fa-solid fa-trash-can"></i>
                     </button>
@@ -1027,10 +1030,67 @@ function closeTableMappingModal() {
 
 function openDataNativeSqlModal() {
     if (!activeJob) return;
+    document.getElementById('data-native-sql-id').value = '0';
     document.getElementById('data-native-sql-name').value = '';
     document.getElementById('data-native-sql-mode').value = 'target';
     document.getElementById('data-native-sql-script').value = '';
+    
+    const modal = document.getElementById('data-native-sql-modal');
+    if (modal) {
+        const titleElement = modal.querySelector('.modal-header h3');
+        if (titleElement) titleElement.textContent = 'Data Native SQL';
+        const submitBtn = document.getElementById('data-native-sql-submit-btn');
+        if (submitBtn) {
+            submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Tambah ke Data Migration';
+        }
+    }
+
     updateDataNativeSqlTemplate();
+    document.getElementById('data-native-sql-modal').classList.add('active');
+}
+
+function editNativeSqlMapping(id) {
+    const map = dataMappingsCache.find(m => (m.Id || m.id) === id);
+    if (!map) return;
+
+    document.getElementById('data-native-sql-id').value = id;
+    document.getElementById('data-native-sql-name').value = map.TargetTableName || map.targetTableName || '';
+    document.getElementById('data-native-sql-script').value = map.NativeSqlScript || map.nativeSqlScript || '';
+
+    // Determine the template mode based on script content
+    const script = map.NativeSqlScript || map.nativeSqlScript || '';
+    const modeSelect = document.getElementById('data-native-sql-mode');
+    if (script.includes('{{SOURCE_DB}}') || script.includes('{{TARGET_DB}}')) {
+        modeSelect.value = 'source-target';
+    } else {
+        modeSelect.value = 'target';
+    }
+
+    // Change Title and Button text to Edit mode
+    const modal = document.getElementById('data-native-sql-modal');
+    if (modal) {
+        const titleElement = modal.querySelector('.modal-header h3');
+        if (titleElement) titleElement.textContent = 'Edit Data Native SQL';
+        const submitBtn = document.getElementById('data-native-sql-submit-btn');
+        if (submitBtn) {
+            submitBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan';
+        }
+    }
+
+    const hint = document.getElementById('data-native-sql-hint');
+    const example = document.getElementById('data-native-sql-example');
+    if (modeSelect.value === 'source-target') {
+        hint.innerHTML = 'Script dieksekusi sebagai langkah Data Migration dari koneksi Target DB. Pakai <code>{{SOURCE_DB}}</code> dan <code>{{TARGET_DB}}</code> jika Source dan Target berada di SQL Server instance yang sama.';
+        if (example) {
+            example.textContent = `-- Ambil data dari Source DB lalu masukkan ke Target DB\nINSERT INTO {{TARGET_DB}}.dbo.CustomerTarget (CustomerId, FullName, CreatedAt)\nSELECT Id, Name, GETDATE()\nFROM {{SOURCE_DB}}.dbo.CustomerSource\nWHERE IsActive = 1;\n\n-- Bisa juga update target berdasarkan data source\nUPDATE T\nSET T.FullName = S.Name\nFROM {{TARGET_DB}}.dbo.CustomerTarget T\nJOIN {{SOURCE_DB}}.dbo.CustomerSource S ON S.Id = T.CustomerId;`;
+        }
+    } else {
+        hint.innerHTML = 'Cocok untuk UPDATE data target, cleanup, staging, atau script SQL lain yang perlu ikut urutan migrasi data.';
+        if (example) {
+            example.textContent = `-- Script berjalan langsung di Target DB\nUPDATE dbo.TargetTable\nSET UpdatedAt = GETDATE()\nWHERE UpdatedAt IS NULL;\n\n-- Contoh lain: cleanup data staging\nDELETE FROM dbo.ImportStaging\nWHERE IsProcessed = 1;`;
+        }
+    }
+
     document.getElementById('data-native-sql-modal').classList.add('active');
 }
 
@@ -1073,6 +1133,7 @@ function toggleSqlExample(boxId) {
 async function addDataNativeSqlItem() {
     if (!activeJob) return;
 
+    const id = parseInt(document.getElementById('data-native-sql-id').value || '0');
     const name = document.getElementById('data-native-sql-name').value.trim();
     const script = document.getElementById('data-native-sql-script').value.trim();
 
@@ -1081,20 +1142,31 @@ async function addDataNativeSqlItem() {
         return;
     }
 
-    // hitung urutan eksekusi terakhir + 1 agar selalu di akhir secara default
-    let nextOrder = 1;
-    if (dataMappingsCache && dataMappingsCache.length > 0) {
-        const orders = dataMappingsCache.map(m => parseInt(m.ExecutionOrder || m.executionOrder || 0));
-        nextOrder = Math.max(...orders, 0) + 1;
+    let executionOrder = 1;
+    let isEnabled = true;
+
+    if (id > 0) {
+        const existing = dataMappingsCache.find(m => (m.Id || m.id) === id);
+        if (existing) {
+            executionOrder = existing.ExecutionOrder || existing.executionOrder || 1;
+            isEnabled = existing.IsEnabled !== undefined ? existing.IsEnabled : (existing.isEnabled !== undefined ? existing.isEnabled : true);
+        }
+    } else {
+        // hitung urutan eksekusi terakhir + 1 agar selalu di akhir secara default
+        if (dataMappingsCache && dataMappingsCache.length > 0) {
+            const orders = dataMappingsCache.map(m => parseInt(m.ExecutionOrder || m.executionOrder || 0));
+            executionOrder = Math.max(...orders, 0) + 1;
+        }
     }
 
     const payload = {
+        Id: id,
         JobId: activeJob.Id || activeJob.id,
         SourceTableName: '[NATIVE_SQL]',
         TargetTableName: name,
-        ExecutionOrder: nextOrder,
+        ExecutionOrder: executionOrder,
         TruncateTarget: false,
-        IsEnabled: true,
+        IsEnabled: isEnabled,
         MappingMode: 'NATIVE_SQL',
         NativeSqlScript: script,
         PostMigrationScript: null
@@ -1111,7 +1183,7 @@ async function addDataNativeSqlItem() {
             closeDataNativeSqlModal();
             loadTableMappings(activeJob.Id || activeJob.id);
         } else {
-            alert('Gagal menambahkan Native SQL: ' + await res.text());
+            alert((id > 0 ? 'Gagal mengubah' : 'Gagal menambahkan') + ' Native SQL: ' + await res.text());
         }
     } catch (err) {
         console.error(err);
@@ -4774,6 +4846,7 @@ let monacoSqlCompletionProvider = null;
 let schemaDiffEditor = null;
 let schemaDiffEditorInitializing = false;
 let queryConsoleSchema = { Objects: [], Columns: [] };
+let queryConsoleActiveTables = [];
 
 function parseConnectionString(connStr) {
     if (!connStr) return {};
@@ -5293,6 +5366,14 @@ document.addEventListener('click', (e) => {
     if (dropdown && dropdown.style.display === 'block') {
         if (!dropdown.contains(e.target) && !trigger.contains(e.target)) {
             dropdown.style.display = 'none';
+        }
+    }
+    
+    const tableDropdown = document.getElementById('query-table-dropdown');
+    const tableTrigger = document.getElementById('query-table-trigger');
+    if (tableDropdown && tableDropdown.style.display === 'block') {
+        if (!tableDropdown.contains(e.target) && !tableTrigger.contains(e.target)) {
+            tableDropdown.style.display = 'none';
         }
     }
 });
@@ -6871,4 +6952,199 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 });
+
+// ── Generate INSERT Script Logic ───────────────────────────────────────────
+function openGenerateInsertModal() {
+    if (!queryConsoleActiveServer) {
+        alert("Hubungkan ke database server terlebih dahulu!");
+        return;
+    }
+    
+    // Reset selections
+    const selectHidden = document.getElementById('insert-table-select');
+    if (selectHidden) selectHidden.value = '';
+    
+    const triggerText = document.getElementById('query-table-trigger-text');
+    if (triggerText) triggerText.textContent = '-- Pilih Tabel --';
+    
+    // Clear search
+    const searchInput = document.getElementById('query-table-search');
+    if (searchInput) searchInput.value = '';
+    
+    // Extract and sort table list
+    queryConsoleActiveTables = (queryConsoleSchema.Objects || queryConsoleSchema.objects || [])
+        .filter(obj => (obj.Type || obj.type) === 'TABLE')
+        .map(obj => obj.Name || obj.name)
+        .sort();
+        
+    // Render list
+    filterTableList('');
+    
+    const modal = document.getElementById('generate-insert-modal');
+    if (modal) modal.classList.add('active');
+}
+
+function closeGenerateInsertModal() {
+    const modal = document.getElementById('generate-insert-modal');
+    if (modal) modal.classList.remove('active');
+    
+    const tableSelect = document.getElementById('insert-table-select');
+    if (tableSelect) tableSelect.value = '';
+    
+    const triggerText = document.getElementById('query-table-trigger-text');
+    if (triggerText) triggerText.textContent = '-- Pilih Tabel --';
+    
+    const whereInput = document.getElementById('insert-where-clause');
+    if (whereInput) whereInput.value = '';
+    
+    const statusDiv = document.getElementById('generate-insert-status');
+    if (statusDiv) {
+        statusDiv.style.display = 'none';
+        statusDiv.innerHTML = '';
+    }
+    
+    const dropdown = document.getElementById('query-table-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+}
+
+function toggleTableDropdown(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('query-table-dropdown');
+    if (!dropdown) return;
+    const isVisible = dropdown.style.display === 'block';
+    dropdown.style.display = isVisible ? 'none' : 'block';
+    if (!isVisible) {
+        const searchInput = document.getElementById('query-table-search');
+        if (searchInput) {
+            searchInput.value = '';
+            filterTableList('');
+            searchInput.focus();
+        }
+    }
+}
+
+function filterTableList(searchQuery) {
+    const listContainer = document.getElementById('query-table-list');
+    if (!listContainer) return;
+    
+    const query = (searchQuery || '').toLowerCase().trim();
+    const filtered = queryConsoleActiveTables.filter(t => t.toLowerCase().includes(query));
+    
+    const activeTableSelect = document.getElementById('insert-table-select');
+    const selectedTableVal = activeTableSelect ? activeTableSelect.value : '';
+    
+    if (filtered.length === 0) {
+        listContainer.innerHTML = `<div style="padding: 0.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;">Tidak ditemukan</div>`;
+        return;
+    }
+    
+    listContainer.innerHTML = filtered.map(t => {
+        const isSelected = t === selectedTableVal;
+        return `
+            <div class="table-select-item ${isSelected ? 'selected' : ''}" 
+                 onclick="selectTableForInsert('${escapeHtml(t)}')" 
+                 style="color: ${isSelected ? '#0d1117' : '#cbd5e1'}; background: ${isSelected ? 'var(--accent-teal)' : 'transparent'}; font-weight: ${isSelected ? '600' : 'normal'};"
+                 title="${escapeHtml(t)}">
+                ${escapeHtml(t)}
+            </div>
+        `;
+    }).join('');
+}
+
+function selectTableForInsert(tableName) {
+    const tableSelectInput = document.getElementById('insert-table-select');
+    if (tableSelectInput) {
+        tableSelectInput.value = tableName;
+    }
+    
+    const triggerText = document.getElementById('query-table-trigger-text');
+    if (triggerText) {
+        triggerText.textContent = tableName;
+    }
+    
+    // Close dropdown
+    const dropdown = document.getElementById('query-table-dropdown');
+    if (dropdown) {
+        dropdown.style.display = 'none';
+    }
+}
+
+async function executeGenerateInsertScript() {
+    const tableSelect = document.getElementById('insert-table-select');
+    if (!tableSelect || !tableSelect.value) {
+        alert("Pilih tabel terlebih dahulu!");
+        return;
+    }
+    
+    const tableName = tableSelect.value;
+    const whereClause = document.getElementById('insert-where-clause').value.trim();
+    const statusDiv = document.getElementById('generate-insert-status');
+    const btn = document.getElementById('btn-generate-insert-exec');
+    
+    if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = 'rgba(0, 173, 181, 0.1)';
+        statusDiv.style.color = 'var(--accent-teal)';
+        statusDiv.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menghasilkan script...';
+    }
+    
+    let origHtml = "";
+    if (btn) {
+        origHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating...';
+        btn.disabled = true;
+    }
+    
+    try {
+        const payload = {
+            ServerName: queryConsoleActiveServer,
+            Authentication: queryConsoleActiveAuth,
+            Login: queryConsoleActiveLogin,
+            Password: queryConsoleActivePassword,
+            Database: queryConsoleActiveDatabase,
+            TableName: tableName,
+            WhereClause: whereClause
+        };
+        
+        const res = await fetch(`${API_BASE}/query/generate-inserts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) throw new Error("API Error: " + await res.text());
+        const data = await res.json();
+        
+        if (!data.Success) {
+            throw new Error(data.Message || "Gagal menghasilkan script");
+        }
+        
+        // Insert the generated script into Monaco Editor at cursor position
+        if (queryConsoleEditor) {
+            const script = data.Script;
+            const position = queryConsoleEditor.getPosition();
+            const range = new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column);
+            const id = { major: 1, minor: 1 };
+            const textEdit = { identifier: id, range: range, text: script, forceMoveMarkers: true };
+            queryConsoleEditor.executeEdits("generate-insert", [textEdit]);
+            queryConsoleEditor.focus();
+        }
+        
+        alert(`Script INSERT berhasil digenerate (${data.RowCount} baris) dan dimasukkan ke editor!`);
+        closeGenerateInsertModal();
+    } catch (err) {
+        console.error(err);
+        if (statusDiv) {
+            statusDiv.style.background = 'rgba(244, 63, 94, 0.1)';
+            statusDiv.style.color = '#f43f5e';
+            statusDiv.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Error: ' + err.message;
+        }
+        alert("Gagal memproses pembuatan script: " + err.message);
+    } finally {
+        if (btn) {
+            btn.innerHTML = origHtml;
+            btn.disabled = false;
+        }
+    }
+}
 
