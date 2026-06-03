@@ -485,9 +485,14 @@
                                     <i class="fa-solid fa-diagram-project" style="color: var(--accent-teal);"></i>
                                     <h3 style="margin: 0; font-size: 1.15rem; color: #ffffff;">Database Schema Comparison</h3>
                                 </div>
-                                <button class="btn btn-primary" onclick="runSchemaComparison()" style="width: auto; padding: 0.5rem 1.25rem;">
-                                    <i class="fa-solid fa-arrows-rotate"></i> Jalankan Pemindaian Skema
-                                </button>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <button class="btn btn-secondary" id="btn-schema-clear" onclick="clearSchemaComparison()" style="width: auto; padding: 0.5rem 1rem; border-color: var(--color-error); color: var(--color-error); background: rgba(248,81,73,0.06); display: none;">
+                                        <i class="fa-solid fa-trash"></i> Bersihkan
+                                    </button>
+                                    <button class="btn btn-primary" id="btn-schema-scan" onclick="runSchemaComparison()" style="width: auto; padding: 0.5rem 1.25rem;">
+                                        <i class="fa-solid fa-arrows-rotate"></i> Jalankan Pemindaian Skema
+                                    </button>
+                                </div>
                             </div>
 
                             <!-- Stats grid -->

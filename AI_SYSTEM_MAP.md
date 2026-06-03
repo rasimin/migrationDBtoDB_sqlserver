@@ -258,7 +258,12 @@ connection.on('ReceiveError', (errorObj) => {
 *   **Monaco Diff Editor Integration:** Replaced the legacy scroll-sync Prism.js code comparison pane inside the **Database Schema Comparison** modal screen with a fully offline Monaco Diff Editor (`monaco.editor.createDiffEditor`).
 *   **Side-by-Side Comparison:** Compares Source DB (original schema) vs Target DB (modified/current schema) in side-by-side SQL editor panels. Features native Monaco diff highlighting (color-coded insertions and deletions), syntax highlighting, and synchronized vertical/horizontal scrolling.
 *   **Responsive Maximize Layout:** Handled responsive resizing when toggling the maximized window style (`.modal-content.maximized`). Utilizes a transition-delayed layout trigger (`schemaDiffEditor.layout()`) in `app.js` to ensure the editor spans the full width and calculated height of the viewport correctly.
-*   **Resource Management:** Disposes of old original/modified editor models on subsequent comparisons of different database objects to prevent memory leaks in long-running user sessions.
+### 🛠️ F-10: Schema Comparison Caching & Active Job Restore
+*   **Active Job Persistence:** Saves the currently selected migration job ID (`dbmigrator_active_job_id`) to `localStorage` and automatically restores it on page startup/refresh, bringing the user back to their active job instantly.
+*   **Comparison Results Caching:** Stores `schemaComparisonResults`, `schemaComparisonDdl`, `schemaColumnSyncDetails`, and summary counts in `localStorage` keyed by `jobId` after a successful scan.
+*   **Dynamic Local Updates:** Updates the cached local state and summary metrics immediately when an object is marked as synced (Match), ensuring the data remains up-to-date and consistent upon refresh.
+*   **Scan Button Label Toggle:** Changes the scan button to display "Memindai Ulang" when cached results exist, notifying the user that they are looking at loaded data.
+*   **Bersihkan (Clear) Action:** Adds a manual "Bersihkan" button to wipe the cache, resetting the comparison UI to its default unscanned state.
 
 ---
 

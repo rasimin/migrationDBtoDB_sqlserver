@@ -37,6 +37,12 @@ document.addEventListener('DOMContentLoaded', () => {
         switchMainTab(savedTab);
     }
 
+    // Auto-select last active job if saved
+    const savedJobId = localStorage.getItem('dbmigrator_active_job_id');
+    if (savedJobId) {
+        selectJob(parseInt(savedJobId));
+    }
+
     // Silent auto-reconnect if query console was previously connected
     const wasConnected = localStorage.getItem('queryConsoleConnected') === 'true';
     if (wasConnected) {
@@ -353,9 +359,16 @@ async function deleteJob(event, id, name) {
     try {
         const res = await fetch(`${API_BASE}/jobs/${id}`, { method: 'DELETE' });
         if (res.ok) {
+            // Hapus cache pemindaian skema job yang dihapus
+            localStorage.removeItem(`dbmigrator_schema_compare_results_${id}`);
+            localStorage.removeItem(`dbmigrator_schema_compare_ddl_${id}`);
+            localStorage.removeItem(`dbmigrator_schema_column_sync_${id}`);
+            localStorage.removeItem(`dbmigrator_schema_compare_summary_${id}`);
+
             // Jika job yang sedang aktif dihapus, bersihkan editor
             if (activeJob && (activeJob.Id || activeJob.id) === id) {
                 activeJob = null;
+                localStorage.removeItem('dbmigrator_active_job_id');
                 document.getElementById('job-editor-panel').style.display = 'none';
                 document.getElementById('welcome-panel').style.display = 'flex';
             }
@@ -380,6 +393,9 @@ async function selectJob(jobId) {
         const res = await fetch(`${API_BASE}/jobs/${jobId}`);
         if (!res.ok) return;
         activeJob = await res.json();
+
+        // Save active job ID to localStorage
+        localStorage.setItem('dbmigrator_active_job_id', jobId);
 
         // Tandai aktif di list
         loadJobs();
@@ -430,11 +446,7 @@ async function selectJob(jobId) {
         // Load mappings & db schemas
         loadTableMappings(jobId);
         loadDatabaseSchemas();
-        schemaComparisonResults = [];
-        schemaComparisonDdl = {};
-        schemaColumnSyncDetails = {};
-        updateSchemaSummaryCards(null);
-        renderSchemaComparisonTable();
+        loadSchemaComparisonCache(jobId);
 
     } catch (err) {
         console.error(err);
@@ -5488,9 +5500,93 @@ const schemaDummyResults = [
 let schemaComparisonResults = [];
 let schemaComparisonDdl = {};
 let schemaColumnSyncDetails = {};
+let schemaComparisonSummary = null;
+
+function loadSchemaComparisonCache(jobId) {
+    const cachedResults = localStorage.getItem(`dbmigrator_schema_compare_results_${jobId}`);
+    const cachedDdl = localStorage.getItem(`dbmigrator_schema_compare_ddl_${jobId}`);
+    const cachedSync = localStorage.getItem(`dbmigrator_schema_column_sync_${jobId}`);
+    const cachedSummary = localStorage.getItem(`dbmigrator_schema_compare_summary_${jobId}`);
+
+    const clearBtn = document.getElementById('btn-schema-clear');
+    const scanBtn = document.getElementById('btn-schema-scan');
+
+    if (cachedResults && cachedDdl) {
+        try {
+            schemaComparisonResults = JSON.parse(cachedResults);
+            schemaComparisonDdl = JSON.parse(cachedDdl);
+            schemaColumnSyncDetails = cachedSync ? JSON.parse(cachedSync) : {};
+            schemaComparisonSummary = cachedSummary ? JSON.parse(cachedSummary) : null;
+            
+            updateSchemaSummaryCards(schemaComparisonSummary);
+            renderSchemaComparisonTable();
+
+            if (scanBtn) {
+                scanBtn.innerHTML = `<i class="fa-solid fa-arrows-rotate"></i> Memindai Ulang`;
+            }
+            if (clearBtn) {
+                clearBtn.style.display = 'inline-block';
+            }
+            return;
+        } catch (e) {
+            console.error("Gagal memuat cache schema comparison:", e);
+        }
+    }
+
+    // Fallback if no cache or error
+    schemaComparisonResults = [];
+    schemaComparisonDdl = {};
+    schemaColumnSyncDetails = {};
+    schemaComparisonSummary = null;
+    
+    updateSchemaSummaryCards(null);
+    renderSchemaComparisonTable();
+
+    if (scanBtn) {
+        scanBtn.innerHTML = `<i class="fa-solid fa-arrows-rotate"></i> Jalankan Pemindaian Skema`;
+    }
+    if (clearBtn) {
+        clearBtn.style.display = 'none';
+    }
+}
+
+function clearSchemaComparison() {
+    if (!activeJob) return;
+    const jobId = activeJob.Id || activeJob.id;
+
+    if (!confirm("Apakah Anda yakin ingin menghapus hasil pemindaian skema yang tersimpan?")) {
+        return;
+    }
+
+    // Remove from localStorage
+    localStorage.removeItem(`dbmigrator_schema_compare_results_${jobId}`);
+    localStorage.removeItem(`dbmigrator_schema_compare_ddl_${jobId}`);
+    localStorage.removeItem(`dbmigrator_schema_column_sync_${jobId}`);
+    localStorage.removeItem(`dbmigrator_schema_compare_summary_${jobId}`);
+
+    // Reset variables
+    schemaComparisonResults = [];
+    schemaComparisonDdl = {};
+    schemaColumnSyncDetails = {};
+    schemaComparisonSummary = null;
+
+    // Reset UI
+    updateSchemaSummaryCards(null);
+    renderSchemaComparisonTable();
+
+    // Toggle button state
+    const scanBtn = document.getElementById('btn-schema-scan');
+    const clearBtn = document.getElementById('btn-schema-clear');
+    if (scanBtn) {
+        scanBtn.innerHTML = `<i class="fa-solid fa-arrows-rotate"></i> Jalankan Pemindaian Skema`;
+    }
+    if (clearBtn) {
+        clearBtn.style.display = 'none';
+    }
+}
 
 async function runSchemaComparison() {
-    const btn = document.querySelector('#inner-content-schema button[onclick="runSchemaComparison()"]');
+    const btn = document.getElementById('btn-schema-scan') || document.querySelector('#inner-content-schema button[onclick="runSchemaComparison()"]');
     if (!btn) return;
     if (!activeJob) {
         alert("Pilih job terlebih dahulu sebelum menjalankan pemindaian skema.");
@@ -5545,7 +5641,24 @@ async function runSchemaComparison() {
             }
         });
 
-        updateSchemaSummaryCards(data.Summary || data.summary);
+        // Store summary in global variable
+        schemaComparisonSummary = data.Summary || data.summary;
+
+        // Persist to localStorage
+        if (activeJob) {
+            localStorage.setItem(`dbmigrator_schema_compare_results_${jobId}`, JSON.stringify(schemaComparisonResults));
+            localStorage.setItem(`dbmigrator_schema_compare_ddl_${jobId}`, JSON.stringify(schemaComparisonDdl));
+            localStorage.setItem(`dbmigrator_schema_column_sync_${jobId}`, JSON.stringify(schemaColumnSyncDetails));
+            localStorage.setItem(`dbmigrator_schema_compare_summary_${jobId}`, JSON.stringify(schemaComparisonSummary));
+        }
+
+        // Toggle clear button
+        const clearBtn = document.getElementById('btn-schema-clear');
+        if (clearBtn) {
+            clearBtn.style.display = 'inline-block';
+        }
+
+        updateSchemaSummaryCards(schemaComparisonSummary);
         renderSchemaComparisonTable();
     } catch (err) {
         console.error(err);
@@ -5561,7 +5674,11 @@ async function runSchemaComparison() {
         }
         alert("Pemindaian skema gagal: " + (err.message || err));
     } finally {
-        btn.innerHTML = originalText;
+        if (btn.id === 'btn-schema-scan' && schemaComparisonResults.length > 0) {
+            btn.innerHTML = `<i class="fa-solid fa-arrows-rotate"></i> Memindai Ulang`;
+        } else {
+            btn.innerHTML = originalText;
+        }
         btn.disabled = false;
     }
 }
@@ -5636,6 +5753,9 @@ function markObjectAsSynced(objName) {
     const item = schemaComparisonResults.find(o => (o.Name || o.name) === objName);
     if (!item) return;
 
+    const oldStatus = item.Status || item.status;
+    const itemType = item.Type || item.type;
+
     item.Status = "Match";
     item.status = "Match";
     item.Info = "Struktur skema identik 100%.";
@@ -5645,6 +5765,40 @@ function markObjectAsSynced(objName) {
         schemaComparisonDdl[objName].target = schemaComparisonDdl[objName].source;
         schemaComparisonDdl[objName].targetHighlights = {};
         schemaComparisonDdl[objName].sourceHighlights = {};
+    }
+
+    // Update dynamic summary metrics
+    if (schemaComparisonSummary && oldStatus !== 'Match') {
+        const typeKey = Object.keys(schemaComparisonSummary).find(k => k.toLowerCase() === itemType.toLowerCase());
+        if (typeKey) {
+            const sumData = schemaComparisonSummary[typeKey];
+            
+            // Decrement corresponding issue counts and adjust target counts
+            if (oldStatus === 'Missing') {
+                if (sumData.MissingCount !== undefined) sumData.MissingCount = Math.max(0, sumData.MissingCount - 1);
+                if (sumData.missingCount !== undefined) sumData.missingCount = Math.max(0, sumData.missingCount - 1);
+                if (sumData.TargetCount !== undefined) sumData.TargetCount++;
+                if (sumData.targetCount !== undefined) sumData.targetCount++;
+            } else if (oldStatus === 'Mismatch') {
+                if (sumData.MismatchCount !== undefined) sumData.MismatchCount = Math.max(0, sumData.MismatchCount - 1);
+                if (sumData.mismatchCount !== undefined) sumData.mismatchCount = Math.max(0, sumData.mismatchCount - 1);
+            } else if (oldStatus === 'Outdated') {
+                if (sumData.OutdatedCount !== undefined) sumData.OutdatedCount = Math.max(0, sumData.OutdatedCount - 1);
+                if (sumData.outdatedCount !== undefined) sumData.outdatedCount = Math.max(0, sumData.outdatedCount - 1);
+            }
+        }
+        
+        updateSchemaSummaryCards(schemaComparisonSummary);
+    }
+
+    // Persist to localStorage
+    if (activeJob) {
+        const jobId = activeJob.Id || activeJob.id;
+        localStorage.setItem(`dbmigrator_schema_compare_results_${jobId}`, JSON.stringify(schemaComparisonResults));
+        localStorage.setItem(`dbmigrator_schema_compare_ddl_${jobId}`, JSON.stringify(schemaComparisonDdl));
+        if (schemaComparisonSummary) {
+            localStorage.setItem(`dbmigrator_schema_compare_summary_${jobId}`, JSON.stringify(schemaComparisonSummary));
+        }
     }
 
     renderSchemaComparisonTable();
