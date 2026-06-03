@@ -265,6 +265,18 @@ connection.on('ReceiveError', (errorObj) => {
 *   **Scan Button Label Toggle:** Changes the scan button to display "Memindai Ulang" when cached results exist, notifying the user that they are looking at loaded data.
 *   **Bersihkan (Clear) Action:** Adds a manual "Bersihkan" button to wipe the cache, resetting the comparison UI to its default unscanned state.
 
+### 🛠️ F-11: Column Mapping Deletion & Action Controls
+*   **Explicit Action Column:** Added an "Aksi" column to the Column Mapping Designer table in `index.html` to house mapping-specific actions.
+*   **Single-Click Mapping Deletion:** Implemented `clearRowMapping(button)` in `app.js` with a trash icon that instantly resets the mapping type of the respective row to `Ignore`, clears all its custom configuration inputs (constant values, lookup tables, custom SQL expressions), and resets its `IfNull` callback action.
+*   **Bulk Database Cleansing:** When saving, columns set to `Ignore` are filtered out or saved with default ignored mappings, which is then overwritten on the next bulk POST save, physically cleansing the configurations database.
+
+### 🛠️ F-13: Shared Connection History & Database Persistence
+*   **Startup Migration SQL Table:** Dynamically creates the `dbo.SavedConnections` table inside the configuration database `appims` at application startup.
+*   **Backend CRUD APIs:** Exposes `/api/query/connections` (GET to fetch history, POST to save/update, and DELETE to remove connections) to allow team members to share server credentials.
+*   **Split Prefill UI Header:** Replaces the single Job pre-fill layout with a dual-column flex row housing both Job pre-fills and Shared Connection history, alongside a red glassmorphic Delete button.
+*   **Checkbox Save Integration:** Adds a "Simpan koneksi ini untuk orang lain" checkbox that reveals a connection naming text field. Upon successful connection validation (response `Success = true`), the credentials are automatically saved/updated in the shared database.
+*   **Complete Disconnect Sweeper:** Clicking disconnect clears all LocalStorage query data and resets all pre-fill selects, checkboxes, and input names to their default initial states.
+
 ---
 
 ## 📖 8. Essential Rules for AI Agent Development

@@ -26,6 +26,7 @@ let connection = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     loadJobs();
+    loadSavedConnections();
     initSignalR();
     // Load view mode preference from localStorage on startup
     activeViewMode = localStorage.getItem('activeViewMode') || 'list';
@@ -714,15 +715,19 @@ function renderTableMappings(mappings, isFilterActive) {
             lastRunTime = new Date(lastRunAt).toLocaleString();
         }
 
+        const isEnabled = map.IsEnabled !== undefined ? map.IsEnabled : (map.isEnabled !== undefined ? map.isEnabled : true);
+        const disabledClass = isEnabled ? '' : ' disabled';
+
         if (isNative) {
             return `
-            <div class="table-item sortable-item native-sql-item" draggable="${isFilterActive ? 'false' : 'true'}" data-sort-id="${mapId}">
+            <div class="table-item sortable-item native-sql-item${disabledClass}" draggable="${isFilterActive ? 'false' : 'true'}" data-sort-id="${mapId}">
                 <div class="table-info">
                     ${isFilterActive ? '' : `
                     <div class="drag-handle" title="Geser untuk mengubah urutan">
                         <i class="fa-solid fa-grip-vertical"></i>
                     </div>`}
                     <div class="execution-badge" title="Urutan Eksekusi">${map.ExecutionOrder || map.executionOrder}</div>
+                    <input type="checkbox" class="toggle-switch-input" ${isEnabled ? 'checked' : ''} onchange="toggleTableMappingEnabled(${mapId}, this.checked)" title="${isEnabled ? 'Aktif (Klik untuk Lewati/Skip)' : 'Dilewati/Skip (Klik untuk Aktifkan)'}" style="margin-left: 0.25rem;">
                     <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
                         <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
                             <i class="fa-solid fa-terminal" style="color: var(--accent-teal);"></i>
@@ -748,13 +753,14 @@ function renderTableMappings(mappings, isFilterActive) {
         }
 
         return `
-            <div class="table-item sortable-item" draggable="${isFilterActive ? 'false' : 'true'}" data-sort-id="${mapId}">
+            <div class="table-item sortable-item${disabledClass}" draggable="${isFilterActive ? 'false' : 'true'}" data-sort-id="${mapId}">
                 <div class="table-info">
                     ${isFilterActive ? '' : `
                     <div class="drag-handle" title="Geser untuk mengubah urutan">
                         <i class="fa-solid fa-grip-vertical"></i>
                     </div>`}
                     <div class="execution-badge" title="Urutan Eksekusi">${map.ExecutionOrder || map.executionOrder}</div>
+                    <input type="checkbox" class="toggle-switch-input" ${isEnabled ? 'checked' : ''} onchange="toggleTableMappingEnabled(${mapId}, this.checked)" title="${isEnabled ? 'Aktif (Klik untuk Lewati/Skip)' : 'Dilewati/Skip (Klik untuk Aktifkan)'}" style="margin-left: 0.25rem;">
                     <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
                         <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                             <div class="table-flow" style="margin: 0; padding: 0; background: none; box-shadow: none; display: flex; align-items: center; gap: 0.5rem;">
@@ -976,6 +982,9 @@ function openNewTableMappingForm() {
     document.getElementById('execution-order').value = nextOrder;
 
     document.getElementById('truncate-target').checked = false;
+    if (document.getElementById('table-mapping-enabled')) {
+        document.getElementById('table-mapping-enabled').checked = true;
+    }
     if (document.getElementById('table-post-migration-script')) {
         document.getElementById('table-post-migration-script').value = '';
     }
@@ -998,6 +1007,9 @@ function editTableMapping(id) {
     document.getElementById('target-table-select').value = map.TargetTableName || map.targetTableName || '';
     document.getElementById('execution-order').value = map.ExecutionOrder || map.executionOrder || 1;
     document.getElementById('truncate-target').checked = map.TruncateTarget || map.truncateTarget || false;
+    if (document.getElementById('table-mapping-enabled')) {
+        document.getElementById('table-mapping-enabled').checked = map.IsEnabled !== undefined ? map.IsEnabled : (map.isEnabled !== undefined ? map.isEnabled : true);
+    }
     if (document.getElementById('table-post-migration-script')) {
         document.getElementById('table-post-migration-script').value = map.PostMigrationScript || map.postMigrationScript || '';
     }
@@ -1227,7 +1239,7 @@ async function saveTableMapping() {
         TargetTableName: targetTable,
         ExecutionOrder: order,
         TruncateTarget: truncate,
-        IsEnabled: true,
+        IsEnabled: document.getElementById('table-mapping-enabled')?.checked ?? true,
         MappingMode: 'TABLE',
         NativeSqlScript: null,
         PostMigrationScript: postScript,
@@ -1439,6 +1451,11 @@ function renderColumnMapper(targetCols, sourceCols, existingMappings) {
             <td class="if-null-cell">
                 <!-- Dinamis terisi oleh renderIfNullField -->
             </td>
+            <td style="text-align: center;">
+                <button class="btn btn-danger btn-sm" onclick="clearRowMapping(this)" title="Hapus Pemetaan" style="padding: 0.35rem 0.5rem; border-radius: 6px; font-size: 0.75rem; width: auto; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </td>
         `;
 
         tbody.appendChild(tr);
@@ -1597,6 +1614,21 @@ function onIfNullActionChange(sel) {
     wrapper.innerHTML = opt.hasParam
         ? `<input type="text" class="form-control if-null-param" style="margin-top:0.4rem; padding:0.35rem 0.5rem; font-size:0.78rem;" placeholder="${opt.placeholder}">`
         : '';
+}
+
+function clearRowMapping(button) {
+    const tr = button.closest('tr');
+    if (!tr) return;
+    const selectType = tr.querySelector('.mapping-type-select');
+    if (selectType) {
+        selectType.value = 'Ignore';
+        toggleMappingTypeFields(selectType, {}, []);
+    }
+    const ifNullSelect = tr.querySelector('.if-null-select');
+    if (ifNullSelect) {
+        ifNullSelect.value = 'Null';
+        onIfNullActionChange(ifNullSelect);
+    }
 }
 
 async function loadLookupColumns(selectElement, selectedKey = null, selectedValue = null) {
@@ -2602,14 +2634,18 @@ function renderObjItems(items, isFilterActive) {
             lastRunTime = new Date(lastRunAt).toLocaleString();
         }
 
+        const isEnabled = item.IsEnabled !== undefined ? item.IsEnabled : (item.isEnabled !== undefined ? item.isEnabled : true);
+        const disabledClass = isEnabled ? '' : ' disabled';
+
         return `
-            <div class="table-item sortable-item" draggable="${isFilterActive ? 'false' : 'true'}" data-sort-id="${itemId}">
+            <div class="table-item sortable-item${disabledClass}" draggable="${isFilterActive ? 'false' : 'true'}" data-sort-id="${itemId}">
                 <div class="table-info">
                     ${isFilterActive ? '' : `
                     <div class="drag-handle" title="Geser untuk mengubah urutan">
                         <i class="fa-solid fa-grip-vertical"></i>
                     </div>`}
                     <div class="execution-badge" title="Urutan Eksekusi">${item.ExecutionOrder || item.executionOrder || 1}</div>
+                    <input type="checkbox" class="toggle-switch-input" ${isEnabled ? 'checked' : ''} onchange="toggleObjItemEnabled(${itemId}, this.checked)" title="${isEnabled ? 'Aktif (Klik untuk Lewati/Skip)' : 'Dilewati/Skip (Klik untuk Aktifkan)'}" style="margin-left: 0.25rem;">
                     <div style="display: flex; flex-direction: column; gap: 0.35rem; width: 100%;">
                         <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                             <span style="font-weight: 600; color: #ffffff;">${objName}</span>
@@ -2654,6 +2690,139 @@ async function deleteObjItem(id) {
         if (activeJob) loadObjItems(activeJob.Id || activeJob.id);
     } catch (err) {
         console.error(err);
+    }
+}
+
+async function toggleTableMappingEnabled(id, isChecked) {
+    const map = dataMappingsCache.find(m => (m.Id || m.id) === id);
+    if (!map) return;
+
+    const originalValue = map.IsEnabled !== undefined ? map.IsEnabled : (map.isEnabled !== undefined ? map.isEnabled : true);
+
+    map.IsEnabled = isChecked;
+    map.isEnabled = isChecked;
+
+    const rowEl = document.querySelector(`.table-item[data-sort-id="${id}"]`);
+    if (rowEl) {
+        if (isChecked) {
+            rowEl.classList.remove('disabled');
+        } else {
+            rowEl.classList.add('disabled');
+        }
+        const toggleInput = rowEl.querySelector('.toggle-switch-input');
+        if (toggleInput) {
+            toggleInput.checked = isChecked;
+            toggleInput.title = isChecked ? 'Aktif (Klik untuk Lewati/Skip)' : 'Dilewati/Skip (Klik untuk Aktifkan)';
+        }
+    }
+
+    const payload = {
+        Id: map.Id || map.id,
+        JobId: map.JobId || map.jobId,
+        SourceTableName: map.SourceTableName || map.sourceTableName,
+        TargetTableName: map.TargetTableName || map.targetTableName,
+        ExecutionOrder: map.ExecutionOrder || map.executionOrder,
+        TruncateTarget: map.TruncateTarget || map.truncateTarget,
+        IsEnabled: isChecked,
+        MappingMode: map.MappingMode || map.mappingMode || 'TABLE',
+        NativeSqlScript: map.NativeSqlScript || map.nativeSqlScript,
+        PostMigrationScript: map.PostMigrationScript || map.postMigrationScript,
+        WhereClause: map.WhereClause || map.whereClause
+    };
+
+    try {
+        const res = await fetch(`${API_BASE}/mappings/tables`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Gagal merubah status pemetaan: " + err.message);
+        
+        map.IsEnabled = originalValue;
+        map.isEnabled = originalValue;
+        if (rowEl) {
+            if (originalValue) {
+                rowEl.classList.remove('disabled');
+            } else {
+                rowEl.classList.add('disabled');
+            }
+            const toggleInput = rowEl.querySelector('.toggle-switch-input');
+            if (toggleInput) {
+                toggleInput.checked = originalValue;
+                toggleInput.title = originalValue ? 'Aktif (Klik untuk Lewati/Skip)' : 'Dilewati/Skip (Klik untuk Aktifkan)';
+            }
+        }
+    }
+}
+
+async function toggleObjItemEnabled(id, isChecked) {
+    const item = objItemsCache.find(m => (m.Id || m.id) === id);
+    if (!item) return;
+
+    const originalValue = item.IsEnabled !== undefined ? item.IsEnabled : (item.isEnabled !== undefined ? item.isEnabled : true);
+
+    item.IsEnabled = isChecked;
+    item.isEnabled = isChecked;
+
+    const rowEl = document.querySelector(`.table-item[data-sort-id="${id}"]`);
+    if (rowEl) {
+        if (isChecked) {
+            rowEl.classList.remove('disabled');
+        } else {
+            rowEl.classList.add('disabled');
+        }
+        const toggleInput = rowEl.querySelector('.toggle-switch-input');
+        if (toggleInput) {
+            toggleInput.checked = isChecked;
+            toggleInput.title = isChecked ? 'Aktif (Klik untuk Lewati/Skip)' : 'Dilewati/Skip (Klik untuk Aktifkan)';
+        }
+    }
+
+    const payload = {
+        Id: item.Id || item.id,
+        JobId: item.JobId || item.jobId,
+        ObjectName: item.ObjectName || item.objectName,
+        ObjectType: item.ObjectType || item.objectType,
+        NativeSqlScript: item.NativeSqlScript || item.nativeSqlScript,
+        ExecutionOrder: item.ExecutionOrder || item.executionOrder,
+        IsEnabled: isChecked,
+        AllowDropColumns: item.AllowDropColumns || item.allowDropColumns || false
+    };
+
+    try {
+        const res = await fetch(`${API_BASE}/obj-items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Gagal merubah status objek: " + err.message);
+        
+        item.IsEnabled = originalValue;
+        item.isEnabled = originalValue;
+        if (rowEl) {
+            if (originalValue) {
+                rowEl.classList.remove('disabled');
+            } else {
+                rowEl.classList.add('disabled');
+            }
+            const toggleInput = rowEl.querySelector('.toggle-switch-input');
+            if (toggleInput) {
+                toggleInput.checked = originalValue;
+                toggleInput.title = originalValue ? 'Aktif (Klik untuk Lewati/Skip)' : 'Dilewati/Skip (Klik untuk Aktifkan)';
+            }
+        }
     }
 }
 
@@ -4583,6 +4752,7 @@ function switchMainTab(tabId) {
     // 5. Populate jobs in Query Console connection panel
     if (tabId === 'query') {
         populateQueryConnJobs();
+        loadSavedConnections();
         // Refresh Monaco Editor layout if already connected and initialized
         if (localStorage.getItem('queryConsoleConnected') === 'true') {
             initMonacoQueryEditor();
@@ -4591,6 +4761,7 @@ function switchMainTab(tabId) {
 }
 
 // ── Query Console connection panel and syntax highlighting logic ──
+let savedConnectionsCache = [];
 let queryConsoleActiveServer = "";
 let queryConsoleActiveAuth = "";
 let queryConsoleActiveLogin = "";
@@ -4623,6 +4794,10 @@ async function prefillQueryConnection() {
     const jobSelect = document.getElementById('query-conn-job-select');
     if (!jobSelect) return;
     const jobId = jobSelect.value;
+    
+    // Clear saved connection selection
+    const savedSelect = document.getElementById('query-saved-conn-select');
+    if (savedSelect) savedSelect.value = '';
     
     const serverInput = document.getElementById('query-server-name');
     const authSelect = document.getElementById('query-auth-type');
@@ -4702,6 +4877,125 @@ async function populateQueryConnJobs() {
     }
 }
 
+async function loadSavedConnections() {
+    const select = document.getElementById('query-saved-conn-select');
+    if (!select) return;
+    
+    select.innerHTML = '<option value="">-- Memuat Histori... --</option>';
+    
+    try {
+        const res = await fetch(`${API_BASE}/query/connections`);
+        if (!res.ok) throw new Error("Gagal mengambil histori koneksi");
+        const connections = await res.json();
+        
+        savedConnectionsCache = connections || [];
+        
+        if (savedConnectionsCache.length === 0) {
+            select.innerHTML = '<option value="">-- Belum ada Histori --</option>';
+            return;
+        }
+        
+        select.innerHTML = '<option value="">-- Pilih Histori --</option>' + 
+            savedConnectionsCache.map(conn => `<option value="${conn.Id || conn.id}">${escapeHtml(conn.ConnectionName || conn.connectionName)}</option>`).join('');
+    } catch (err) {
+        console.error(err);
+        select.innerHTML = '<option value="">-- Error memuat Histori --</option>';
+    }
+}
+
+function prefillSavedConnection() {
+    const select = document.getElementById('query-saved-conn-select');
+    if (!select) return;
+    
+    const id = parseInt(select.value);
+    const serverInput = document.getElementById('query-server-name');
+    const authSelect = document.getElementById('query-auth-type');
+    const loginInput = document.getElementById('query-login');
+    const passwordInput = document.getElementById('query-password');
+    
+    if (isNaN(id) || id <= 0) {
+        serverInput.value = '';
+        authSelect.value = 'SQL';
+        loginInput.value = '';
+        passwordInput.value = '';
+        toggleQueryAuthFields();
+        return;
+    }
+    
+    const conn = savedConnectionsCache.find(c => (c.Id || c.id) === id);
+    if (!conn) return;
+    
+    // Clear job selection if using saved connection history
+    const jobSelect = document.getElementById('query-conn-job-select');
+    if (jobSelect) jobSelect.value = '';
+    
+    serverInput.value = conn.ServerName || conn.serverName || '';
+    authSelect.value = conn.Authentication || conn.authentication || 'SQL';
+    loginInput.value = conn.Login || conn.login || '';
+    passwordInput.value = conn.Password || conn.password || '';
+    
+    toggleQueryAuthFields();
+}
+
+function toggleSaveConnectionNameField() {
+    const checkbox = document.getElementById('query-save-connection');
+    const container = document.getElementById('query-save-conn-name-container');
+    if (checkbox && container) {
+        container.style.display = checkbox.checked ? 'block' : 'none';
+        if (checkbox.checked) {
+            const connNameInput = document.getElementById('query-connection-name');
+            if (connNameInput) {
+                const serverName = document.getElementById('query-server-name').value.trim();
+                connNameInput.value = serverName ? `Koneksi ${serverName}` : '';
+                connNameInput.focus();
+            }
+        }
+    }
+}
+
+async function deleteSavedConnectionClick() {
+    const select = document.getElementById('query-saved-conn-select');
+    if (!select) return;
+    
+    const id = parseInt(select.value);
+    if (isNaN(id) || id <= 0) {
+        alert("Pilih histori koneksi yang ingin dihapus terlebih dahulu!");
+        return;
+    }
+    
+    const conn = savedConnectionsCache.find(c => (c.Id || c.id) === id);
+    const connName = conn ? (conn.ConnectionName || conn.connectionName) : "koneksi";
+    
+    if (!confirm(`Apakah Anda yakin ingin menghapus "${connName}" dari histori bersama?`)) {
+        return;
+    }
+    
+    try {
+        const res = await fetch(`${API_BASE}/query/connections/${id}`, {
+            method: 'DELETE'
+        });
+        if (!res.ok) throw new Error("Gagal menghapus koneksi");
+        
+        alert("Koneksi berhasil dihapus dari histori bersama.");
+        await loadSavedConnections();
+        
+        // Reset connection fields
+        const serverInput = document.getElementById('query-server-name');
+        const authSelect = document.getElementById('query-auth-type');
+        const loginInput = document.getElementById('query-login');
+        const passwordInput = document.getElementById('query-password');
+        
+        serverInput.value = '';
+        authSelect.value = 'SQL';
+        loginInput.value = '';
+        passwordInput.value = '';
+        toggleQueryAuthFields();
+    } catch (err) {
+        console.error(err);
+        alert("Gagal menghapus histori koneksi: " + err.message);
+    }
+}
+
 async function connectQueryConsole(isSilent = false, targetDatabase = null) {
     const serverName = document.getElementById('query-server-name').value.trim();
     const authType = document.getElementById('query-auth-type').value;
@@ -4745,6 +5039,36 @@ async function connectQueryConsole(isSilent = false, targetDatabase = null) {
         
         if (!data.Success) {
             throw new Error(data.Message || "Gagal terhubung ke server");
+        }
+        
+        // Save connection to history if checked
+        const saveCheck = document.getElementById('query-save-connection');
+        const connNameInput = document.getElementById('query-connection-name');
+        if (saveCheck && saveCheck.checked && connNameInput && connNameInput.value.trim()) {
+            const savePayload = {
+                ConnectionName: connNameInput.value.trim(),
+                ServerName: serverName,
+                Authentication: authType,
+                Login: login,
+                Password: password
+            };
+            try {
+                const saveRes = await fetch(`${API_BASE}/query/connections`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(savePayload)
+                });
+                if (saveRes.ok) {
+                    await loadSavedConnections();
+                    saveCheck.checked = false;
+                    connNameInput.value = '';
+                    toggleSaveConnectionNameField();
+                } else {
+                    console.error("Gagal menyimpan histori koneksi ke database config");
+                }
+            } catch (saveErr) {
+                console.error("Gagal menyimpan koneksi:", saveErr);
+            }
         }
         
         // Save active connection state
@@ -4944,6 +5268,18 @@ function disconnectQueryConsole() {
     localStorage.removeItem('queryConsolePassword');
     localStorage.removeItem('queryConsoleActiveDatabase');
     localStorage.removeItem('queryConsoleLastQuery');
+    
+    // Reset selectors & inputs
+    const jobSelect = document.getElementById('query-conn-job-select');
+    if (jobSelect) jobSelect.value = '';
+    const savedSelect = document.getElementById('query-saved-conn-select');
+    if (savedSelect) savedSelect.value = '';
+    const saveCheck = document.getElementById('query-save-connection');
+    if (saveCheck) saveCheck.checked = false;
+    const connNameInput = document.getElementById('query-connection-name');
+    if (connNameInput) connNameInput.value = '';
+    const saveContainer = document.getElementById('query-save-conn-name-container');
+    if (saveContainer) saveContainer.style.display = 'none';
     
     document.getElementById('query-connect-panel').style.display = 'block';
     document.getElementById('query-editor-main-panel').style.display = 'none';

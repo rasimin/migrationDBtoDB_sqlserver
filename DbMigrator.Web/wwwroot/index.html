@@ -778,11 +778,24 @@
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Tentukan server SQL dan kredensial koneksi Anda.</p>
                 </div>
 
-                <div class="form-group" style="margin-bottom: 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 1.25rem;">
-                    <label for="query-conn-job-select" style="font-size: 0.82rem; font-weight: 600; color: var(--accent-teal); display: block; margin-bottom: 0.4rem;">Pre-fill from Job Connection (Optional)</label>
-                    <select id="query-conn-job-select" class="form-control" onchange="prefillQueryConnection()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff;">
-                        <option value="">-- Pilih Job untuk isi otomatis --</option>
-                    </select>
+                <div style="display: flex; gap: 0.75rem; margin-bottom: 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 1.25rem;">
+                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                        <label for="query-conn-job-select" style="font-size: 0.82rem; font-weight: 600; color: var(--accent-teal); display: block; margin-bottom: 0.4rem;">Pre-fill from Job</label>
+                        <select id="query-conn-job-select" class="form-control" onchange="prefillQueryConnection()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff;">
+                            <option value="">-- Pilih Job --</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                        <label for="query-saved-conn-select" style="font-size: 0.82rem; font-weight: 600; color: var(--accent-teal); display: block; margin-bottom: 0.4rem;">Pilih dari Histori Koneksi</label>
+                        <div style="display: flex; gap: 0.25rem;">
+                            <select id="query-saved-conn-select" class="form-control" onchange="prefillSavedConnection()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; flex: 1;">
+                                <option value="">-- Pilih Histori --</option>
+                            </select>
+                            <button type="button" class="btn btn-secondary" onclick="deleteSavedConnectionClick()" title="Hapus koneksi terpilih" style="height: 38px; width: 38px; min-width: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; border-radius: 8px;">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-group" style="margin-bottom: 1rem;">
@@ -814,6 +827,18 @@
                     <div class="form-group" style="margin-bottom: 1.25rem;">
                         <label for="query-password" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Password:</label>
                         <input type="password" id="query-password" class="form-control" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;">
+                    </div>
+                </div>
+
+                <!-- Simpan Koneksi Option -->
+                <div style="margin-bottom: 1rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 1.25rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                        <input type="checkbox" id="query-save-connection" onchange="toggleSaveConnectionNameField()" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--accent-teal);">
+                        <label for="query-save-connection" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; cursor: pointer; user-select: none;">Simpan koneksi ini untuk orang lain</label>
+                    </div>
+                    <div id="query-save-conn-name-container" style="display: none; margin-bottom: 0.5rem;">
+                        <label for="query-connection-name" style="font-size: 0.82rem; font-weight: 600; color: var(--accent-teal); display: block; margin-bottom: 0.4rem;">Nama Koneksi:</label>
+                        <input type="text" id="query-connection-name" class="form-control" placeholder="Contoh: DB Produksi HIbank" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;">
                     </div>
                 </div>
 
@@ -1090,6 +1115,10 @@
                 <input type="checkbox" id="truncate-target" style="width: 18px; height: 18px; cursor: pointer;">
                 <label for="truncate-target" style="margin: 0; cursor: pointer;">Kosongkan tabel tujuan sebelum migrasi (Truncate/Delete)</label>
             </div>
+            <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
+                <input type="checkbox" id="table-mapping-enabled" checked style="width: 18px; height: 18px; cursor: pointer;">
+                <label for="table-mapping-enabled" style="margin: 0; cursor: pointer;">Aktifkan Pemetaan ini (Jalankan saat migrasi)</label>
+            </div>
             <div class="form-group" style="margin-top: 1rem;">
                 <label for="table-post-migration-script">Post-Migration SQL Script (Table-Level)</label>
                 <textarea id="table-post-migration-script" class="form-control" placeholder="Contoh: ALTER INDEX ALL ON TargetCustomers REBUILD;" style="font-family: Consolas, monospace; min-height: 80px;"></textarea>
@@ -1140,7 +1169,8 @@
                             <th style="width: 250px;">Kolom Database Tujuan</th>
                             <th style="width: 150px;">Tipe Pemetaan</th>
                             <th>Detail Konfigurasi Mapping</th>
-                            <th style="width: 220px;">Jika Null</th>
+                            <th style="width: 200px;">Jika Null</th>
+                            <th style="width: 80px; text-align: center;">Aksi</th>
                         </tr>
                     </thead>
                     <tbody id="column-mapper-tbody"></tbody>

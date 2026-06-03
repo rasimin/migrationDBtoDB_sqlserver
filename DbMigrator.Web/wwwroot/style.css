@@ -469,6 +469,16 @@ textarea.form-control {
     background: var(--bg-card-hover);
 }
 
+.table-item.disabled {
+    opacity: 0.45;
+    background: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 255, 255, 0.05);
+}
+
+.table-item.disabled .execution-badge {
+    background: var(--text-muted);
+}
+
 .table-item.drag-over {
     border-top-color: var(--accent-teal);
 }

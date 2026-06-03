@@ -314,6 +314,20 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
             ALTER TABLE dbo.ColumnMappings ADD IfNullAction NVARCHAR(50) NULL;
             ALTER TABLE dbo.ColumnMappings ADD IfNullParam NVARCHAR(500) NULL;
         END
+
+        -- Ensure SavedConnections table exists
+        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID('dbo.SavedConnections') AND type in ('U'))
+        BEGIN
+            CREATE TABLE dbo.SavedConnections (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                ConnectionName NVARCHAR(255) NOT NULL,
+                ServerName NVARCHAR(255) NOT NULL,
+                Authentication NVARCHAR(50) NOT NULL,
+                Login NVARCHAR(255) NULL,
+                Password NVARCHAR(255) NULL,
+                CreatedAt DATETIME NOT NULL DEFAULT GETDATE()
+            );
+        END
     ");
 }
 
@@ -989,6 +1003,87 @@ app.MapGet("/api/db/schema", async ([FromQuery] int jobId, [FromQuery] string db
 // ============================================================================
 // SSMS-LITE QUERY CONSOLE ENDPOINTS
 // ============================================================================
+
+// 0. SHARED CONNECTION HISTORY ENDPOINTS
+app.MapGet("/api/query/connections", async (IConfiguration config) =>
+{
+    try
+    {
+        using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+        var connections = await conn.QueryAsync<SavedConnection>(
+            "SELECT Id, ConnectionName, ServerName, Authentication, Login, Password, CreatedAt FROM dbo.SavedConnections ORDER BY ConnectionName ASC");
+        return Results.Ok(connections);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { Success = false, Message = $"Gagal mengambil daftar koneksi: {ex.Message}" });
+    }
+});
+
+app.MapPost("/api/query/connections", async ([FromBody] SavedConnection request, IConfiguration config) =>
+{
+    if (string.IsNullOrEmpty(request?.ConnectionName) || string.IsNullOrEmpty(request?.ServerName))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Nama Koneksi dan Server Name tidak boleh kosong" });
+    }
+
+    try
+    {
+        using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+        var existing = await conn.QueryFirstOrDefaultAsync<int?>(
+            "SELECT Id FROM dbo.SavedConnections WHERE ConnectionName = @ConnectionName", new { request.ConnectionName });
+
+        if (existing.HasValue)
+        {
+            await conn.ExecuteAsync(@"
+                UPDATE dbo.SavedConnections 
+                SET ServerName = @ServerName, 
+                    Authentication = @Authentication, 
+                    Login = @Login, 
+                    Password = @Password 
+                WHERE Id = @Id", 
+                new { 
+                    Id = existing.Value,
+                    request.ServerName, 
+                    request.Authentication, 
+                    request.Login, 
+                    request.Password 
+                });
+            return Results.Ok(new { Success = true, Message = "Koneksi berhasil diperbarui", Id = existing.Value });
+        }
+        else
+        {
+            var id = await conn.QuerySingleAsync<int>(@"
+                INSERT INTO dbo.SavedConnections (ConnectionName, ServerName, Authentication, Login, Password, CreatedAt)
+                VALUES (@ConnectionName, @ServerName, @Authentication, @Login, @Password, GETDATE());
+                SELECT CAST(SCOPE_IDENTITY() as int);", 
+                request);
+            return Results.Ok(new { Success = true, Message = "Koneksi berhasil disimpan", Id = id });
+        }
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { Success = false, Message = $"Gagal menyimpan koneksi: {ex.Message}" });
+    }
+});
+
+app.MapDelete("/api/query/connections/{id:int}", async (int id, IConfiguration config) =>
+{
+    try
+    {
+        using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+        var deleted = await conn.ExecuteAsync("DELETE FROM dbo.SavedConnections WHERE Id = @id", new { id });
+        if (deleted > 0)
+        {
+            return Results.Ok(new { Success = true, Message = "Koneksi berhasil dihapus" });
+        }
+        return Results.NotFound(new { Success = false, Message = "Koneksi tidak ditemukan" });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { Success = false, Message = $"Gagal menghapus koneksi: {ex.Message}" });
+    }
+});
 
 // A. CONNECT TO SERVER (Gets list of databases)
 app.MapPost("/api/query/connect", async ([FromBody] QueryConnectRequest request) =>
@@ -3313,6 +3408,17 @@ public class RestoreRequest
 public class GeneralAppSettings
 {
     public string AppimsBackupPath { get; set; } = string.Empty;
+}
+
+public class SavedConnection
+{
+    public int Id { get; set; }
+    public string ConnectionName { get; set; }
+    public string ServerName { get; set; }
+    public string Authentication { get; set; }
+    public string Login { get; set; }
+    public string Password { get; set; }
+    public DateTime CreatedAt { get; set; }
 }
 
 public class QueryConnectRequest
