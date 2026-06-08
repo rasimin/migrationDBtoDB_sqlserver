@@ -1237,39 +1237,49 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request)
         using var command = new SqlCommand(request.QueryText, conn);
         using var reader = await command.ExecuteReaderAsync();
 
-        var headers = new List<string>();
-        var rows = new List<List<object>>();
+        var tables = new List<QueryResultTable>();
 
-        if (reader.FieldCount == 0)
+        do
         {
-            // Command completed without returning a result set (e.g. UPDATE, INSERT, DELETE)
-            headers.Add("Info");
-            rows.Add(new List<object> { $"{reader.RecordsAffected} baris terpengaruh." });
-        }
-        else
-        {
-            for (int i = 0; i < reader.FieldCount; i++)
+            var headers = new List<string>();
+            var rows = new List<List<object>>();
+
+            if (reader.FieldCount == 0)
             {
-                headers.Add(reader.GetName(i));
+                // Command completed without returning a result set (e.g. UPDATE, INSERT, DELETE)
+                headers.Add("Info");
+                rows.Add(new List<object> { $"{reader.RecordsAffected} baris terpengaruh." });
             }
-
-            while (await reader.ReadAsync())
+            else
             {
-                var row = new List<object>();
                 for (int i = 0; i < reader.FieldCount; i++)
                 {
-                    var val = reader.GetValue(i);
-                    row.Add(val == DBNull.Value ? null : val);
+                    headers.Add(reader.GetName(i));
                 }
-                rows.Add(row);
+
+                while (await reader.ReadAsync())
+                {
+                    var row = new List<object>();
+                    for (int i = 0; i < reader.FieldCount; i++)
+                    {
+                        var val = reader.GetValue(i);
+                        row.Add(val == DBNull.Value ? null : val);
+                    }
+                    rows.Add(row);
+                }
             }
-        }
+
+            tables.Add(new QueryResultTable { Headers = headers, Rows = rows });
+        } while (await reader.NextResultAsync());
+
         stopwatch.Stop();
 
+        var firstTable = tables.FirstOrDefault();
         return Results.Ok(new { 
             Success = true, 
-            Headers = headers, 
-            Rows = rows, 
+            Tables = tables,
+            Headers = firstTable?.Headers ?? new List<string>(), 
+            Rows = firstTable?.Rows ?? new List<List<object>>(), 
             ExecutionTimeMs = stopwatch.ElapsedMilliseconds 
         });
     }
@@ -3679,6 +3689,12 @@ public class QueryExecuteRequest
     public string Password { get; set; }
     public string Database { get; set; }
     public string QueryText { get; set; }
+}
+
+public class QueryResultTable
+{
+    public List<string> Headers { get; set; } = new List<string>();
+    public List<List<object>> Rows { get; set; } = new List<List<object>>();
 }
 
 public partial class Program

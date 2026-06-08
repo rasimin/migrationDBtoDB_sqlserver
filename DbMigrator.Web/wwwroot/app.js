@@ -6773,8 +6773,7 @@ async function runQueryConsole() {
     }
 
     const resultsBox = document.getElementById('query-results-box');
-    const thead = document.getElementById('query-thead');
-    const tbody = document.getElementById('query-tbody');
+    const resultsContainer = document.getElementById('query-results-container');
     const statusText = document.getElementById('query-status-text');
     const rowsCount = document.getElementById('query-rows-count');
 
@@ -6783,8 +6782,9 @@ async function runQueryConsole() {
     rowsCount.textContent = "";
     resultsBox.style.display = 'block';
 
-    thead.innerHTML = "";
-    tbody.innerHTML = "";
+    if (resultsContainer) {
+        resultsContainer.innerHTML = "";
+    }
 
     try {
         const payload = {
@@ -6812,37 +6812,123 @@ async function runQueryConsole() {
             return;
         }
 
-        // Render headers
-        thead.innerHTML = `<tr>${data.Headers.map(h => `<th style="position: relative;">${escapeHtml(h)}<div class="resizer"></div></th>`).join('')}</tr>`;
-
-        // Render rows
-        if (data.Rows.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${data.Headers.length}" style="text-align: center; color: var(--text-muted);">Tidak ada baris yang dikembalikan.</td></tr>`;
-        } else {
-            tbody.innerHTML = data.Rows.map(row => 
-                `<tr>${row.map(cell => {
-                    if (cell === null) {
-                        return `<td title="NULL"><span style="color: rgba(255,255,255,0.15); font-style: italic;">NULL</span></td>`;
-                    }
-                    const strVal = cell.toString();
-                    return `<td title="${escapeHtml(strVal)}">${escapeHtml(strVal)}</td>`;
-                }).join('')}</tr>`
-            ).join('');
+        const tables = data.Tables || [];
+        if (tables.length === 0 && data.Headers && data.Rows) {
+            tables.push({ Headers: data.Headers, Rows: data.Rows });
         }
 
-        // Initialize drag-resize columns
-        initTableResizers(document.querySelector('.query-results-table'));
+        window.queryConsoleAllResults = tables;
+
+        let containerHtml = "";
+        
+        if (tables.length > 1) {
+            containerHtml += `<div class="query-results-tabs">`;
+            tables.forEach((table, index) => {
+                const rowCountText = table.Rows.length === 0 ? "0 baris" : `${table.Rows.length} baris`;
+                const isFirst = index === 0 ? "active" : "";
+                containerHtml += `
+                    <button class="query-tab-btn ${isFirst}" data-tab-idx="${index}" onclick="switchQueryTab(${index})">
+                        <i class="fa-solid fa-table"></i> Hasil ${index + 1} (${rowCountText})
+                    </button>
+                `;
+            });
+            containerHtml += `</div>`;
+        }
+
+        tables.forEach((table, index) => {
+            const isHidden = (tables.length > 1 && index > 0) ? 'style="display: none;"' : '';
+            containerHtml += `
+                <div class="query-results-grid-wrapper query-grid-wrapper" id="query-grid-wrapper-${index}" ${isHidden}>
+                    <table class="mapper-table query-results-table" id="query-results-table-${index}" style="margin-bottom: 0;">
+                        <thead>
+                            <tr>${table.Headers.map(h => `<th style="position: relative;">${escapeHtml(h)}<div class="resizer"></div></th>`).join('')}</tr>
+                        </thead>
+                        <tbody>
+                            ${table.Rows.length === 0 
+                                ? `<tr><td colspan="${table.Headers.length}" style="text-align: center; color: var(--text-muted);">Tidak ada baris yang dikembalikan.</td></tr>`
+                                : table.Rows.map(row => 
+                                    `<tr>${row.map(cell => {
+                                        if (cell === null) {
+                                            return `<td title="NULL"><span style="color: rgba(255,255,255,0.15); font-style: italic;">NULL</span></td>`;
+                                        }
+                                        const strVal = cell.toString();
+                                        return `<td title="${escapeHtml(strVal)}">${escapeHtml(strVal)}</td>`;
+                                    }).join('')}</tr>`
+                                ).join('')
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        });
+
+        if (resultsContainer) {
+            resultsContainer.innerHTML = containerHtml;
+        }
+
+        // Initialize drag-resize columns on all rendered tables
+        document.querySelectorAll('.query-results-table').forEach(tbl => {
+            initTableResizers(tbl);
+        });
 
         statusText.textContent = "Kueri berhasil dijalankan.";
         statusText.style.color = 'var(--accent-teal)';
-        rowsCount.textContent = `${data.Rows.length} baris ditampilkan (${data.ExecutionTimeMs}ms)`;
 
-        // Cache columns in global variable for export function
-        window.lastQueryResults = data;
+        if (tables.length > 1) {
+            const totalRows = tables.reduce((acc, t) => acc + t.Rows.length, 0);
+            rowsCount.textContent = `${tables.length} tabel dikembalikan (total ${totalRows} baris) dalam ${data.ExecutionTimeMs}ms`;
+        } else {
+            const rowCount = tables[0]?.Rows.length ?? 0;
+            rowsCount.textContent = `${rowCount} baris ditampilkan (${data.ExecutionTimeMs}ms)`;
+        }
+
+        // Initialize active tab as the export target
+        if (tables.length > 0) {
+            window.lastQueryResults = {
+                Headers: tables[0].Headers,
+                Rows: tables[0].Rows
+            };
+        } else {
+            window.lastQueryResults = null;
+        }
     } catch (err) {
         statusText.textContent = "Error: " + err.message;
         statusText.style.color = '#f43f5e';
         rowsCount.textContent = "Gagal";
+    }
+}
+
+function switchQueryTab(index) {
+    document.querySelectorAll('.query-tab-btn').forEach(btn => {
+        if (parseInt(btn.getAttribute('data-tab-idx')) === index) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    document.querySelectorAll('.query-grid-wrapper').forEach(wrapper => {
+        const idStr = `query-grid-wrapper-${index}`;
+        if (wrapper.id === idStr) {
+            wrapper.style.display = 'block';
+        } else {
+            wrapper.style.display = 'none';
+        }
+    });
+
+    if (window.queryConsoleAllResults && window.queryConsoleAllResults[index]) {
+        const activeTable = window.queryConsoleAllResults[index];
+        window.lastQueryResults = {
+            Headers: activeTable.Headers,
+            Rows: activeTable.Rows
+        };
+        
+        const rowsCount = document.getElementById('query-rows-count');
+        if (rowsCount) {
+            const msMatch = rowsCount.textContent.match(/\((\d+ms)\)/);
+            const msStr = msMatch ? ` (${msMatch[1]})` : "";
+            rowsCount.textContent = `Tabel ${index + 1}: ${activeTable.Rows.length} baris ditampilkan${msStr}`;
+        }
     }
 }
 
