@@ -940,6 +940,17 @@
                                     </button>
                                 </div>
                             </div>
+
+                            <!-- Checkbox Search in Content & Copy List Button -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.25rem; margin-bottom: 0.25rem;">
+                                <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: var(--text-muted); cursor: pointer; user-select: none;">
+                                    <input type="checkbox" id="schema-exp-search-content" style="width: 14px; height: 14px; accent-color: var(--accent-teal); cursor: pointer;">
+                                    Cari di dalam konten
+                                </label>
+                                <button class="btn btn-secondary" onclick="copySchemaObjectList()" id="btn-copy-schema-list" style="height: 26px; padding: 0 0.5rem; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 0.25rem; width: auto;" title="Salin daftar hasil pencarian ke clipboard">
+                                    <i class="fa-solid fa-copy"></i> Salin List
+                                </button>
+                            </div>
                         </div>
                         
                         <!-- List Container -->

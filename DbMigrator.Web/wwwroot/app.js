@@ -7284,9 +7284,11 @@ async function searchSchemaObjects() {
     const typeSelect = document.getElementById('schema-exp-type');
     const searchInput = document.getElementById('schema-exp-search');
     const listContainer = document.getElementById('schema-exp-list');
+    const searchContentChk = document.getElementById('schema-exp-search-content');
 
     const objType = typeSelect ? typeSelect.value : 'ALL';
     const searchTerm = searchInput ? searchInput.value.trim() : '';
+    const searchInContent = searchContentChk ? searchContentChk.checked : false;
 
     if (listContainer) {
         listContainer.innerHTML = `<div style="padding: 1.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;"><i class="fa-solid fa-spinner fa-spin"></i> Mencari objek...</div>`;
@@ -7300,7 +7302,8 @@ async function searchSchemaObjects() {
             Password: queryConsoleActivePassword,
             Database: queryConsoleActiveDatabase,
             ObjectType: objType,
-            SearchTerm: searchTerm
+            SearchTerm: searchTerm,
+            SearchInContent: searchInContent
         };
 
         const res = await fetch(`${API_BASE}/query/schema-objects`, {
@@ -7317,6 +7320,8 @@ async function searchSchemaObjects() {
         }
 
         const objects = data.Objects || [];
+        window.lastSchemaObjects = objects; // Simpan untuk disalin ke clipboard
+
         if (objects.length === 0) {
             listContainer.innerHTML = `<div style="padding: 1.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;">Tidak ada objek ditemukan.</div>`;
             return;
@@ -7345,10 +7350,35 @@ async function searchSchemaObjects() {
         }).join('');
     } catch (err) {
         console.error(err);
+        window.lastSchemaObjects = [];
         if (listContainer) {
             listContainer.innerHTML = `<div style="padding: 1.5rem; font-size: 0.8rem; color: #f43f5e; text-align: center;"><i class="fa-solid fa-circle-exclamation"></i> Error: ${escapeHtml(err.message)}</div>`;
         }
     }
+}
+
+function copySchemaObjectList() {
+    const objects = window.lastSchemaObjects;
+    if (!objects || objects.length === 0) {
+        alert("Tidak ada daftar objek hasil pencarian untuk disalin!");
+        return;
+    }
+
+    // Mengonversi daftar objek ke format salinan (Nama Objek \t Tipe Objek \n)
+    let textContent = "";
+    textContent += "Object Name\tObject Type\n"; // Header
+    objects.forEach(obj => {
+        textContent += `${obj.Name || obj.name}\t${obj.Type || obj.type}\n`;
+    });
+
+    navigator.clipboard.writeText(textContent)
+        .then(() => {
+            alert(`Daftar objek (${objects.length} item) berhasil disalin ke clipboard!`);
+        })
+        .catch(err => {
+            console.error("Gagal menyalin daftar objek: ", err);
+            alert("Gagal menyalin data: " + err.message);
+        });
 }
 
 async function showSchemaDefinition(objName, objType, createDate, modifyDate) {

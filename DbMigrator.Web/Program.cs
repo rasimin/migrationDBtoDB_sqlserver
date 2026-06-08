@@ -1331,7 +1331,14 @@ app.MapPost("/api/query/schema-objects", async ([FromBody] QuerySchemaObjectsReq
         string searchFilter = "";
         if (!string.IsNullOrWhiteSpace(request.SearchTerm))
         {
-            searchFilter = "AND (o.name LIKE @SearchPattern OR s.name LIKE @SearchPattern)";
+            if (request.SearchInContent)
+            {
+                searchFilter = "AND (o.name LIKE @SearchPattern OR s.name LIKE @SearchPattern OR sm.definition LIKE @SearchPattern)";
+            }
+            else
+            {
+                searchFilter = "AND (o.name LIKE @SearchPattern OR s.name LIKE @SearchPattern)";
+            }
         }
 
         string sql = $@"
@@ -1350,6 +1357,7 @@ app.MapPost("/api/query/schema-objects", async ([FromBody] QuerySchemaObjectsReq
                 o.modify_date AS ModifiedDate
             FROM sys.objects o
             JOIN sys.schemas s ON o.schema_id = s.schema_id
+            LEFT JOIN sys.sql_modules sm ON o.object_id = sm.object_id
             WHERE o.is_ms_shipped = 0
               {typeFilter}
               {searchFilter}
@@ -3872,6 +3880,7 @@ public class QuerySchemaObjectsRequest
     public string Database { get; set; }
     public string ObjectType { get; set; } // ALL, TABLE, VIEW, PROCEDURE, FUNCTION
     public string SearchTerm { get; set; }
+    public bool SearchInContent { get; set; }
 }
 
 public class QuerySchemaDefinitionRequest
