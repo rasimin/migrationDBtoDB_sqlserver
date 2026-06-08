@@ -5357,6 +5357,11 @@ function disconnectQueryConsole() {
     document.getElementById('query-connect-panel').style.display = 'block';
     document.getElementById('query-editor-main-panel').style.display = 'none';
     document.getElementById('query-active-conn-info').textContent = "Belum terhubung";
+
+    const schemaExpList = document.getElementById('schema-exp-list');
+    if (schemaExpList) {
+        schemaExpList.innerHTML = `<div style="padding: 1.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;">Hubungkan database dan klik Cari untuk memuat daftar objek skema.</div>`;
+    }
 }
 
 // Add global click listener to close dropdown on clicking outside
@@ -6965,6 +6970,34 @@ function exportQueryResults() {
     link.click();
     document.body.removeChild(link);
 }
+
+function copyQueryResultGrid() {
+    const data = window.lastQueryResults;
+    if (!data || !data.Headers || !data.Rows || data.Rows.length === 0) {
+        alert("Tidak ada data hasil kueri untuk disalin!");
+        return;
+    }
+
+    // Mengonversi data ke format tab-separated (TSV) agar mudah ditempel di Excel / editor teks
+    let textContent = "";
+    
+    // Headers
+    textContent += data.Headers.join("\t") + "\n";
+    
+    // Rows
+    data.Rows.forEach(row => {
+        textContent += row.map(cell => cell === null ? "NULL" : cell.toString()).join("\t") + "\n";
+    });
+
+    navigator.clipboard.writeText(textContent)
+        .then(() => {
+            alert("Hasil kueri berhasil disalin ke clipboard beserta header!");
+        })
+        .catch(err => {
+            console.error("Gagal menyalin hasil kueri: ", err);
+            alert("Gagal menyalin data: " + err.message);
+        });
+}
 function initTableResizers(table) {
     if (!table) return;
 
@@ -7235,6 +7268,246 @@ async function executeGenerateInsertScript() {
         if (btn) {
             btn.innerHTML = origHtml;
             btn.disabled = false;
+        }
+    }
+}
+
+// ── Schema Explorer Logic ──
+let schemaViewerActiveCode = "";
+
+async function searchSchemaObjects() {
+    if (!queryConsoleActiveServer) {
+        alert("Hubungkan ke database server terlebih dahulu!");
+        return;
+    }
+
+    const typeSelect = document.getElementById('schema-exp-type');
+    const searchInput = document.getElementById('schema-exp-search');
+    const listContainer = document.getElementById('schema-exp-list');
+
+    const objType = typeSelect ? typeSelect.value : 'ALL';
+    const searchTerm = searchInput ? searchInput.value.trim() : '';
+
+    if (listContainer) {
+        listContainer.innerHTML = `<div style="padding: 1.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;"><i class="fa-solid fa-spinner fa-spin"></i> Mencari objek...</div>`;
+    }
+
+    try {
+        const payload = {
+            ServerName: queryConsoleActiveServer,
+            Authentication: queryConsoleActiveAuth,
+            Login: queryConsoleActiveLogin,
+            Password: queryConsoleActivePassword,
+            Database: queryConsoleActiveDatabase,
+            ObjectType: objType,
+            SearchTerm: searchTerm
+        };
+
+        const res = await fetch(`${API_BASE}/query/schema-objects`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) throw new Error("API Error: " + await res.text());
+        const data = await res.json();
+
+        if (!data.Success) {
+            throw new Error(data.Message || "Gagal memproses daftar objek.");
+        }
+
+        const objects = data.Objects || [];
+        if (objects.length === 0) {
+            listContainer.innerHTML = `<div style="padding: 1.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;">Tidak ada objek ditemukan.</div>`;
+            return;
+        }
+
+        listContainer.innerHTML = objects.map(obj => {
+            const createDate = obj.CreatedDate ? new Date(obj.CreatedDate).toLocaleString('id-ID') : '-';
+            const modifyDate = obj.ModifiedDate ? new Date(obj.ModifiedDate).toLocaleString('id-ID') : '-';
+            const badgeClass = (obj.Type || '').toLowerCase();
+            const escapedName = escapeHtml(obj.Name);
+            const escapedType = escapeHtml(obj.Type);
+
+            const jsName = obj.Name.replace(/'/g, "\\'");
+            const jsType = obj.Type.replace(/'/g, "\\'");
+            const jsCreated = createDate.replace(/'/g, "\\'");
+            const jsModified = modifyDate.replace(/'/g, "\\'");
+
+            return `
+                <div class="schema-exp-item" onclick="showSchemaDefinition('${jsName}', '${jsType}', '${jsCreated}', '${jsModified}')" style="cursor: pointer;">
+                    <div class="schema-exp-header" style="pointer-events: none;">
+                        <span class="schema-exp-name" title="${escapedName}">${escapedName}</span>
+                        <span class="schema-exp-badge ${badgeClass}">${escapedType}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error(err);
+        if (listContainer) {
+            listContainer.innerHTML = `<div style="padding: 1.5rem; font-size: 0.8rem; color: #f43f5e; text-align: center;"><i class="fa-solid fa-circle-exclamation"></i> Error: ${escapeHtml(err.message)}</div>`;
+        }
+    }
+}
+
+async function showSchemaDefinition(objName, objType, createDate, modifyDate) {
+    const modal = document.getElementById('schema-viewer-modal');
+    if (!modal) return;
+
+    // Show loading state
+    const titleEl = document.getElementById('schema-viewer-title');
+    if (titleEl) {
+        titleEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin" style="color: var(--accent-teal);"></i> Memuat Skema: <span style="color: var(--accent-teal);">${escapeHtml(objName)}</span>`;
+    }
+
+    const createdEl = document.getElementById('schema-viewer-created');
+    const modifiedEl = document.getElementById('schema-viewer-modified');
+    if (createdEl) createdEl.textContent = createDate || '-';
+    if (modifiedEl) modifiedEl.textContent = modifyDate || '-';
+
+    modal.classList.add('active');
+    initSchemaViewerEditor("-- Menghubungi server...");
+
+    try {
+        const payload = {
+            ServerName: queryConsoleActiveServer,
+            Authentication: queryConsoleActiveAuth,
+            Login: queryConsoleActiveLogin,
+            Password: queryConsoleActivePassword,
+            Database: queryConsoleActiveDatabase,
+            ObjectName: objName,
+            ObjectType: objType
+        };
+
+        const res = await fetch(`${API_BASE}/query/schema-definition`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) throw new Error("API Error: " + await res.text());
+        const data = await res.json();
+
+        if (!data.Success) {
+            throw new Error(data.Message || "Gagal memuat definisi skema.");
+        }
+
+        schemaViewerActiveCode = data.Ddl || "";
+        
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="fa-solid fa-code" style="color: var(--accent-teal);"></i> Skema: <span style="color: var(--accent-teal);">${escapeHtml(objName)}</span>`;
+        }
+        
+        initSchemaViewerEditor(schemaViewerActiveCode);
+    } catch (err) {
+        console.error(err);
+        schemaViewerActiveCode = `-- Error: ${err.message}`;
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="fa-solid fa-circle-exclamation" style="color: #f43f5e;"></i> Gagal Memuat Skema`;
+        }
+        initSchemaViewerEditor(schemaViewerActiveCode);
+    }
+}
+
+let schemaViewerEditor = null;
+function initSchemaViewerEditor(codeText) {
+    const container = document.getElementById('schema-viewer-monaco-container');
+    if (!container) return;
+
+    if (schemaViewerEditor) {
+        schemaViewerEditor.setValue(codeText);
+        return;
+    }
+
+    if (typeof require === 'undefined') {
+        console.error("Monaco loader is not loaded yet.");
+        return;
+    }
+
+    require.config({ paths: { vs: 'lib/monaco-editor/min/vs' } });
+    require(['vs/editor/editor.main'], function() {
+        if (schemaViewerEditor) return;
+        schemaViewerEditor = monaco.editor.create(container, {
+            value: codeText,
+            language: 'sql',
+            theme: 'vs-dark',
+            automaticLayout: true,
+            minimap: { enabled: false },
+            fontSize: 13,
+            fontFamily: 'Consolas, Monaco, monospace',
+            lineHeight: 18,
+            readOnly: true,
+            scrollbar: {
+                vertical: 'auto',
+                horizontal: 'auto'
+            }
+        });
+    });
+}
+
+function closeSchemaViewerModal() {
+    const modal = document.getElementById('schema-viewer-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+function copySchemaToClipboard() {
+    if (!schemaViewerActiveCode) {
+        alert("Tidak ada kode untuk disalin!");
+        return;
+    }
+
+    navigator.clipboard.writeText(schemaViewerActiveCode)
+        .then(() => {
+            alert("Skema SQL berhasil disalin ke clipboard!");
+        })
+        .catch(err => {
+            console.error("Gagal menyalin: ", err);
+            alert("Gagal menyalin teks.");
+        });
+}
+
+function insertSchemaToEditor() {
+    if (!schemaViewerActiveCode) {
+        alert("Tidak ada kode untuk dimasukkan!");
+        return;
+    }
+
+    if (queryConsoleEditor) {
+        const position = queryConsoleEditor.getPosition();
+        const range = new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column);
+        const id = { major: 1, minor: 1 };
+        const textEdit = { identifier: id, range: range, text: schemaViewerActiveCode + "\n", forceMoveMarkers: true };
+        queryConsoleEditor.executeEdits("insert-schema", [textEdit]);
+        queryConsoleEditor.focus();
+        
+        alert("Skema SQL berhasil dimasukkan ke SQL Editor!");
+        closeSchemaViewerModal();
+    } else {
+        alert("SQL Editor tidak ditemukan!");
+    }
+}
+
+function toggleSchemaExplorer() {
+    const explorer = document.getElementById('query-schema-explorer');
+    const textEl = document.getElementById('toggle-schema-exp-text');
+    const btn = document.getElementById('btn-toggle-schema-explorer');
+    
+    if (!explorer) return;
+    
+    if (explorer.style.display === 'none') {
+        explorer.style.display = 'flex';
+        if (textEl) textEl.textContent = 'Hide Explorer';
+        if (btn) {
+            btn.innerHTML = '<i class="fa-solid fa-folder-minus"></i> <span id="toggle-schema-exp-text">Hide Explorer</span>';
+        }
+    } else {
+        explorer.style.display = 'none';
+        if (textEl) textEl.textContent = 'Show Explorer';
+        if (btn) {
+            btn.innerHTML = '<i class="fa-solid fa-folder-plus"></i> <span id="toggle-schema-exp-text">Show Explorer</span>';
         }
     }
 }

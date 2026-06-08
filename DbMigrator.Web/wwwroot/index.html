@@ -886,6 +886,9 @@
                     <button class="btn btn-secondary" onclick="openGenerateInsertModal()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Generate INSERT script untuk data tabel">
                         <i class="fa-solid fa-code" style="font-size: 0.75rem;"></i> Generate Insert
                     </button>
+                    <button class="btn btn-secondary" id="btn-toggle-schema-explorer" onclick="toggleSchemaExplorer()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Sembunyikan/Tampilkan Schema Explorer">
+                        <i class="fa-solid fa-folder-minus"></i> <span id="toggle-schema-exp-text">Hide Explorer</span>
+                    </button>
 
                     <div style="height: 20px; width: 1px; background: var(--border-flat); margin: 0 0.25rem; flex-grow: 1; border: none;"></div>
 
@@ -900,26 +903,82 @@
                     </button>
                 </div>
 
-                <!-- Editor Wrapper -->
-                <div class="query-editor-wrapper" style="position: relative;">
-                    <div class="query-editor-header">
-                        <div class="query-editor-title"><i class="fa-solid fa-code" style="color: var(--accent-teal);"></i> Tulis Query T-SQL</div>
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span id="query-schema-loader" style="font-size: 0.75rem; color: var(--accent-teal); display: none;"><i class="fa-solid fa-spinner fa-spin"></i> Memuat Skema Autocomplete...</span>
-                            <span style="font-size: 0.72rem; color: var(--text-muted);">Tekan Jalankan SQL untuk mengeksekusi</span>
+                <!-- Split Workspace: Schema Explorer on Left, Query Workspace on Right -->
+                <div style="display: flex; gap: 1.25rem; align-items: start; margin-top: 0.5rem;">
+                    <!-- LEFT COLUMN: Schema Explorer -->
+                    <div class="query-schema-explorer" id="query-schema-explorer" style="width: 350px; flex-shrink: 0; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); border-radius: 8px; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; box-shadow: var(--shadow-flat);">
+                        <div style="font-family: var(--font-heading); font-weight: 600; font-size: 0.9rem; color: #ffffff; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-flat); padding-bottom: 0.6rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fa-solid fa-folder-tree" style="color: var(--accent-teal);"></i> Schema Explorer
+                            </div>
+                            <button onclick="toggleSchemaExplorer()" title="Sembunyikan Panel" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 2px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; transition: color 0.15s ease;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='var(--text-muted)'">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        
+                        <!-- Search & Filter Controls -->
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <!-- Dropdown for Object Type -->
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem; font-weight: 600;">Tipe Objek</label>
+                                <select id="schema-exp-type" class="form-control" style="font-size: 0.8rem; height: 32px; border-radius: 6px; background: #0d0f14; border: 1px solid var(--border-flat); padding: 0 0.5rem; color: #ffffff; width: 100%;">
+                                    <option value="ALL">Semua Tipe (ALL)</option>
+                                    <option value="TABLE">Table</option>
+                                    <option value="VIEW">View</option>
+                                    <option value="PROCEDURE">Stored Procedure</option>
+                                    <option value="FUNCTION">Function</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Search Input -->
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem; font-weight: 600;">Cari Nama</label>
+                                <div style="display: flex; gap: 0.4rem;">
+                                    <input type="text" id="schema-exp-search" placeholder="Ketik filter..." class="form-control" style="font-size: 0.8rem; height: 32px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); color: #fff; flex: 1; min-width: 0; padding: 0 0.5rem;" onkeydown="if(event.key === 'Enter') searchSchemaObjects()">
+                                    <button class="btn btn-primary" onclick="searchSchemaObjects()" style="height: 32px; padding: 0 0.75rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.25rem; width: auto;">
+                                        <i class="fa-solid fa-magnifying-glass"></i> Cari
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- List Container -->
+                        <div id="schema-exp-list" style="height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; border: 1px solid var(--border-flat); border-radius: 6px; padding: 0.5rem; background: #07090d;">
+                            <div style="padding: 1.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;">
+                                Hubungkan database dan klik Cari untuk memuat daftar objek skema.
+                            </div>
                         </div>
                     </div>
-                    <div id="query-editor" style="height: 300px; border: 1px solid var(--border-flat); border-radius: 8px; overflow: hidden; background: #07090d;"></div>
-                </div>
+                    
+                    <!-- RIGHT COLUMN: Editor & Results -->
+                    <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+                        <!-- Editor Wrapper -->
+                        <div class="query-editor-wrapper" style="position: relative; margin-bottom: 0;">
+                            <div class="query-editor-header">
+                                <div class="query-editor-title"><i class="fa-solid fa-code" style="color: var(--accent-teal);"></i> Tulis Query T-SQL</div>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span id="query-schema-loader" style="font-size: 0.75rem; color: var(--accent-teal); display: none;"><i class="fa-solid fa-spinner fa-spin"></i> Memuat Skema Autocomplete...</span>
+                                    <span style="font-size: 0.72rem; color: var(--text-muted);">Tekan Jalankan SQL untuk mengeksekusi</span>
+                                </div>
+                            </div>
+                            <div id="query-editor" style="height: 300px; border: 1px solid var(--border-flat); border-radius: 8px; overflow: hidden; background: #07090d;"></div>
+                        </div>
 
-                <!-- Results container -->
-                <div class="query-results-wrapper" id="query-results-box" style="display: none; margin-top: 1.25rem;">
-                    <div style="font-size: 0.82rem; margin-bottom: 0.75rem; color: var(--accent-teal); display: flex; justify-content: space-between; align-items: center;">
-                        <strong id="query-status-text">Query executed successfully in 8ms.</strong>
-                        <span id="query-rows-count" style="color: var(--text-muted);">5 rows returned</span>
-                    </div>
-                    <div id="query-results-container">
-                        <!-- Dynamic tabs and grid tables will be populated here -->
+                        <!-- Results container -->
+                        <div class="query-results-wrapper" id="query-results-box" style="display: none; margin-top: 1.25rem;">
+                             <div style="font-size: 0.82rem; margin-bottom: 0.75rem; color: var(--accent-teal); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                 <strong id="query-status-text">Query executed successfully in 8ms.</strong>
+                                 <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                     <button class="btn btn-secondary" onclick="copyQueryResultGrid()" style="width: auto; height: 28px; padding: 0 0.65rem; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.3rem;" title="Salin hasil tabel aktif ke clipboard (dengan header)">
+                                         <i class="fa-solid fa-copy"></i> Copy to Clipboard
+                                     </button>
+                                     <span id="query-rows-count" style="color: var(--text-muted);">5 rows returned</span>
+                                 </div>
+                             </div>
+                            <div id="query-results-container">
+                                <!-- Dynamic tabs and grid tables will be populated here -->
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1836,6 +1895,41 @@
             <button class="btn btn-primary" id="btn-generate-insert-exec" onclick="executeGenerateInsertScript()" style="width: auto; background: var(--accent-teal); color: #0d0f14; border-color: var(--accent-teal); display: inline-flex; align-items: center; gap: 0.35rem;">
                 <i class="fa-solid fa-gears"></i> Generate Script
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: SCHEMA VIEW DDL
+     ============================================================================ -->
+<div class="modal-overlay" id="schema-viewer-modal">
+    <div class="modal-content" style="max-width: 900px; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3 id="schema-viewer-title">Tampilan Skema Objek</h3>
+                <p id="schema-viewer-subtitle" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Definisi DDL SQL untuk objek database terpilih.</p>
+                <div id="schema-viewer-dates" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem; display: flex; gap: 1rem;">
+                    <span>Created: <strong id="schema-viewer-created" style="color: #ffffff;">-</strong></span>
+                    <span>Modified: <strong id="schema-viewer-modified" style="color: #ffffff;">-</strong></span>
+                </div>
+            </div>
+            <button class="close-btn" onclick="closeSchemaViewerModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem;">
+            <div style="margin-bottom: 0.85rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button class="btn btn-secondary" onclick="copySchemaToClipboard()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);">
+                    <i class="fa-solid fa-copy"></i> Salin ke Clipboard
+                </button>
+                <button class="btn btn-primary" onclick="insertSchemaToEditor()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+                    <i class="fa-solid fa-square-plus"></i> Masukkan ke SQL Editor
+                </button>
+            </div>
+            <div style="background: #07090d; border-radius: 8px; border: 1px solid var(--border-flat); overflow: hidden; position: relative;">
+                <div id="schema-viewer-monaco-container" style="height: 400px; width: 100%;"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeSchemaViewerModal()" style="width: auto;">Tutup</button>
         </div>
     </div>
 </div>

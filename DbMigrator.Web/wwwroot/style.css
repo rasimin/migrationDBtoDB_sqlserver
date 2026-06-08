@@ -1547,6 +1547,84 @@ textarea.form-control {
     box-shadow: 0 2px 8px rgba(0, 173, 181, 0.05);
 }
 
+/* Schema Explorer Styles */
+.schema-exp-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.6rem 0.75rem;
+    background: rgba(255, 255, 255, 0.01);
+    border: 1px solid var(--border-flat);
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.schema-exp-item:hover {
+    border-color: var(--border-flat-hover);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.schema-exp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.schema-exp-name {
+    font-family: Consolas, Monaco, monospace;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #ffffff;
+    word-break: break-all;
+}
+
+.schema-exp-badge {
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+.schema-exp-badge.table {
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--color-success);
+}
+
+.schema-exp-badge.view {
+    background: rgba(99, 102, 241, 0.12);
+    color: var(--accent-indigo);
+}
+
+.schema-exp-badge.procedure {
+    background: rgba(168, 85, 247, 0.12);
+    color: var(--accent-purple);
+}
+
+.schema-exp-badge.function {
+    background: rgba(244, 63, 94, 0.12);
+    color: #f43f5e;
+}
+
+.schema-exp-dates {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.schema-exp-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.35rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.03);
+    padding-top: 0.4rem;
+    margin-top: 0.2rem;
+}
+
 /* ============================================================================
    SETTINGS SCREEN STYLES
    ============================================================================ */

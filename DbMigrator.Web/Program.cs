@@ -1289,6 +1289,172 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request)
     }
 });
 
+// C1. SCHEMA EXPLORER: GET OBJECTS
+app.MapPost("/api/query/schema-objects", async ([FromBody] QuerySchemaObjectsRequest request) =>
+{
+    if (string.IsNullOrEmpty(request?.ServerName) || string.IsNullOrEmpty(request?.Database))
+    {
+        return Results.BadRequest(new { Success = false, Message = "ServerName dan Database tidak boleh kosong" });
+    }
+
+    try
+    {
+        var builder = new SqlConnectionStringBuilder
+        {
+            DataSource = request.ServerName,
+            InitialCatalog = request.Database,
+            TrustServerCertificate = true,
+            ConnectTimeout = 15
+        };
+
+        if (string.Equals(request.Authentication, "SQL", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.IntegratedSecurity = false;
+            builder.UserID = request.Login;
+            builder.Password = request.Password;
+        }
+        else
+        {
+            builder.IntegratedSecurity = true;
+        }
+
+        using var conn = new SqlConnection(builder.ConnectionString);
+        await conn.OpenAsync();
+
+        string typeFilter = "";
+        if (request.ObjectType == "TABLE") typeFilter = "AND o.type = 'U'";
+        else if (request.ObjectType == "VIEW") typeFilter = "AND o.type = 'V'";
+        else if (request.ObjectType == "PROCEDURE") typeFilter = "AND o.type = 'P'";
+        else if (request.ObjectType == "FUNCTION") typeFilter = "AND o.type IN ('FN', 'TF', 'IF')";
+        else typeFilter = "AND o.type IN ('U', 'V', 'P', 'FN', 'TF', 'IF')";
+
+        string searchFilter = "";
+        if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+        {
+            searchFilter = "AND (o.name LIKE @SearchPattern OR s.name LIKE @SearchPattern)";
+        }
+
+        string sql = $@"
+            SELECT 
+                s.name + '.' + o.name AS Name,
+                CASE o.type
+                    WHEN 'U' THEN 'TABLE'
+                    WHEN 'V' THEN 'VIEW'
+                    WHEN 'P' THEN 'PROCEDURE'
+                    WHEN 'FN' THEN 'FUNCTION'
+                    WHEN 'TF' THEN 'FUNCTION'
+                    WHEN 'IF' THEN 'FUNCTION'
+                    ELSE o.type_desc
+                END AS Type,
+                o.create_date AS CreatedDate,
+                o.modify_date AS ModifiedDate
+            FROM sys.objects o
+            JOIN sys.schemas s ON o.schema_id = s.schema_id
+            WHERE o.is_ms_shipped = 0
+              {typeFilter}
+              {searchFilter}
+            ORDER BY Type, Name";
+
+        var objects = await conn.QueryAsync(sql, new { SearchPattern = $"%{request.SearchTerm}%" });
+        return Results.Ok(new { Success = true, Objects = objects });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = ex.Message });
+    }
+});
+
+// C2. SCHEMA EXPLORER: GET OBJECT DEFINITION (DDL)
+app.MapPost("/api/query/schema-definition", async ([FromBody] QuerySchemaDefinitionRequest request) =>
+{
+    if (string.IsNullOrEmpty(request?.ServerName) || string.IsNullOrEmpty(request?.Database) || string.IsNullOrEmpty(request?.ObjectName))
+    {
+        return Results.BadRequest(new { Success = false, Message = "ServerName, Database, dan ObjectName tidak boleh kosong" });
+    }
+
+    try
+    {
+        var builder = new SqlConnectionStringBuilder
+        {
+            DataSource = request.ServerName,
+            InitialCatalog = request.Database,
+            TrustServerCertificate = true,
+            ConnectTimeout = 15
+        };
+
+        if (string.Equals(request.Authentication, "SQL", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.IntegratedSecurity = false;
+            builder.UserID = request.Login;
+            builder.Password = request.Password;
+        }
+        else
+        {
+            builder.IntegratedSecurity = true;
+        }
+
+        using var conn = new SqlConnection(builder.ConnectionString);
+        await conn.OpenAsync();
+
+        string ddl = "";
+        if (request.ObjectType == "TABLE")
+        {
+            var parts = request.ObjectName.Split('.');
+            string schema = parts.Length > 1 ? parts[0] : "dbo";
+            string name = parts.Length > 1 ? parts[1] : parts[0];
+
+            schema = schema.Replace("[", "").Replace("]", "");
+            name = name.Replace("[", "").Replace("]", "");
+
+            string fullName = $"{schema}.{name}";
+
+            var columns = (await conn.QueryAsync<SchemaColumnDto>(@"
+                SELECT c.name AS Name, ty.name AS DataType, c.max_length AS MaxLength,
+                       c.precision AS Precision, c.scale AS Scale, c.is_nullable AS IsNullable,
+                       c.is_identity AS IsIdentity, dc.definition AS DefaultDefinition, c.column_id AS Ordinal
+                FROM sys.columns c
+                JOIN sys.types ty ON c.user_type_id = ty.user_type_id
+                LEFT JOIN sys.default_constraints dc ON c.default_object_id = dc.object_id
+                WHERE c.object_id = OBJECT_ID(@FullName)
+                ORDER BY c.column_id",
+                new { FullName = fullName })).ToList();
+
+            var pkColumns = (await conn.QueryAsync<string>(@"
+                SELECT c.name
+                FROM sys.indexes i
+                JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+                JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+                WHERE i.object_id = OBJECT_ID(@FullName) AND i.is_primary_key = 1
+                ORDER BY ic.key_ordinal",
+                new { FullName = fullName })).ToList();
+
+            if (columns.Count > 0)
+            {
+                ddl = GenerateComparableTableDdl(schema, name, columns, pkColumns);
+            }
+            else
+            {
+                ddl = "-- Tabel tidak ditemukan atau tidak memiliki kolom --";
+            }
+        }
+        else
+        {
+            string fullName = request.ObjectName;
+            var definition = await conn.QuerySingleOrDefaultAsync<string>(@"
+                SELECT OBJECT_DEFINITION(OBJECT_ID(@FullName))",
+                new { FullName = fullName });
+
+            ddl = definition ?? "-- Definisi objek tidak tersedia atau terenkripsi --";
+        }
+
+        return Results.Ok(new { Success = true, Ddl = ddl });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = ex.Message });
+    }
+});
+
 // D. GENERATE INSERT SCRIPT
 app.MapPost("/api/query/generate-inserts", async ([FromBody] QueryGenerateInsertsRequest request) =>
 {
@@ -3695,6 +3861,28 @@ public class QueryResultTable
 {
     public List<string> Headers { get; set; } = new List<string>();
     public List<List<object>> Rows { get; set; } = new List<List<object>>();
+}
+
+public class QuerySchemaObjectsRequest
+{
+    public string ServerName { get; set; }
+    public string Authentication { get; set; }
+    public string Login { get; set; }
+    public string Password { get; set; }
+    public string Database { get; set; }
+    public string ObjectType { get; set; } // ALL, TABLE, VIEW, PROCEDURE, FUNCTION
+    public string SearchTerm { get; set; }
+}
+
+public class QuerySchemaDefinitionRequest
+{
+    public string ServerName { get; set; }
+    public string Authentication { get; set; }
+    public string Login { get; set; }
+    public string Password { get; set; }
+    public string Database { get; set; }
+    public string ObjectName { get; set; } // dbo.MyTable
+    public string ObjectType { get; set; } // TABLE, VIEW, PROCEDURE, FUNCTION
 }
 
 public partial class Program
