@@ -13,32 +13,6 @@
 
 <div class="app-container">
     <!-- ================================================================ -->
-    <!-- HEADER -->
-    <!-- ================================================================ -->
-    <header>
-        <div class="brand">
-            <div class="brand-icon">
-                <i class="fa-solid fa-server"></i>
-            </div>
-            <div class="brand-name">
-                <h1>DbMigrator.NET</h1>
-                <p>Dynamic Metadata-Driven Database Migration Tool</p>
-            </div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <div class="server-badge">
-                <span class="dot"></span>
-                <span>Server Config: <strong>RASIMIN\MSSQLSERVER2022</strong></span>
-            </div>
-            
-            <button class="btn btn-secondary" onclick="toggleSidebar()" title="Sembunyikan/Tampilkan Panel Kiri" style="width: auto; height: 36px; padding: 0 0.75rem; font-size: 0.8rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06); display: flex; align-items: center; gap: 0.35rem; border-radius: 6px; cursor: pointer;">
-                <i class="fa-solid fa-indent" id="sidebar-toggle-icon"></i>
-                <span id="sidebar-toggle-text">Hide Sidebar</span>
-            </button>
-        </div>
-    </header>
-
-    <!-- ================================================================ -->
     <!-- TOP NAVIGATION MENU BAR -->
     <!-- ================================================================ -->
     <nav class="top-nav">
@@ -92,10 +66,14 @@
             <input type="file" id="import-file-input" style="display: none;" accept=".json" onchange="importJsonFile(event)">
         </div>
 
-        <!-- ============================================================ -->
-        <!-- RIGHT PANEL: Job Editor                                       -->
-        <!-- ============================================================ -->
         <div style="display: flex; flex-direction: column; gap: 2rem;">
+            <!-- Sidebar toggle controls -->
+            <div style="display: flex; justify-content: flex-end; margin-bottom: -1rem;">
+                <button class="btn btn-secondary" onclick="toggleSidebar()" title="Sembunyikan/Tampilkan Panel Kiri" style="width: auto; height: 36px; padding: 0 0.75rem; font-size: 0.8rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06); display: flex; align-items: center; gap: 0.35rem; border-radius: 6px; cursor: pointer;">
+                    <i class="fa-solid fa-indent" id="sidebar-toggle-icon"></i>
+                    <span id="sidebar-toggle-text">Hide Sidebar</span>
+                </button>
+            </div>
 
             <!-- Real-Time Progress Panel (visible only when migration running) -->
             <div class="panel-card progress-panel" id="active-runner-panel" style="display: none;">
