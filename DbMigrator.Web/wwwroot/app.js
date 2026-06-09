@@ -7150,6 +7150,109 @@ function autoDetectBeautifierLang() {
     }
 }
 
+function preprocessSqlForDeclare(sql) {
+    const lines = sql.split(/\r?\n/);
+    let inDeclare = false;
+    let parensDepth = 0;
+    let lastActiveDeclareLineIdx = -1;
+    
+    const statementKeywords = new Set([
+        'select', 'insert', 'update', 'delete', 'merge', 'set', 'exec', 'execute',
+        'if', 'while', 'begin', 'end', 'print', 'return', 'with', 'go',
+        'create', 'alter', 'drop', 'truncate', 'use', 'commit', 'rollback',
+        'transaction', 'tran', 'fetch', 'open', 'close', 'deallocate'
+    ]);
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        let lineClean = line.replace(/--.*$/, '');
+        lineClean = lineClean.replace(/\/\*[\s\S]*?\*\//g, '');
+        const trimmed = lineClean.trim();
+        
+        if (trimmed === '') {
+            continue;
+        }
+        
+        const firstWord = trimmed.split(/\s+/)[0].toLowerCase();
+        
+        if (parensDepth === 0) {
+            if (firstWord === 'declare') {
+                if (inDeclare && lastActiveDeclareLineIdx !== -1) {
+                    appendSemicolonToLine(lastActiveDeclareLineIdx);
+                }
+                inDeclare = true;
+                lastActiveDeclareLineIdx = i;
+            } else if (statementKeywords.has(firstWord)) {
+                if (inDeclare && lastActiveDeclareLineIdx !== -1) {
+                    appendSemicolonToLine(lastActiveDeclareLineIdx);
+                }
+                inDeclare = false;
+                lastActiveDeclareLineIdx = -1;
+            }
+        }
+        
+        if (inDeclare) {
+            lastActiveDeclareLineIdx = i;
+        }
+        
+        let inSingleQuote = false;
+        let inDoubleQuote = false;
+        for (let j = 0; j < lineClean.length; j++) {
+            const char = lineClean[j];
+            if (char === "'" && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote;
+            } else if (char === '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+            } else if (!inSingleQuote && !inDoubleQuote) {
+                if (char === '(') {
+                    parensDepth++;
+                } else if (char === ')') {
+                    parensDepth = Math.max(0, parensDepth - 1);
+                }
+            }
+        }
+        
+        if (trimmed.endsWith(';')) {
+            inDeclare = false;
+            lastActiveDeclareLineIdx = -1;
+        }
+    }
+    
+    if (inDeclare && lastActiveDeclareLineIdx !== -1) {
+        appendSemicolonToLine(lastActiveDeclareLineIdx);
+    }
+    
+    function appendSemicolonToLine(idx) {
+        let originalLine = lines[idx];
+        let commentIdx = originalLine.indexOf('--');
+        let blockCommentStartIdx = originalLine.indexOf('/*');
+        let insertIdx = -1;
+        
+        if (commentIdx !== -1 && blockCommentStartIdx !== -1) {
+            insertIdx = Math.min(commentIdx, blockCommentStartIdx);
+        } else if (commentIdx !== -1) {
+            insertIdx = commentIdx;
+        } else if (blockCommentStartIdx !== -1) {
+            insertIdx = blockCommentStartIdx;
+        }
+        
+        if (insertIdx !== -1) {
+            const beforeComment = originalLine.substring(0, insertIdx).trimEnd();
+            if (!beforeComment.endsWith(';') && !beforeComment.endsWith(',')) {
+                lines[idx] = beforeComment + ';/*_inserted_*/' + originalLine.substring(insertIdx);
+            }
+        } else {
+            const trimmedOriginal = originalLine.trimEnd();
+            if (!trimmedOriginal.endsWith(';') && !trimmedOriginal.endsWith(',')) {
+                lines[idx] = trimmedOriginal + ';/*_inserted_*/';
+            }
+        }
+    }
+    
+    return lines.join('\n');
+}
+
 function beautifyCode(options = {}) {
     if (!beautifierLeftEditor || !beautifierRightEditor) return;
     const code = beautifierLeftEditor.getValue().trim();
@@ -7183,11 +7286,15 @@ function beautifyCode(options = {}) {
             formatted = formatXmlString(code);
         } else if (lang === 'sql') {
             if (typeof sqlFormatter !== 'undefined') {
-                formatted = sqlFormatter.format(code, {
-                    language: 'sql',
+                const processedCode = preprocessSqlForDeclare(code);
+                formatted = sqlFormatter.format(processedCode, {
+                    language: 'transactsql',
                     tabWidth: 4,
-                    keywordCase: 'upper'
+                    keywordCase: 'upper',
+                    linesBetweenQueries: 0
                 });
+                // Remove the inserted semicolons and markers
+                formatted = formatted.replace(/;\s*\/\*_inserted_\*\//g, '');
             } else {
                 console.warn("sql-formatter library not loaded. Using local fallback SQL formatter.");
                 formatted = fallbackFormatSqlString(code);
