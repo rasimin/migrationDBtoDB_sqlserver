@@ -4796,6 +4796,11 @@ async function runAppimsRestore() {
 // TOP NAVIGATION TAB SWITCHING & NEW SCREENS LOGIC
 // ============================================================================
 function switchMainTab(tabId) {
+    // Redirect legacy settings tab to new beautifier tool
+    if (tabId === 'settings') {
+        tabId = 'beautifier';
+    }
+
     // 1. Remove active class from all main nav items
     document.querySelectorAll('.top-nav .nav-item').forEach(btn => {
         btn.classList.remove('active');
@@ -4829,6 +4834,8 @@ function switchMainTab(tabId) {
         if (localStorage.getItem('queryConsoleConnected') === 'true') {
             initMonacoQueryEditor();
         }
+    } else if (tabId === 'beautifier') {
+        initMonacoBeautifierEditor();
     }
 }
 
@@ -7038,39 +7045,256 @@ function initTableResizers(table) {
     });
 }
 
-// ── Settings Save Logic ───────────────────────────────────────────────────
-function saveGlobalSettings() {
-    const connTimeout = document.getElementById('set-conn-timeout').value;
-    const bulkTimeout = document.getElementById('set-bulk-timeout').value;
-    const batchSize = document.getElementById('set-batch-size').value;
-    const threads = document.getElementById('set-parallel-threads').value;
-    const autoBackup = document.getElementById('set-auto-backup').checked;
-    const enableConstraints = document.getElementById('set-enable-constraints').checked;
-    const autoScroll = document.getElementById('set-auto-scroll').checked;
+// ── SQL / JSON / XML Beautifier Logic ─────────────────────────────────────
+let beautifierLeftEditor = null;
+let beautifierRightEditor = null;
+let beautifierEditorInitializing = false;
+let beautifierDebounceTimeout = null;
 
-    const config = { connTimeout, bulkTimeout, batchSize, threads, autoBackup, enableConstraints, autoScroll };
-    localStorage.setItem('dbmigrator_global_settings', JSON.stringify(config));
-    alert("Konfigurasi global berhasil disimpan secara aman!");
+function initMonacoBeautifierEditor() {
+    if (beautifierLeftEditor && beautifierRightEditor) {
+        return;
+    }
+
+    if (beautifierEditorInitializing) {
+        return;
+    }
+
+    if (typeof require === 'undefined') {
+        console.error("Monaco loader is not loaded yet.");
+        return;
+    }
+
+    beautifierEditorInitializing = true;
+
+    require.config({ paths: { vs: 'lib/monaco-editor/min/vs' } });
+    
+    require(['vs/editor/editor.main'], function() {
+        beautifierEditorInitializing = false;
+
+        if (beautifierLeftEditor && beautifierRightEditor) return;
+
+        const containerLeft = document.getElementById('beautifier-editor-left');
+        const containerRight = document.getElementById('beautifier-editor-right');
+        if (!containerLeft || !containerRight) return;
+
+        beautifierLeftEditor = monaco.editor.create(containerLeft, {
+            value: "-- Tulis atau tempel SQL, JSON, atau XML Anda di sini...\n",
+            language: 'sql',
+            theme: 'vs-dark',
+            automaticLayout: true,
+            minimap: { enabled: false },
+            fontSize: 13,
+            fontFamily: 'Consolas, Monaco, monospace',
+            lineHeight: 18,
+            padding: { top: 8, bottom: 8 }
+        });
+
+        beautifierRightEditor = monaco.editor.create(containerRight, {
+            value: "-- Hasil formatting akan muncul di sini secara otomatis...\n",
+            language: 'sql',
+            theme: 'vs-dark',
+            automaticLayout: true,
+            readOnly: true,
+            minimap: { enabled: false },
+            fontSize: 13,
+            fontFamily: 'Consolas, Monaco, monospace',
+            lineHeight: 18,
+            padding: { top: 8, bottom: 8 }
+        });
+
+        // Bind content change events for live formatting
+        beautifierLeftEditor.onDidChangeModelContent(() => {
+            triggerAutoBeautify();
+        });
+    });
 }
 
-// Load settings from localStorage on load if exists
-document.addEventListener('DOMContentLoaded', () => {
-    const saved = localStorage.getItem('dbmigrator_global_settings');
-    if (saved) {
-        try {
-            const config = JSON.parse(saved);
-            if (document.getElementById('set-conn-timeout')) document.getElementById('set-conn-timeout').value = config.connTimeout || 30;
-            if (document.getElementById('set-bulk-timeout')) document.getElementById('set-bulk-timeout').value = config.bulkTimeout || 600;
-            if (document.getElementById('set-batch-size')) document.getElementById('set-batch-size').value = config.batchSize || 5000;
-            if (document.getElementById('set-parallel-threads')) document.getElementById('set-parallel-threads').value = config.threads || 4;
-            if (document.getElementById('set-auto-backup')) document.getElementById('set-auto-backup').checked = config.autoBackup !== false;
-            if (document.getElementById('set-enable-constraints')) document.getElementById('set-enable-constraints').checked = config.enableConstraints !== false;
-            if (document.getElementById('set-auto-scroll')) document.getElementById('set-auto-scroll').checked = config.autoScroll !== false;
-        } catch (e) {
-            console.error("Gagal memuat konfigurasi tersimpan:", e);
+function triggerAutoBeautify() {
+    if (beautifierDebounceTimeout) {
+        clearTimeout(beautifierDebounceTimeout);
+    }
+    beautifierDebounceTimeout = setTimeout(() => {
+        beautifyCode({ silent: true });
+    }, 400);
+}
+
+function onBeautifierLangChange() {
+    if (!beautifierLeftEditor || !beautifierRightEditor) return;
+    const lang = document.getElementById('beautifier-lang').value;
+    monaco.editor.setModelLanguage(beautifierLeftEditor.getModel(), lang);
+    monaco.editor.setModelLanguage(beautifierRightEditor.getModel(), lang);
+    // Re-trigger beautify under new language settings
+    beautifyCode({ silent: true });
+}
+
+function autoDetectBeautifierLang() {
+    if (!beautifierLeftEditor) return;
+    const code = beautifierLeftEditor.getValue().trim();
+    if (!code) {
+        alert("Editor kiri kosong! Harap masukkan kode terlebih dahulu.");
+        return;
+    }
+
+    let detected = 'sql';
+    if (code.startsWith('{') || code.startsWith('[')) {
+        detected = 'json';
+    } else if (code.startsWith('<')) {
+        detected = 'xml';
+    }
+
+    const select = document.getElementById('beautifier-lang');
+    if (select) {
+        select.value = detected;
+        onBeautifierLangChange();
+    }
+}
+
+function beautifyCode(options = {}) {
+    if (!beautifierLeftEditor || !beautifierRightEditor) return;
+    const code = beautifierLeftEditor.getValue().trim();
+    const statusText = document.getElementById('beautifier-status-text');
+    
+    if (!code) {
+        if (!options.silent) {
+            alert("Harap masukkan kode terlebih dahulu di panel kiri!");
+        }
+        beautifierRightEditor.setValue("");
+        if (statusText) {
+            statusText.innerText = "Auto-formatted";
+            statusText.style.color = "var(--accent-teal)";
+        }
+        return;
+    }
+
+    // Ignore placeholder
+    if (code.startsWith("-- Tulis atau tempel SQL")) {
+        return;
+    }
+
+    const lang = document.getElementById('beautifier-lang').value;
+    let formatted = "";
+
+    try {
+        if (lang === 'json') {
+            const parsed = JSON.parse(code);
+            formatted = JSON.stringify(parsed, null, 4);
+        } else if (lang === 'xml') {
+            formatted = formatXmlString(code);
+        } else if (lang === 'sql') {
+            if (typeof sqlFormatter !== 'undefined') {
+                formatted = sqlFormatter.format(code, {
+                    language: 'sql',
+                    tabWidth: 4,
+                    keywordCase: 'upper'
+                });
+            } else {
+                console.warn("sql-formatter library not loaded. Using local fallback SQL formatter.");
+                formatted = fallbackFormatSqlString(code);
+            }
+        }
+
+        beautifierRightEditor.setValue(formatted);
+        
+        if (statusText) {
+            statusText.innerText = "Berhasil diformat";
+            statusText.style.color = "var(--accent-teal)";
+        }
+    } catch (err) {
+        if (!options.silent) {
+            alert("Gagal merapikan kode: " + err.message);
+        }
+        if (statusText) {
+            statusText.innerText = "Error / Menunggu input valid...";
+            statusText.style.color = "#f43f5e";
         }
     }
-});
+}
+
+function formatXmlString(xml) {
+    let reg = /(>)\s*(<)(\/*)/g;
+    let wspace = xml.replace(reg, '$1\r\n$2$3');
+    let formatted = '';
+    let pad = 0;
+    
+    wspace.split('\r\n').forEach(function(node) {
+        let indent = 0;
+        node = node.trim();
+        if (!node) return;
+        
+        if (node.match( /.+<\/\w[^>]*>$/ )) {
+            indent = 0;
+        } else if (node.match( /^<\/\w/ )) {
+            if (pad !== 0) {
+                pad -= 1;
+            }
+        } else if (node.match( /^<\?xml/ ) || node.match( /^<\!--/ ) || node.match( /^[^\<]/ )) {
+            indent = 0;
+        } else if (node.match( /^<\w([^>]*[^\/])?>.*$/ )) {
+            indent = 1;
+        } else if (node.match( /^<\w[^>]*\/\s*>$/ )) {
+            indent = 0;
+        } else {
+            indent = 0;
+        }
+
+        let padding = '';
+        for (let i = 0; i < pad; i++) {
+            padding += '    ';
+        }
+
+        formatted += padding + node + '\r\n';
+        pad += indent;
+    });
+    return formatted.trim();
+}
+
+function fallbackFormatSqlString(sql) {
+    let indent = 0;
+    const keywords = ["SELECT", "FROM", "WHERE", "JOIN", "LEFT JOIN", "RIGHT JOIN", "INNER JOIN", "GROUP BY", "ORDER BY", "INSERT INTO", "UPDATE", "SET", "DELETE FROM", "VALUES", "HAVING", "LIMIT"];
+    let tokens = sql.replace(/\s+/g, ' ').trim();
+    
+    keywords.forEach(kw => {
+        let regex = new RegExp('\\b' + kw + '\\b', 'gi');
+        tokens = tokens.replace(regex, '\n' + kw);
+    });
+    
+    let lines = tokens.split('\n');
+    let formatted = '';
+    lines.forEach(line => {
+        line = line.trim();
+        if (!line) return;
+        
+        let padding = '';
+        for (let i = 0; i < indent; i++) {
+            padding += '    ';
+        }
+        formatted += padding + line + '\n';
+    });
+    return formatted.trim();
+}
+
+function copyBeautifiedCode() {
+    if (!beautifierRightEditor) return;
+    const code = beautifierRightEditor.getValue();
+    navigator.clipboard.writeText(code)
+        .then(() => {
+            alert("Hasil formatting berhasil disalin ke clipboard!");
+        })
+        .catch(err => {
+            alert("Gagal menyalin: " + err.message);
+        });
+}
+
+function clearBeautifier() {
+    if (beautifierLeftEditor) beautifierLeftEditor.setValue('');
+    if (beautifierRightEditor) beautifierRightEditor.setValue('');
+    const statusText = document.getElementById('beautifier-status-text');
+    if (statusText) {
+        statusText.innerText = "Auto-formatted";
+        statusText.style.color = "var(--accent-teal)";
+    }
+}
 
 // ── Generate INSERT Script Logic ───────────────────────────────────────────
 function openGenerateInsertModal() {

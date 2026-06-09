@@ -22,8 +22,8 @@
         <button class="nav-item" id="main-nav-query" onclick="switchMainTab('query')">
             <i class="fa-solid fa-terminal"></i> Query Console
         </button>
-        <button class="nav-item" id="main-nav-settings" onclick="switchMainTab('settings')">
-            <i class="fa-solid fa-sliders"></i> Settings
+        <button class="nav-item" id="main-nav-beautifier" onclick="switchMainTab('beautifier')">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Beautifier
         </button>
     </nav>
 
@@ -932,7 +932,7 @@
                         </div>
                         
                         <!-- List Container -->
-                        <div id="schema-exp-list" style="height: calc(100vh - 350px); min-height: 580px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; border: 1px solid var(--border-flat); border-radius: 6px; padding: 0.5rem; background: #07090d;">
+                        <div id="schema-exp-list" style="height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; border: 1px solid var(--border-flat); border-radius: 6px; padding: 0.5rem; background: #07090d;">
                             <div style="padding: 1.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;">
                                 Hubungkan database dan klik Cari untuk memuat daftar objek skema.
                             </div>
@@ -950,7 +950,7 @@
                                     <span style="font-size: 0.72rem; color: var(--text-muted);">Tekan Jalankan SQL untuk mengeksekusi</span>
                                 </div>
                             </div>
-                            <div id="query-editor" style="height: calc(100vh - 430px); min-height: 500px; border: 1px solid var(--border-flat); border-radius: 8px; overflow: hidden; background: #07090d;"></div>
+                            <div id="query-editor" style="height: 300px; border: 1px solid var(--border-flat); border-radius: 8px; overflow: hidden; background: #07090d;"></div>
                         </div>
 
                         <!-- Results container -->
@@ -975,95 +975,60 @@
     </div>
 
     <!-- ================================================================ -->
-    <!-- SETTINGS SCREEN -->
+    <!-- BEAUTIFIER SCREEN -->
     <!-- ================================================================ -->
-    <div id="main-screen-settings" class="main-screen" style="display: none;">
-        <div class="panel-card">
-            <div class="panel-title" style="border-bottom: 1px solid var(--border-flat); padding-bottom: 0.75rem;">
-                <i class="fa-solid fa-sliders" style="color: var(--accent-teal);"></i>
-                <span>Konfigurasi Global & Parameter Migrasi</span>
+    <div id="main-screen-beautifier" class="main-screen" style="display: none;">
+        <div class="panel-card" style="height: calc(100vh - 120px); display: flex; flex-direction: column; padding: 1.5rem;">
+            <div class="panel-title" style="border-bottom: 1px solid var(--border-flat); padding-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent-teal); font-size: 1.15rem;"></i>
+                    <span style="font-size: 1.15rem; font-weight: 600; font-family: var(--font-heading);">SQL / JSON / XML Beautifier</span>
+                </div>
+                <div class="beautifier-controls" style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+                    <select id="beautifier-lang" onchange="onBeautifierLangChange()" class="form-control" style="width: 110px; height: 34px; border-radius: 6px; padding: 0 0.5rem; background: #0d0f14; border: 1px solid var(--border-flat); color: #fff; font-size: 0.82rem; cursor: pointer;">
+                        <option value="sql">SQL</option>
+                        <option value="json">JSON</option>
+                        <option value="xml">XML</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="autoDetectBeautifierLang()" style="height: 34px; padding: 0 0.75rem; font-size: 0.82rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 0.3rem;" title="Auto Detect Language">
+                        <i class="fa-solid fa-wand-magic"></i> Auto Detect
+                    </button>
+                    <button class="btn btn-primary" onclick="beautifyCode()" style="height: 34px; padding: 0 1.15rem; font-size: 0.82rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 0.35rem;">
+                        <i class="fa-solid fa-sparkles"></i> Beautify
+                    </button>
+                    <button class="btn btn-secondary" onclick="copyBeautifiedCode()" style="height: 34px; padding: 0 0.75rem; font-size: 0.82rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 0.3rem;" title="Copy result to clipboard">
+                        <i class="fa-solid fa-copy"></i> Copy
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearBeautifier()" style="height: 34px; padding: 0 0.75rem; font-size: 0.82rem; border-radius: 6px; color: #f43f5e; border-color: rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.05); display: inline-flex; align-items: center; gap: 0.3rem;" title="Clear Editor">
+                        <i class="fa-solid fa-trash"></i> Clear
+                    </button>
+                </div>
             </div>
-
-            <div class="settings-grid" style="margin-top: 1.5rem;">
+            
+            <div id="beautifier-editor-container" style="flex: 1; min-height: 400px; margin-top: 1.25rem; display: flex; gap: 1rem; position: relative;">
                 
-                <!-- General & Timeouts -->
-                <div class="settings-card">
-                    <h4 class="settings-group-title">
-                        <i class="fa-solid fa-hourglass-half" style="color: var(--accent-teal);"></i>
-                        Timeouts & General Settings
-                    </h4>
-                    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="set-conn-timeout">Connection Timeout (Detik)</label>
-                            <input type="number" id="set-conn-timeout" class="form-control" value="30">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="set-bulk-timeout">Bulk Copy Timeout (Detik)</label>
-                            <input type="number" id="set-bulk-timeout" class="form-control" value="600">
-                        </div>
+                <!-- Left Pane: Input / Original -->
+                <div style="flex: 1; display: flex; flex-direction: column; border: 1px solid var(--border-flat); border-radius: 8px; overflow: hidden; position: relative; background: #1e1e1e;">
+                    <div style="background: rgba(255, 255, 255, 0.02); border-bottom: 1px solid var(--border-flat); padding: 0.5rem 0.75rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">
+                        <span><i class="fa-solid fa-file-lines" style="margin-right: 0.4rem;"></i>Original Input (Sebelum)</span>
+                        <span style="font-size: 0.75rem; color: var(--accent-teal);">Editable</span>
+                    </div>
+                    <div style="flex: 1; position: relative; min-height: 250px;">
+                        <div id="beautifier-editor-left" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0;"></div>
                     </div>
                 </div>
 
-                <!-- Tuning & Performance -->
-                <div class="settings-card">
-                    <h4 class="settings-group-title">
-                        <i class="fa-solid fa-bolt" style="color: var(--accent-purple);"></i>
-                        Migration Performance Tuning
-                    </h4>
-                    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="set-batch-size">Bulk Batch Size (Baris per Batch)</label>
-                            <input type="number" id="set-batch-size" class="form-control" value="5000">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="set-parallel-threads">Max Parallelism (Thread Count)</label>
-                            <input type="number" id="set-parallel-threads" class="form-control" value="4" min="1" max="16">
-                        </div>
+                <!-- Right Pane: Output / Beautified -->
+                <div style="flex: 1; display: flex; flex-direction: column; border: 1px solid var(--border-flat); border-radius: 8px; overflow: hidden; position: relative; background: #1e1e1e;">
+                    <div style="background: rgba(255, 255, 255, 0.02); border-bottom: 1px solid var(--border-flat); padding: 0.5rem 0.75rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">
+                        <span><i class="fa-solid fa-square-check" style="margin-right: 0.4rem; color: var(--accent-teal);"></i>Formatted Result (Sesudah)</span>
+                        <span id="beautifier-status-text" style="font-size: 0.75rem; color: var(--accent-teal);">Auto-formatted</span>
+                    </div>
+                    <div style="flex: 1; position: relative; min-height: 250px;">
+                        <div id="beautifier-editor-right" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0;"></div>
                     </div>
                 </div>
 
-                <!-- Toggles & Safety Policies -->
-                <div class="settings-card">
-                    <h4 class="settings-group-title">
-                        <i class="fa-solid fa-shield-halved" style="color: var(--accent-indigo);"></i>
-                        Safety Policies & Logging
-                    </h4>
-                    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
-                        
-                        <label class="toggle-switch-label">
-                            <div class="toggle-switch-container">
-                                <span class="toggle-switch-title">Auto Backup DDL</span>
-                                <span class="toggle-switch-desc">Backup skema SP/View secara otomatis sebelum ditimpa.</span>
-                            </div>
-                            <input type="checkbox" id="set-auto-backup" class="toggle-switch-input" checked>
-                        </label>
-
-                        <label class="toggle-switch-label">
-                            <div class="toggle-switch-container">
-                                <span class="toggle-switch-title">Enable Constraints</span>
-                                <span class="toggle-switch-desc">Pengecekan FK constraint setelah bulk copy.</span>
-                            </div>
-                            <input type="checkbox" id="set-enable-constraints" class="toggle-switch-input" checked>
-                        </label>
-
-                        <label class="toggle-switch-label">
-                            <div class="toggle-switch-container">
-                                <span class="toggle-switch-title">Auto-Scroll Console Logs</span>
-                                <span class="toggle-switch-desc">Gulirkan log otomatis ke baris paling bawah.</span>
-                            </div>
-                            <input type="checkbox" id="set-auto-scroll" class="toggle-switch-input" checked>
-                        </label>
-
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- Save Action Button -->
-            <div style="display: flex; justify-content: flex-end; margin-top: 1.5rem; border-top: 1px solid var(--border-flat); padding-top: 1.25rem;">
-                <button class="btn btn-primary" onclick="saveGlobalSettings()" style="width: auto; padding: 0.6rem 2rem;">
-                    <i class="fa-solid fa-floppy-disk"></i> Simpan Semua Pengaturan
-                </button>
             </div>
         </div>
     </div>
@@ -1928,6 +1893,7 @@
 <script src="lib/monaco-editor/min/vs/loader.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sql-formatter@15.3.1/dist/sql-formatter.min.js"></script>
 <script src="app.js?v=3.7"></script>
 
 </body>
