@@ -1202,7 +1202,7 @@ app.MapPost("/api/query/schema", async ([FromBody] QuerySchemaRequest request) =
 });
 
 // C. EXECUTE QUERY
-app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request) =>
+app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request, CancellationToken cancellationToken) =>
 {
     if (string.IsNullOrEmpty(request?.ServerName) || string.IsNullOrEmpty(request?.Database) || string.IsNullOrEmpty(request?.QueryText))
     {
@@ -1231,11 +1231,11 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request)
         }
 
         using var conn = new SqlConnection(builder.ConnectionString);
-        await conn.OpenAsync();
+        await conn.OpenAsync(cancellationToken);
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         using var command = new SqlCommand(request.QueryText, conn);
-        using var reader = await command.ExecuteReaderAsync();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
         var tables = new List<QueryResultTable>();
 
@@ -1257,7 +1257,7 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request)
                     headers.Add(reader.GetName(i));
                 }
 
-                while (await reader.ReadAsync())
+                while (await reader.ReadAsync(cancellationToken))
                 {
                     var row = new List<object>();
                     for (int i = 0; i < reader.FieldCount; i++)
@@ -1270,7 +1270,7 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request)
             }
 
             tables.Add(new QueryResultTable { Headers = headers, Rows = rows });
-        } while (await reader.NextResultAsync());
+        } while (await reader.NextResultAsync(cancellationToken));
 
         stopwatch.Stop();
 
@@ -1282,6 +1282,10 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request)
             Rows = firstTable?.Rows ?? new List<List<object>>(), 
             ExecutionTimeMs = stopwatch.ElapsedMilliseconds 
         });
+    }
+    catch (OperationCanceledException)
+    {
+        return Results.StatusCode(499);
     }
     catch (Exception ex)
     {

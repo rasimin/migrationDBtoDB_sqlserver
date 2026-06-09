@@ -23,6 +23,7 @@ let isCancellationRequested = false;
 
 // Hub SignalR
 let connection = null;
+let queryConsoleAbortController = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     loadJobs();
@@ -4826,6 +4827,11 @@ function switchMainTab(tabId) {
     // Persist active tab in localStorage
     localStorage.setItem('dbmigrator_active_tab', tabId);
 
+    // Cancel running query when switching tabs
+    if (tabId !== 'query') {
+        cancelQueryConsole();
+    }
+
     // 5. Populate jobs in Query Console connection panel
     if (tabId === 'query') {
         populateQueryConnJobs();
@@ -6814,8 +6820,17 @@ async function runQueryConsole() {
     const resultsContainer = document.getElementById('query-results-container');
     const statusText = document.getElementById('query-status-text');
     const rowsCount = document.getElementById('query-rows-count');
+    const executeBtn = document.getElementById('btn-execute-query');
 
-    statusText.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Mengeksekusi kueri...`;
+    // Set up Cancel button inside status line
+    statusText.innerHTML = `
+        <span style="display: inline-flex; align-items: center; gap: 0.5rem;">
+            <i class="fa-solid fa-spinner fa-spin"></i> Mengeksekusi kueri...
+            <button class="btn" onclick="cancelQueryConsole()" style="background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); color: #f43f5e; height: 22px; padding: 0 0.5rem; font-size: 0.72rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; transition: all 0.15s ease;" onmouseover="this.style.background='rgba(244,63,94,0.3)'" onmouseout="this.style.background='rgba(244,63,94,0.15)'" title="Batalkan eksekusi kueri yang sedang berjalan">
+                <i class="fa-solid fa-circle-stop" style="font-size: 0.7rem;"></i> Cancel
+            </button>
+        </span>
+    `;
     statusText.style.color = 'var(--accent-teal)';
     rowsCount.textContent = "";
     resultsBox.style.display = 'block';
@@ -6823,6 +6838,17 @@ async function runQueryConsole() {
     if (resultsContainer) {
         resultsContainer.innerHTML = "";
     }
+
+    if (executeBtn) {
+        executeBtn.disabled = true;
+        executeBtn.style.opacity = '0.6';
+    }
+
+    // Cancel any existing running query
+    if (queryConsoleAbortController) {
+        queryConsoleAbortController.abort();
+    }
+    queryConsoleAbortController = new AbortController();
 
     try {
         const payload = {
@@ -6837,7 +6863,8 @@ async function runQueryConsole() {
         const res = await fetch(`${API_BASE}/query/execute`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            signal: queryConsoleAbortController.signal
         });
 
         if (!res.ok) throw new Error("API Error: " + await res.text());
@@ -6930,9 +6957,29 @@ async function runQueryConsole() {
             window.lastQueryResults = null;
         }
     } catch (err) {
-        statusText.textContent = "Error: " + err.message;
-        statusText.style.color = '#f43f5e';
-        rowsCount.textContent = "Gagal";
+        if (err.name === 'AbortError') {
+            statusText.textContent = "Eksekusi kueri dibatalkan oleh pengguna.";
+            statusText.style.color = 'var(--text-muted, #5d7290)';
+            rowsCount.textContent = "Dibatalkan";
+        } else {
+            console.error(err);
+            statusText.textContent = "Error: " + err.message;
+            statusText.style.color = '#f43f5e';
+            rowsCount.textContent = "Gagal";
+        }
+    } finally {
+        queryConsoleAbortController = null;
+        if (executeBtn) {
+            executeBtn.disabled = false;
+            executeBtn.style.opacity = '1';
+        }
+    }
+}
+
+function cancelQueryConsole() {
+    if (queryConsoleAbortController) {
+        queryConsoleAbortController.abort();
+        queryConsoleAbortController = null;
     }
 }
 
