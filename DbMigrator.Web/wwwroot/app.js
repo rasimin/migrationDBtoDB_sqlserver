@@ -5442,6 +5442,32 @@ function initMonacoQueryEditor() {
             padding: { top: 8, bottom: 8 }
         });
 
+        // Setup vertical resizer for query editor
+        const resizer = document.getElementById('query-editor-resizer');
+        const editorDiv = document.getElementById('query-editor');
+        if (resizer && editorDiv) {
+            let startY, startHeight;
+            const onMouseMove = (e) => {
+                let newHeight = startHeight + e.clientY - startY;
+                if (newHeight < 150) newHeight = 150;
+                if (newHeight > 1200) newHeight = 1200;
+                editorDiv.style.height = newHeight + 'px';
+            };
+            const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                resizer.style.background = '#111520';
+            };
+            resizer.addEventListener('mousedown', (e) => {
+                startY = e.clientY;
+                startHeight = editorDiv.offsetHeight;
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+                resizer.style.background = 'rgba(20, 184, 166, 0.25)';
+                e.preventDefault();
+            });
+        }
+
         // Listen for content changes to auto-save to localStorage
         queryConsoleEditor.onDidChangeModelContent(() => {
             localStorage.setItem('queryConsoleLastQuery', queryConsoleEditor.getValue());
