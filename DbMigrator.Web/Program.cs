@@ -328,6 +328,25 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
                 CreatedAt DATETIME NOT NULL DEFAULT GETDATE()
             );
         END
+
+        -- Ensure JobWhiteboards table is independent (drop old if exists with JobId column)
+        IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('dbo.JobWhiteboards') AND name = 'JobId')
+        BEGIN
+            DROP TABLE dbo.JobWhiteboards;
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID('dbo.JobWhiteboards') AND type in ('U'))
+        BEGIN
+            CREATE TABLE dbo.JobWhiteboards (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                AliasName NVARCHAR(255) NOT NULL UNIQUE,
+                TagName NVARCHAR(100) NULL,
+                WhiteboardData NVARCHAR(MAX) NULL,
+                ThumbnailData NVARCHAR(MAX) NULL,
+                CreatedAt DATETIME NOT NULL DEFAULT GETDATE(),
+                UpdatedAt DATETIME NOT NULL DEFAULT GETDATE()
+            );
+        END
     ");
 }
 
@@ -408,6 +427,82 @@ app.MapPost("/api/jobs/test-connection", async ([FromBody] TestConnectionRequest
     {
         return Results.Ok(new { Success = false, Message = $"Gagal terhubung: {ex.Message}" });
     }
+});
+
+// ============================================================================
+// WHITEBOARD GALLERY & DRAWINGS ENDPOINTS
+// ============================================================================
+
+// 1. GET ALL WHITEBOARDS (METADATA ONLY FOR SPEED)
+app.MapGet("/api/whiteboards", async (IConfiguration config) =>
+{
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var whiteboards = await conn.QueryAsync<JobWhiteboard>(
+        "SELECT Id, AliasName, TagName, ThumbnailData, CreatedAt, UpdatedAt FROM dbo.JobWhiteboards ORDER BY UpdatedAt DESC");
+    return Results.Ok(whiteboards);
+});
+
+// 2. GET WHITEBOARD DETAIL BY ID (INCLUDES FULL JSON DATA)
+app.MapGet("/api/whiteboards/{id:int}", async (int id, IConfiguration config) =>
+{
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var wb = await conn.QuerySingleOrDefaultAsync<JobWhiteboard>(
+        "SELECT * FROM dbo.JobWhiteboards WHERE Id = @Id", new { Id = id });
+    return wb != null ? Results.Ok(wb) : Results.NotFound($"Sketsa dengan ID {id} tidak ditemukan");
+});
+
+// 3. CREATE NEW WHITEBOARD
+app.MapPost("/api/whiteboards", async ([FromBody] JobWhiteboard request, IConfiguration config) =>
+{
+    if (request == null || string.IsNullOrWhiteSpace(request.AliasName))
+    {
+        return Results.BadRequest("Nama sketsa tidak boleh kosong.");
+    }
+
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    
+    // Validasi keunikan nama sketsa secara global
+    var existing = await conn.QueryFirstOrDefaultAsync<int?>(
+        "SELECT TOP 1 Id FROM dbo.JobWhiteboards WHERE AliasName = @AliasName",
+        new { AliasName = request.AliasName });
+        
+    if (existing != null)
+    {
+        return Results.BadRequest("Nama sketsa tersebut sudah terdaftar!");
+    }
+
+    int newId = await conn.QuerySingleAsync<int>(@"
+        INSERT INTO dbo.JobWhiteboards (AliasName, TagName, CreatedAt, UpdatedAt)
+        VALUES (@AliasName, @TagName, GETDATE(), GETDATE());
+        SELECT CAST(SCOPE_IDENTITY() as int);", request);
+
+    request.Id = newId;
+    return Results.Created($"/api/whiteboards/{newId}", request);
+});
+
+// 4. SAVE WHITEBOARD DRAWING DATA
+app.MapPut("/api/whiteboards/{id:int}", async (int id, [FromBody] JobWhiteboard request, IConfiguration config) =>
+{
+    if (request == null) return Results.BadRequest("Payload kosong");
+
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var rows = await conn.ExecuteAsync(@"
+        UPDATE dbo.JobWhiteboards
+        SET WhiteboardData = @WhiteboardData, ThumbnailData = @ThumbnailData, UpdatedAt = GETDATE()
+        WHERE Id = @Id", 
+        new { Id = id, WhiteboardData = request.WhiteboardData, ThumbnailData = request.ThumbnailData });
+
+    if (rows == 0) return Results.NotFound($"Sketsa dengan ID {id} tidak ditemukan");
+    return Results.Ok();
+});
+
+// 5. DELETE WHITEBOARD
+app.MapDelete("/api/whiteboards/{id:int}", async (int id, IConfiguration config) =>
+{
+    using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var rows = await conn.ExecuteAsync("DELETE FROM dbo.JobWhiteboards WHERE Id = @Id", new { Id = id });
+    if (rows == 0) return Results.NotFound($"Sketsa dengan ID {id} tidak ditemukan");
+    return Results.Ok();
 });
 
 // 4. GET TABLE MAPPINGS FOR JOB

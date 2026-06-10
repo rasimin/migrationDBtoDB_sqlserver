@@ -2198,4 +2198,191 @@ textarea.form-control {
     font-weight: 600;
 }
 
+/* ============================================================================
+   WHITEBOARD SYSTEM STYLES
+   ============================================================================ */
+.whiteboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    padding-top: 0.5rem;
+}
+
+.whiteboard-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-flat);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s ease, box-shadow 0.25s ease;
+    box-shadow: var(--shadow-flat);
+    position: relative;
+    height: 250px;
+}
+
+.whiteboard-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent-teal);
+    box-shadow: 0 8px 20px rgba(0, 173, 181, 0.15);
+    background: var(--bg-card-hover);
+}
+
+.whiteboard-thumbnail-wrapper {
+    flex: 1;
+    background: #0f1115;
+    border-bottom: 1px solid var(--border-flat);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 150px;
+}
+
+.whiteboard-thumbnail-wrapper img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 0.3s ease;
+    padding: 0.5rem;
+}
+
+.whiteboard-card:hover .whiteboard-thumbnail-wrapper img {
+    transform: scale(1.03);
+}
+
+.whiteboard-placeholder-thumb {
+    font-size: 2.5rem;
+    color: rgba(255, 255, 255, 0.08);
+}
+
+.whiteboard-card-info {
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.whiteboard-card-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #ffffff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin: 0;
+}
+
+.whiteboard-card-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.15rem;
+}
+
+.whiteboard-card-tag {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(99, 102, 241, 0.15);
+    color: #818cf8;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.whiteboard-card-tag.empty {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-muted);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.whiteboard-card-actions {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: flex;
+    gap: 0.25rem;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-5px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 10;
+}
+
+.whiteboard-card:hover .whiteboard-card-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+.whiteboard-card-actions button {
+    background: rgba(15, 17, 23, 0.85);
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--border-flat);
+    border-radius: 6px;
+    color: #ffffff;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: all 0.2s ease;
+}
+
+.whiteboard-card-actions button:hover {
+    background: var(--accent-teal);
+    color: #0d0f14;
+    border-color: var(--accent-teal);
+}
+
+.whiteboard-card-actions button.delete:hover {
+    background: var(--color-error);
+    color: #ffffff;
+    border-color: var(--color-error);
+}
+
+/* Excalidraw UI Customizations to match Dark Mode Theme */
+.excalidraw-container {
+    --theme-filter: invert(93%) hue-rotate(180deg);
+}
+
+.whiteboard-empty-gallery {
+    text-align: center;
+    padding: 4rem 2rem;
+    border: 2px dashed rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    grid-column: 1 / -1;
+}
+
+.whiteboard-empty-gallery i {
+    font-size: 3rem;
+    color: rgba(255, 255, 255, 0.1);
+}
+
+.whiteboard-empty-gallery h3 {
+    margin: 0;
+    color: #ffffff;
+    font-family: var(--font-heading);
+}
+
+.whiteboard-empty-gallery p {
+    margin: 0;
+    max-width: 400px;
+    line-height: 1.5;
+}
+
+
 

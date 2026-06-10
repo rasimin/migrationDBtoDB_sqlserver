@@ -120,4 +120,15 @@ namespace DbMigrator.Core
     {
         public string TableNames { get; set; }
     }
+
+    public class JobWhiteboard
+    {
+        public int Id { get; set; }
+        public string AliasName { get; set; }
+        public string TagName { get; set; }
+        public string WhiteboardData { get; set; }
+        public string ThumbnailData { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
 }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DbMigrator.NET - Premium Control Panel</title>
     <meta name="description" content="Dynamic Metadata-Driven SQL Server Database Migration Tool — kelola migrasi data dan objek DDL antar database secara visual.">
-    <link rel="stylesheet" href="style.css?v=3.6">
+    <link rel="stylesheet" href="style.css?v=3.10">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -24,6 +24,9 @@
         </button>
         <button class="nav-item" id="main-nav-beautifier" onclick="switchMainTab('beautifier')">
             <i class="fa-solid fa-wand-magic-sparkles"></i> Beautifier
+        </button>
+        <button class="nav-item" id="main-nav-whiteboard" onclick="switchMainTab('whiteboard')">
+            <i class="fa-solid fa-pen-ruler"></i> Whiteboard
         </button>
     </nav>
 
@@ -1036,6 +1039,76 @@
         </div>
     </div>
 
+    <!-- ================================================================ -->
+    <!-- WHITEBOARD SCREEN -->
+    <!-- ================================================================ -->
+    <div id="main-screen-whiteboard" class="main-screen" style="display: none;">
+        <!-- Container Utama Whiteboard -->
+        <div id="whiteboard-main-container">
+            <!-- 1. TAMPILAN GALERI (Grid of Drawings) -->
+            <div id="whiteboard-gallery-view" style="display: block;">
+                <div class="panel-card" style="padding: 1.5rem; min-height: calc(100vh - 120px); display: flex; flex-direction: column;">
+                    <!-- Gallery Header -->
+                    <div class="whiteboard-gallery-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-flat); padding-bottom: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fa-solid fa-pen-ruler" style="color: var(--accent-teal); font-size: 1.15rem;"></i>
+                            <span style="font-size: 1.15rem; font-weight: 600; font-family: var(--font-heading);">Sketsa & Arsitektur (Whiteboard)</span>
+                        </div>
+                        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                            <!-- Search filter -->
+                            <div style="position: relative; width: 220px;">
+                                <input type="text" id="whiteboard-search" oninput="filterWhiteboards()" placeholder="Filter drawings..." class="form-control" style="padding-left: 2.25rem; font-size: 0.85rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%;">
+                                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+                            </div>
+                            <!-- Tag filter -->
+                            <select id="whiteboard-tag-filter" onchange="filterWhiteboards()" class="form-control" style="width: 140px; font-size: 0.85rem; height: 36px; border-radius: 8px; padding: 0 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                <option value="ALL">Semua Tag</option>
+                            </select>
+                            <!-- Create button -->
+                            <button class="btn btn-primary" onclick="openNewWhiteboardModal()" style="width: auto; height: 36px; padding: 0 1rem; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+                                <i class="fa-solid fa-plus"></i> Create
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Gallery Grid -->
+                    <div id="whiteboard-grid-container" class="whiteboard-grid" style="flex: 1;">
+                        <!-- Cards loaded dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. TAMPILAN WORKSPACE KANVAS (Excalidraw Editor) -->
+            <div id="whiteboard-workspace-view" style="display: none;">
+                <div class="panel-card" style="padding: 1rem; height: calc(100vh - 120px); display: flex; flex-direction: column;">
+                    <!-- Workspace Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-flat); padding-bottom: 0.5rem; margin-bottom: 0.75rem;">
+                        <div style="display: flex; align-items: center; gap: 0.65rem;">
+                            <span style="font-size: 1rem; font-weight: 700; color: #ffffff;" id="workspace-drawing-title">Sketsa</span>
+                            <span class="obj-type-badge native_sql" id="workspace-drawing-tag" style="font-size: 0.7rem; padding: 2px 6px;">Tag</span>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-secondary" onclick="resetWorkspaceCanvas()" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem; color: var(--color-error); border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.05);">
+                                <i class="fa-solid fa-trash-can"></i> Bersihkan Kanvas
+                            </button>
+                            <button class="btn btn-primary" id="btn-save-whiteboard" onclick="saveActiveWhiteboard()" style="width: auto; padding: 0.4rem 1.25rem; font-size: 0.8rem; background: var(--accent-teal); color: #0d0f14; border-color: var(--accent-teal); font-weight: 600;">
+                                <i class="fa-solid fa-floppy-disk"></i> Simpan Sketsa
+                            </button>
+                            <button class="btn btn-secondary" onclick="closeWhiteboardWorkspace()" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.3rem;">
+                                <i class="fa-solid fa-arrow-left"></i> Kembali ke Galeri
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Excalidraw Canvas Container -->
+                    <div style="flex: 1; border: 1px solid var(--border-flat); border-radius: 8px; overflow: hidden; position: relative; background: #121212; display: flex; flex-direction: column;">
+                        <div id="excalidraw-mount-container" style="flex: 1; width: 100%; height: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div><!-- end app-container -->
 
 
@@ -1891,13 +1964,71 @@
     </div>
 </div>
 
+<!-- ============================================================================
+     MODAL: CREATE NEW WHITEBOARD DRAWING
+     ============================================================================ -->
+<div class="modal-overlay" id="create-whiteboard-modal">
+    <div class="modal-content" style="max-width: 450px; border-color: var(--border-glass);">
+        <div class="modal-header">
+            <div>
+                <h3>Create new drawing</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Tambahkan sketsa coretan baru untuk mendokumentasikan skema atau alur data.</p>
+            </div>
+            <button class="close-btn" onclick="closeNewWhiteboardModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem;">
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label for="whiteboard-new-name" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Alias Name</label>
+                <input type="text" id="whiteboard-new-name" class="form-control" placeholder="Contoh: mature settle" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;">
+            </div>
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label for="whiteboard-new-tag" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Tag</label>
+                <input type="text" id="whiteboard-new-tag" class="form-control" placeholder="Contoh: Database, Flowchart, Architecture (atau kosongkan)" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;" list="whiteboard-tag-suggestions">
+                <datalist id="whiteboard-tag-suggestions">
+                    <option value="Database">
+                    <option value="Flowchart">
+                    <option value="Architecture">
+                    <option value="Kafka Config">
+                    <option value="Bug Notes">
+                </datalist>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeNewWhiteboardModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="createNewWhiteboardExec()" style="width: auto; background: #ffffff; color: #0d0f14; border-color: #ffffff; font-weight: 600;">
+                Save changes
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- SignalR, Monaco Editor & PrismJS CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
 <script src="lib/sql-formatter.min.js"></script>
 <script src="lib/monaco-editor/min/vs/loader.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
-<script src="app.js?v=3.7"></script>
+
+<script>
+    // Temporarily backup and clear window.define to avoid conflicts between Monaco AMD loader and UMD libraries
+    window._monacoDefine = window.define;
+    window.define = undefined;
+</script>
+
+<!-- React and Excalidraw Offline UMD Library -->
+<script src="lib/excalidraw/react.production.min.js"></script>
+<script src="lib/excalidraw/react-dom.production.min.js"></script>
+<script>
+    window.EXCALIDRAW_ASSET_PATH = "/lib/excalidraw/";
+</script>
+<script src="lib/excalidraw/excalidraw.production.min.js"></script>
+
+<script>
+    // Restore window.define for Monaco Editor
+    window.define = window._monacoDefine;
+</script>
+
+<script src="app.js?v=3.10"></script>
 
 </body>
 </html>
