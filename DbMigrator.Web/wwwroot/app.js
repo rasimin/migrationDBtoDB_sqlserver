@@ -29,7 +29,15 @@ let isCancellationRequested = false;
 let connection = null;
 let queryConsoleAbortController = null;
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    if (window.__partialsReady) {
+        try {
+            await window.__partialsReady;
+        } catch {
+            return;
+        }
+    }
+
     loadJobs();
     loadSavedConnections();
     initSignalR();
@@ -4852,6 +4860,10 @@ function switchMainTab(tabId) {
         }
     } else if (tabId === 'beautifier') {
         initMonacoBeautifierEditor();
+        setTimeout(() => {
+            if (beautifierLeftEditor) beautifierLeftEditor.layout();
+            if (beautifierRightEditor) beautifierRightEditor.layout();
+        }, 120);
     } else if (tabId === 'whiteboard') {
         initWhiteboardTab();
     }
@@ -7135,6 +7147,44 @@ let beautifierLeftEditor = null;
 let beautifierRightEditor = null;
 let beautifierEditorInitializing = false;
 let beautifierDebounceTimeout = null;
+let beautifierCopyResetTimeout = null;
+
+function syncBeautifierLangPills(lang) {
+    document.querySelectorAll('.beautifier-lang-pill').forEach(pill => {
+        const isActive = pill.dataset.lang === lang;
+        pill.classList.toggle('active', isActive);
+        pill.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+}
+
+function setBeautifierLang(lang) {
+    const select = document.getElementById('beautifier-lang');
+    if (select && select.value !== lang) {
+        select.value = lang;
+    }
+    syncBeautifierLangPills(lang);
+    onBeautifierLangChange();
+}
+
+function updateBeautifierStatus(message, state = 'idle') {
+    const statusText = document.getElementById('beautifier-status-text');
+    const statusBadge = document.getElementById('beautifier-status-badge');
+    if (statusText) statusText.textContent = message;
+    if (statusBadge) {
+        statusBadge.className = 'beautifier-status-badge';
+        if (state) statusBadge.classList.add(`is-${state}`);
+        const icon = statusBadge.querySelector('i');
+        if (icon) {
+            const iconMap = {
+                idle: 'fa-solid fa-circle',
+                working: 'fa-solid fa-circle-notch',
+                success: 'fa-solid fa-check-circle',
+                error: 'fa-solid fa-circle-exclamation'
+            };
+            icon.className = iconMap[state] || iconMap.idle;
+        }
+    }
+}
 
 function initMonacoBeautifierEditor() {
     if (beautifierLeftEditor && beautifierRightEditor) {
@@ -7190,8 +7240,16 @@ function initMonacoBeautifierEditor() {
 
         // Bind content change events for live formatting
         beautifierLeftEditor.onDidChangeModelContent(() => {
+            updateBeautifierStatus('Memformat...', 'working');
             triggerAutoBeautify();
         });
+
+        beautifierLeftEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+            beautifyCode();
+        });
+
+        syncBeautifierLangPills(document.getElementById('beautifier-lang')?.value || 'sql');
+        updateBeautifierStatus('Siap', 'idle');
     });
 }
 
@@ -7207,6 +7265,7 @@ function triggerAutoBeautify() {
 function onBeautifierLangChange() {
     if (!beautifierLeftEditor || !beautifierRightEditor) return;
     const lang = document.getElementById('beautifier-lang').value;
+    syncBeautifierLangPills(lang);
     monaco.editor.setModelLanguage(beautifierLeftEditor.getModel(), lang);
     monaco.editor.setModelLanguage(beautifierRightEditor.getModel(), lang);
     // Re-trigger beautify under new language settings
@@ -7341,22 +7400,19 @@ function preprocessSqlForDeclare(sql) {
 function beautifyCode(options = {}) {
     if (!beautifierLeftEditor || !beautifierRightEditor) return;
     const code = beautifierLeftEditor.getValue().trim();
-    const statusText = document.getElementById('beautifier-status-text');
     
     if (!code) {
         if (!options.silent) {
             alert("Harap masukkan kode terlebih dahulu di panel kiri!");
         }
         beautifierRightEditor.setValue("");
-        if (statusText) {
-            statusText.innerText = "Auto-formatted";
-            statusText.style.color = "var(--accent-teal)";
-        }
+        updateBeautifierStatus('Siap', 'idle');
         return;
     }
 
     // Ignore placeholder
     if (code.startsWith("-- Tulis atau tempel SQL")) {
+        updateBeautifierStatus('Siap', 'idle');
         return;
     }
 
@@ -7387,19 +7443,12 @@ function beautifyCode(options = {}) {
         }
 
         beautifierRightEditor.setValue(formatted);
-        
-        if (statusText) {
-            statusText.innerText = "Berhasil diformat";
-            statusText.style.color = "var(--accent-teal)";
-        }
+        updateBeautifierStatus('Berhasil diformat', 'success');
     } catch (err) {
         if (!options.silent) {
             alert("Gagal merapikan kode: " + err.message);
         }
-        if (statusText) {
-            statusText.innerText = "Error / Menunggu input valid...";
-            statusText.style.color = "#f43f5e";
-        }
+        updateBeautifierStatus('Input tidak valid', 'error');
     }
 }
 
@@ -7469,9 +7518,23 @@ function fallbackFormatSqlString(sql) {
 function copyBeautifiedCode() {
     if (!beautifierRightEditor) return;
     const code = beautifierRightEditor.getValue();
+    const copyBtn = document.getElementById('beautifier-copy-btn');
     navigator.clipboard.writeText(code)
         .then(() => {
-            alert("Hasil formatting berhasil disalin ke clipboard!");
+            if (copyBtn) {
+                copyBtn.classList.add('is-copied');
+                const icon = copyBtn.querySelector('i');
+                const label = copyBtn.querySelector('.beautifier-btn-text');
+                if (icon) icon.className = 'fa-solid fa-check';
+                if (label) label.textContent = 'Tersalin';
+                if (beautifierCopyResetTimeout) clearTimeout(beautifierCopyResetTimeout);
+                beautifierCopyResetTimeout = setTimeout(() => {
+                    copyBtn.classList.remove('is-copied');
+                    if (icon) icon.className = 'fa-solid fa-copy';
+                    if (label) label.textContent = 'Copy';
+                }, 1800);
+            }
+            updateBeautifierStatus('Disalin ke clipboard', 'success');
         })
         .catch(err => {
             alert("Gagal menyalin: " + err.message);
@@ -7481,11 +7544,7 @@ function copyBeautifiedCode() {
 function clearBeautifier() {
     if (beautifierLeftEditor) beautifierLeftEditor.setValue('');
     if (beautifierRightEditor) beautifierRightEditor.setValue('');
-    const statusText = document.getElementById('beautifier-status-text');
-    if (statusText) {
-        statusText.innerText = "Auto-formatted";
-        statusText.style.color = "var(--accent-teal)";
-    }
+    updateBeautifierStatus('Siap', 'idle');
 }
 
 // ── Generate INSERT Script Logic ───────────────────────────────────────────

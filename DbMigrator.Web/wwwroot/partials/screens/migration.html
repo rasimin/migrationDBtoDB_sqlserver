@@ -1,0 +1,705 @@
+﻿    <div id="main-screen-migration" class="main-screen">
+        <div class="dashboard-grid">
+
+        <!-- ============================================================ -->
+        <!-- LEFT PANEL: Unified Job List + Form                          -->
+        <!-- ============================================================ -->
+        <div class="panel-card" id="left-panel-card">
+            <div class="panel-title">
+                <i class="fa-solid fa-gears"></i>
+                <span>Migration Jobs</span>
+            </div>
+
+            <!-- Job List (Loaded Dynamically) -->
+            <div id="job-list-container">
+                <p style="color: var(--text-muted); font-size: 0.9rem;">Memuat daftar job...</p>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                <button class="btn btn-secondary" onclick="openNewJobForm()" style="flex: 1; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                    <i class="fa-solid fa-plus"></i> Buat Job Baru
+                </button>
+                <button class="btn btn-secondary" onclick="triggerImport()" style="flex: 1; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                    <i class="fa-solid fa-file-import"></i> Impor JSON
+                </button>
+            </div>
+            
+            <!-- Global Config Backup Settings [NEW] -->
+            <div style="margin-top: 0.75rem; border-top: 1px solid var(--border-flat); padding-top: 0.75rem;">
+                <button class="btn btn-secondary" onclick="openAppimsBackupModal()" style="width: 100%; padding: 0.55rem 1rem; font-size: 0.85rem; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06); display: flex; align-items: center; justify-content: center; gap: 0.4rem; font-weight: 600;">
+                    <i class="fa-solid fa-database"></i> Backup / Restore AppIMS
+                </button>
+            </div>
+            <input type="file" id="import-file-input" style="display: none;" accept=".json" onchange="importJsonFile(event)">
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 2rem;">
+            <!-- Sidebar toggle controls -->
+            <div style="display: flex; justify-content: flex-end; margin-bottom: -1rem;">
+                <button class="btn btn-secondary" onclick="toggleSidebar()" title="Sembunyikan/Tampilkan Panel Kiri" style="width: auto; height: 36px; padding: 0 0.75rem; font-size: 0.8rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06); display: flex; align-items: center; gap: 0.35rem; border-radius: 6px; cursor: pointer;">
+                    <i class="fa-solid fa-indent" id="sidebar-toggle-icon"></i>
+                    <span id="sidebar-toggle-text">Hide Sidebar</span>
+                </button>
+            </div>
+
+            <!-- Real-Time Progress Panel (visible only when migration running) -->
+            <div class="panel-card progress-panel" id="active-runner-panel" style="display: none;">
+                <div class="runner-header">
+                    <div class="panel-title" style="border: none; margin: 0; padding: 0;">
+                        <i class="fa-solid fa-circle-play" style="color: var(--accent-teal);"></i>
+                        <span>Proses Migrasi Data Berjalan</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <button class="btn btn-danger" id="btn-cancel-migration" onclick="cancelMigration()"
+                            style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem; display: none; background: var(--color-error); border: none; border-radius: 6px; cursor: pointer; color: white;">
+                            <i class="fa-solid fa-ban"></i> Batalkan Migrasi
+                        </button>
+                        <div class="status-indicator">
+                            <span style="color: var(--accent-teal);" id="runner-status-text">RUNNING</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Unified Progress Dashboard -->
+                <div class="progress-dashboard-container" style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.25rem; width: 100%;">
+                    <!-- 1. Global Progress Card -->
+                    <div class="progress-item" id="global-progress-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); padding: 1rem; border-radius: 8px; backdrop-filter: blur(10px);">
+                        <div class="progress-meta" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-size: 0.85rem;">
+                            <span>
+                                <i class="fa-solid fa-layer-group" style="color: var(--accent-teal); margin-right: 0.5rem;"></i>
+                                <strong id="global-progress-label">Kemajuan Total (Tabel)</strong>
+                            </span>
+                            <span class="progress-text" id="global-progress-text" style="font-weight: 600; color: var(--accent-teal);">0 / 0 Tabel (0%)</span>
+                        </div>
+                        <div class="progress-bar-container" style="width: 100%; height: 8px; background: var(--bg-input); border-radius: 4px; overflow: hidden; border: 1px solid var(--border-flat);">
+                            <div class="progress-bar-fill active" id="global-progress-bar" style="width: 0%; height: 100%; transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Active Table Progress Card -->
+                    <div class="progress-item" id="active-table-progress-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); padding: 1rem; border-radius: 8px; backdrop-filter: blur(10px);">
+                        <div class="progress-meta" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-size: 0.85rem;">
+                            <span>
+                                <i class="fa-solid fa-table" style="color: var(--accent-teal); margin-right: 0.5rem;"></i>
+                                <strong id="active-table-name">Menunggu tabel berikutnya...</strong>
+                            </span>
+                            <span class="progress-text" id="active-table-text" style="font-weight: 600; color: var(--text-muted);">0 / 0 baris (0%)</span>
+                        </div>
+                        <div class="progress-bar-container" style="width: 100%; height: 8px; background: var(--bg-input); border-radius: 4px; overflow: hidden; border: 1px solid var(--border-flat);">
+                            <div class="progress-bar-fill active" id="active-table-bar" style="width: 0%; height: 100%; transition: width 0.2s ease;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden legacy container to prevent JS breaks -->
+                <div id="runner-progress-list" style="display: none;"></div>
+                <div class="console-box" id="console-logs">
+                    <div class="console-line info">[System] Menghubungkan ke signal server...</div>
+                </div>
+            </div>
+
+            <!-- ========================================================= -->
+            <!-- JOB EDITOR PANEL (visible when a job is selected)          -->
+            <!-- ========================================================= -->
+            <div class="panel-card" id="job-editor-panel" style="display: none;">
+
+                <!-- Job Header -->
+                <div class="table-mapping-header" style="margin-bottom: 0; padding-bottom: 0.75rem; border-bottom: none;">
+                    <div class="panel-title" style="border: none; margin: 0; padding: 0;">
+                        <i class="fa-solid fa-database"></i>
+                        <span id="active-job-title">Migration Job</span>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button class="btn btn-secondary" onclick="exportActiveJob()" style="width: auto; padding: 0.45rem 0.9rem; font-size: 0.82rem;" title="Ekspor konfigurasi job ke JSON">
+                            <i class="fa-solid fa-file-export"></i> Ekspor
+                        </button>
+                        <button class="btn btn-secondary" onclick="editActiveJob()" style="width: auto; padding: 0.45rem 0.9rem; font-size: 0.82rem;" title="Edit konfigurasi job ini">
+                            <i class="fa-solid fa-pen-to-square"></i> Edit Job
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ===================================================== -->
+                <!-- SIDEBAR TABS LAYOUT: Left Book-style Tabs | Right Content -->
+                <!-- ===================================================== -->
+                <div class="job-editor-layout" style="display: flex; gap: 1.5rem; margin-top: 1rem; border-top: 1px solid var(--border-flat); padding-top: 1rem;">
+                    
+                    <!-- Left Sidebar (Book Tabs) -->
+                    <div class="job-book-tabs" style="width: 56px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.5rem; border-right: 1px solid var(--border-flat); padding-right: 0.75rem;">
+                        <button id="inner-tab-data" onclick="switchInnerTab('data')" class="book-tab active" title="Data Migration" aria-label="Data Migration">
+                            <i class="fa-solid fa-database"></i>
+                            <span>Data Migration</span>
+                        </button>
+                        <button id="inner-tab-object" onclick="switchInnerTab('object')" class="book-tab" title="Object Migration" aria-label="Object Migration">
+                            <i class="fa-solid fa-cubes"></i>
+                            <span>Object Migration</span>
+                        </button>
+                        <button id="inner-tab-clean" onclick="switchInnerTab('clean')" class="book-tab" title="Clean Target Table" aria-label="Clean Target Table">
+                            <i class="fa-solid fa-broom"></i>
+                            <span>Clean Target Table</span>
+                        </button>
+                        <button id="inner-tab-schema" onclick="switchInnerTab('schema')" class="book-tab" title="Schema Comparison" aria-label="Schema Comparison">
+                            <i class="fa-solid fa-diagram-project"></i>
+                            <span>Schema Comparison</span>
+                        </button>
+                        <button id="inner-tab-tools" onclick="switchInnerTab('tools')" class="book-tab" title="Developer Tools" aria-label="Developer Tools">
+                            <i class="fa-solid fa-wrench"></i>
+                            <span>Developer Tools</span>
+                        </button>
+                    </div>
+
+                    <!-- Right Content Pane -->
+                    <div class="job-book-content" style="flex: 1; min-width: 0;">
+                        
+                        <!-- Real-Time Connection Info Card (Global for all inner tabs) -->
+                        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-flat); border-radius: 8px; padding: 0.85rem 1.25rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                                <i class="fa-solid fa-database" style="color: var(--accent-indigo);"></i>
+                                <span>Source Database:</span>
+                                <strong id="clean-source-db-text" style="color: #ffffff;">-</strong>
+                            </div>
+                            <div style="font-size: 1rem; color: var(--text-muted);"><i class="fa-solid fa-right-long"></i></div>
+                            <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">
+                                <i class="fa-solid fa-server" style="color: var(--accent-teal);"></i>
+                                <span>Target Database:</span>
+                                <strong id="clean-target-db-text" style="color: #ffffff;">-</strong>
+                            </div>
+                        </div>
+
+                        <!-- ===================================================== -->
+                        <!-- INNER CONTENT: DATA MIGRATION                          -->
+                        <!-- ===================================================== -->
+                        <div id="inner-content-data" style="margin-top: 0;">
+
+                            <!-- Data Migration Action Buttons -->
+                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap;">
+                                <button class="btn btn-primary" onclick="runMigrationJob()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-play"></i> Jalankan Migrasi Data
+                                </button>
+                                <label style="display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; color: rgba(255,255,255,0.75); cursor: pointer; user-select: none; margin-left: 0.3rem; margin-right: 0.6rem; vertical-align: middle;">
+                                    <input type="checkbox" id="chk-check-constraints" checked style="width: 15px; height: 15px; accent-color: var(--accent-teal); cursor: pointer;">
+                                    Cek Constraint
+                                </label>
+                                <button class="btn btn-secondary" onclick="openNewTableMappingForm()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-plus"></i> Tambah Tabel
+                                </button>
+                                <button class="btn btn-secondary" onclick="openDataNativeSqlModal()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-terminal"></i> Native SQL
+                                </button>
+                                <button class="btn btn-secondary" onclick="resetDataStatuses()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; color: #fb7185; border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.05);" title="Reset Status semua pemetaan ke Pending">
+                                    <i class="fa-solid fa-undo"></i> Reset Status
+                                </button>
+                                <button id="btn-clean-reset-all" class="btn btn-secondary" onclick="cleanAndResetAllData()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; color: #f43f5e; border-color: rgba(244, 63, 94, 0.4); background: rgba(244, 63, 94, 0.05);" title="Bersihkan data semua tabel target & reset status ke Pending">
+                                    <i class="fa-solid fa-broom"></i> Bersihkan Data
+                                </button>
+                            </div>
+
+                            <!-- Sub-Tabs: Konfigurasi Pemetaan | Histori Migrasi -->
+                            <div class="tab-navigation" style="display: flex; gap: 1rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 0.6rem; margin-bottom: 1.25rem;">
+                                <button class="tab-btn active" id="tab-mapping" onclick="switchTab('mapping')"
+                                    style="background: none; border: none; color: var(--accent-teal); border-bottom: 2px solid var(--accent-teal); padding: 0.45rem 0.9rem; cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-sliders"></i> Konfigurasi Pemetaan
+                                </button>
+                                <button class="tab-btn" id="tab-history" onclick="switchTab('history')"
+                                    style="background: none; border: none; color: var(--text-muted); padding: 0.45rem 0.9rem; cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-clock-rotate-left"></i> Histori Migrasi
+                                </button>
+                            </div>
+
+                            <!-- Search & Filter Bar (Data Migration) -->
+                            <div id="data-search-filter-row" style="display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; width: 100%;">
+                                <div style="position: relative; flex: 1; min-width: 200px;">
+                                    <input type="text" id="data-search" oninput="filterDataMappings()" placeholder="Cari tabel asal atau tujuan..." class="form-control" style="padding-left: 2.25rem; font-size: 0.85rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                    <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+                                </div>
+                                <div style="width: 160px; flex-shrink: 0;">
+                                    <select id="data-filter-status" onchange="filterDataMappings()" class="form-control" style="font-size: 0.85rem; height: 36px; border-radius: 8px; padding: 0 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                        <option value="ALL">Semua Status</option>
+                                        <option value="Pending">Pending</option>
+                                        <option value="InProgress">InProgress</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Failed">Failed</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; gap: 0.25rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); border-radius: 8px; padding: 2px; align-items: center; height: 36px;">
+                                    <button class="btn btn-secondary view-toggle-btn btn-view-list active" onclick="setViewMode('list')" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 6px; cursor: pointer;" title="Tampilan List">
+                                        <i class="fa-solid fa-list" style="font-size: 0.85rem;"></i>
+                                    </button>
+                                    <button class="btn btn-secondary view-toggle-btn btn-view-card" onclick="setViewMode('card')" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 6px; cursor: pointer;" title="Tampilan Card Grid">
+                                        <i class="fa-solid fa-table-cells" style="font-size: 0.85rem;"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Table Mappings List -->
+                            <div class="table-list" id="table-list-container">
+                                <!-- Loaded Dynamically -->
+                            </div>
+
+                            <!-- History Tab Content -->
+                            <div id="history-container" style="display: none;">
+                                <!-- Stats Cards -->
+                                <div class="stats-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                                    <div style="background: var(--bg-app); border: 1px solid var(--border-flat); border-radius: 6px; padding: 1rem; text-align: center;">
+                                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Total Eksekusi Job</div>
+                                        <div id="stat-total-jobs" style="font-size: 1.5rem; font-weight: 700; color: #ffffff;">0</div>
+                                    </div>
+                                    <div style="background: var(--bg-app); border: 1px solid var(--border-flat); border-radius: 6px; padding: 1rem; text-align: center;">
+                                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Kumulatif Baris Sukses</div>
+                                        <div id="stat-success-rows" style="font-size: 1.5rem; font-weight: 700; color: var(--accent-teal);">0</div>
+                                    </div>
+                                    <div style="background: var(--bg-app); border: 1px solid var(--border-flat); border-radius: 6px; padding: 1rem; text-align: center;">
+                                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Tingkat Keberhasilan</div>
+                                        <div id="stat-success-rate" style="font-size: 1.5rem; font-weight: 700; color: var(--accent-indigo);">0%</div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
+                                    <button class="btn btn-secondary" onclick="loadHistoryLogs()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.8rem;">
+                                        <i class="fa-solid fa-rotate"></i> Refresh Logs
+                                    </button>
+                                </div>
+                                <div class="mapper-table-wrapper" style="overflow-x: auto; background: #07090d; border-radius: 6px; border: 1px solid var(--border-flat);">
+                                    <table class="mapper-table" style="margin-bottom: 0;">
+                                        <thead>
+                                            <tr>
+                                                <th>Nama Tabel</th><th>Waktu Mulai</th><th>Durasi</th>
+                                                <th>Total Baris</th><th>Baris Termigrasi</th><th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="history-log-tbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ===================================================== -->
+                        <!-- INNER CONTENT: OBJECT MIGRATION                        -->
+                        <!-- ===================================================== -->
+                        <div id="inner-content-object" style="display: none; margin-top: 0;">
+
+                            <!-- Object Migration Action Buttons -->
+                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap;">
+                                <button class="btn btn-primary" onclick="runObjMigration()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-play"></i> Jalankan Migrasi Objek
+                                </button>
+                                <button class="btn btn-secondary" onclick="openObjScannerModal()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-magnifying-glass-chart"></i> Scan Objek
+                                </button>
+                                <button class="btn btn-secondary" onclick="openObjNativeSqlModal()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-terminal"></i> Native SQL
+                                </button>
+                                <button class="btn btn-secondary" onclick="resetObjStatuses()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; color: #fb7185; border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.05);" title="Reset Status semua objek ke Pending">
+                                    <i class="fa-solid fa-undo"></i> Reset Status
+                                </button>
+                            </div>
+
+                            <!-- Object Sub-Tabs: Daftar Objek | Log Eksekusi -->
+                            <div style="display: flex; gap: 1rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 0.6rem; margin-bottom: 1.25rem;">
+                                <button class="tab-btn active" id="obj-tab-items" onclick="switchObjTab('items')"
+                                    style="background: none; border: none; color: var(--accent-teal); border-bottom: 2px solid var(--accent-teal); padding: 0.45rem 0.9rem; cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-list-check"></i> Daftar Objek
+                                </button>
+                                <button class="tab-btn" id="obj-tab-logs" onclick="switchObjTab('logs')"
+                                    style="background: none; border: none; color: var(--text-muted); padding: 0.45rem 0.9rem; cursor: pointer; font-family: var(--font-heading); font-weight: 600; font-size: 0.85rem;">
+                                    <i class="fa-solid fa-clock-rotate-left"></i> Log Eksekusi
+                                </button>
+                            </div>
+
+                            <!-- Search & Filter Bar (Object Migration) -->
+                            <div id="obj-search-filter-row" style="display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; width: 100%;">
+                                <div style="position: relative; flex: 1; min-width: 200px;">
+                                    <input type="text" id="obj-search" oninput="filterObjItems()" placeholder="Cari nama objek..." class="form-control" style="padding-left: 2.25rem; font-size: 0.85rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                    <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+                                </div>
+                                <div style="width: 140px; flex-shrink: 0;">
+                                    <select id="obj-filter-type" onchange="filterObjItems()" class="form-control" style="font-size: 0.85rem; height: 36px; border-radius: 8px; padding: 0 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                        <option value="ALL">Semua Tipe</option>
+                                        <option value="TABLE">Table</option>
+                                        <option value="PROCEDURE">Procedure</option>
+                                        <option value="FUNCTION">Function</option>
+                                        <option value="VIEW">View</option>
+                                        <option value="NATIVE_SQL">Native SQL</option>
+                                    </select>
+                                </div>
+                                <div style="width: 140px; flex-shrink: 0;">
+                                    <select id="obj-filter-status" onchange="filterObjItems()" class="form-control" style="font-size: 0.85rem; height: 36px; border-radius: 8px; padding: 0 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                        <option value="ALL">Semua Status</option>
+                                        <option value="Pending">Pending</option>
+                                        <option value="InProgress">InProgress</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Failed">Failed</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; gap: 0.25rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); border-radius: 8px; padding: 2px; align-items: center; height: 36px;">
+                                    <button class="btn btn-secondary view-toggle-btn btn-view-list active" onclick="setViewMode('list')" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 6px; cursor: pointer;" title="Tampilan List">
+                                        <i class="fa-solid fa-list" style="font-size: 0.85rem;"></i>
+                                    </button>
+                                    <button class="btn btn-secondary view-toggle-btn btn-view-card" onclick="setViewMode('card')" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 6px; cursor: pointer;" title="Tampilan Card Grid">
+                                        <i class="fa-solid fa-table-cells" style="font-size: 0.85rem;"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Object Items List -->
+                            <div id="obj-items-container" class="table-list">
+                                <!-- Loaded dynamically -->
+                            </div>
+
+                            <!-- Object Logs -->
+                            <div id="obj-logs-container" style="display: none;">
+                                <div class="mapper-table-wrapper" style="overflow-x: auto; background: #07090d; border-radius: 6px; border: 1px solid var(--border-flat);">
+                                    <table class="mapper-table" style="margin-bottom: 0;">
+                                        <thead>
+                                            <tr>
+                                                <th>Objek</th><th>Aksi</th><th>Status</th><th>Waktu</th><th>Error</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="obj-logs-tbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ===================================================== -->
+                        <!-- INNER CONTENT: CLEAN TARGET TABLE                      -->
+                        <!-- ===================================================== -->
+                        <div id="inner-content-clean" style="display: none; margin-top: 0;">
+
+                            <!-- Action Buttons Bar -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <button class="btn btn-danger" onclick="runAllClean()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem; background: var(--color-error); border: none;">
+                                        <i class="fa-solid fa-broom"></i> Bersihkan Semua Tabel
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="openCleanTableModal()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);">
+                                        <i class="fa-solid fa-plus"></i> Tambah Tabel
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="openCleanTableScannerModal()" style="width: auto; padding: 0.5rem 1.1rem; font-size: 0.85rem; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06);">
+                                        <i class="fa-solid fa-magnifying-glass-chart"></i> Scan Tabel
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="generateCleanSpScript()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; border-color: var(--accent-teal); color: var(--accent-teal); background: rgba(0,173,181,0.05);">
+                                        <i class="fa-solid fa-file-code"></i> Generate Clean SP
+                                    </button>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <button class="btn btn-secondary" onclick="resetCleanStatuses()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; color: #fb7185; border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.05);" title="Reset Status semua tabel ke Pending">
+                                        <i class="fa-solid fa-undo"></i> Reset Status
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="if (activeJob) loadCleanTables(activeJob.Id || activeJob.id)" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;" title="Refresh daftar status">
+                                        <i class="fa-solid fa-arrows-rotate"></i> Refresh Status
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Search & Filter Bar (Clean Target Tables) -->
+                            <div id="clean-search-filter-row" style="display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; width: 100%;">
+                                <div style="position: relative; flex: 1; min-width: 200px;">
+                                    <input type="text" id="clean-search" oninput="filterCleanTables()" placeholder="Cari nama tabel..." class="form-control" style="padding-left: 2.25rem; font-size: 0.85rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                    <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+                                </div>
+                                <div style="width: 160px; flex-shrink: 0;">
+                                    <select id="clean-filter-status" onchange="filterCleanTables()" class="form-control" style="font-size: 0.85rem; height: 36px; border-radius: 8px; padding: 0 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                        <option value="ALL">Semua Status</option>
+                                        <option value="Pending">Pending</option>
+                                        <option value="InProgress">InProgress</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Failed">Failed</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; gap: 0.25rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); border-radius: 8px; padding: 2px; align-items: center; height: 36px;">
+                                    <button class="btn btn-secondary view-toggle-btn btn-view-list active" onclick="setViewMode('list')" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 6px; cursor: pointer;" title="Tampilan List">
+                                        <i class="fa-solid fa-list" style="font-size: 0.85rem;"></i>
+                                    </button>
+                                    <button class="btn btn-secondary view-toggle-btn btn-view-card" onclick="setViewMode('card')" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 6px; cursor: pointer;" title="Tampilan Card Grid">
+                                        <i class="fa-solid fa-table-cells" style="font-size: 0.85rem;"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- List of Clean Target Tables -->
+                            <div id="clean-tables-container" class="table-list">
+                                <!-- Loaded dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- ===================================================== -->
+                        <!-- INNER CONTENT: SCHEMA COMPARISON                       -->
+                        <!-- ===================================================== -->
+                        <div id="inner-content-schema" style="display: none; margin-top: 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-flat); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fa-solid fa-diagram-project" style="color: var(--accent-teal);"></i>
+                                    <h3 style="margin: 0; font-size: 1.15rem; color: #ffffff;">Database Schema Comparison</h3>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <button class="btn btn-secondary" id="btn-schema-clear" onclick="clearSchemaComparison()" style="width: auto; padding: 0.5rem 1rem; border-color: var(--color-error); color: var(--color-error); background: rgba(248,81,73,0.06); display: none;">
+                                        <i class="fa-solid fa-trash"></i> Bersihkan
+                                    </button>
+                                    <button class="btn btn-primary" id="btn-schema-scan" onclick="runSchemaComparison()" style="width: auto; padding: 0.5rem 1.25rem;">
+                                        <i class="fa-solid fa-arrows-rotate"></i> Jalankan Pemindaian Skema
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Stats grid -->
+                            <div class="schema-summary-grid">
+                                <div class="schema-summary-card">
+                                    <div class="schema-card-title">Tabel (Tables)</div>
+                                    <div class="schema-card-stats">
+                                        <span class="schema-card-value" style="color: #ffffff;">0 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 0</span>
+                                        <span class="schema-card-status match"><i class="fa-solid fa-circle-check"></i> Belum Dipindai</span>
+                                    </div>
+                                </div>
+                                <div class="schema-summary-card">
+                                    <div class="schema-card-title">Views</div>
+                                    <div class="schema-card-stats">
+                                        <span class="schema-card-value" style="color: #ffffff;">0 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 0</span>
+                                        <span class="schema-card-status match"><i class="fa-solid fa-circle-check"></i> Belum Dipindai</span>
+                                    </div>
+                                </div>
+                                <div class="schema-summary-card">
+                                    <div class="schema-card-title">Stored Procedures</div>
+                                    <div class="schema-card-stats">
+                                        <span class="schema-card-value" style="color: #ffffff;">0 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 0</span>
+                                        <span class="schema-card-status match"><i class="fa-solid fa-circle-check"></i> Belum Dipindai</span>
+                                    </div>
+                                </div>
+                                <div class="schema-summary-card">
+                                    <div class="schema-card-title">Functions</div>
+                                    <div class="schema-card-stats">
+                                        <span class="schema-card-value" style="color: #ffffff;">0 <span style="font-size: 0.9rem; color: var(--text-muted);">vs</span> 0</span>
+                                        <span class="schema-card-status match"><i class="fa-solid fa-circle-check"></i> Belum Dipindai</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Filter options -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; gap: 1rem; font-size: 0.82rem; flex-wrap: wrap;">
+                                <div style="display: flex; gap: 0.75rem; align-items: center; flex: 1; min-width: 300px;">
+                                    <!-- Search Input -->
+                                    <div style="position: relative; flex: 1; max-width: 250px;">
+                                        <input type="text" id="schema-search" oninput="applySchemaFilters()" placeholder="Cari nama objek..." class="form-control" style="padding-left: 2.25rem; font-size: 0.82rem; height: 34px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); color: #fff; width: 100%;">
+                                        <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.8rem;"></i>
+                                    </div>
+                                    <!-- Type Filter -->
+                                    <select id="schema-filter-type" onchange="applySchemaFilters()" class="form-control" style="font-size: 0.82rem; height: 34px; border-radius: 6px; background: #0d0f14; border: 1px solid var(--border-flat); padding: 0 0.5rem; color: #fff; width: 140px;">
+                                        <option value="ALL">Semua Tipe</option>
+                                        <option value="Table">Table</option>
+                                        <option value="View">View</option>
+                                        <option value="Stored Procedure">Stored Procedure</option>
+                                        <option value="Function">Function</option>
+                                    </select>
+                                    <!-- Status Filter -->
+                                    <select id="schema-filter-status" onchange="applySchemaFilters()" class="form-control" style="font-size: 0.82rem; height: 34px; border-radius: 6px; background: #0d0f14; border: 1px solid var(--border-flat); padding: 0 0.5rem; color: #fff; width: 140px;">
+                                        <option value="ALL">Semua Status</option>
+                                        <option value="Match">Match</option>
+                                        <option value="Mismatch">Mismatch</option>
+                                        <option value="Outdated">Outdated</option>
+                                        <option value="Missing">Missing</option>
+                                    </select>
+                                </div>
+                                <label style="display: inline-flex; align-items: center; gap: 0.45rem; cursor: pointer; color: rgba(255, 255, 255, 0.75);">
+                                    <input type="checkbox" id="schema-filter-match" checked onchange="toggleSchemaMatchVisibility()" style="width: 15px; height: 15px; accent-color: var(--accent-teal); cursor: pointer;">
+                                    Tampilkan Objek Identik (Match)
+                                </label>
+                            </div>
+
+                            <div class="mapper-table-wrapper" style="overflow-x: auto; background: #07090d; border-radius: 8px; border: 1px solid var(--border-flat); margin-top: 0.75rem;">
+                                <table class="mapper-table" style="margin-bottom: 0;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 50px;">No</th>
+                                            <th>Nama Objek</th>
+                                            <th>Tipe Objek</th>
+                                            <th>Status Skema</th>
+                                            <th>Keterangan Perbedaan</th>
+                                            <th>Aksi Rekomendasi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="schema-comparison-tbody">
+                                        <tr>
+                                            <td colspan="6" style="color: var(--text-muted); text-align: center; padding: 2rem;">
+                                                <i class="fa-solid fa-radar fa-beat" style="font-size: 2rem; margin-bottom: 0.5rem; display: block; color: var(--accent-teal);"></i>
+                                                Klik tombol <strong>Jalankan Pemindaian Skema</strong> di atas untuk membandingkan skema Source DB vs Target DB.
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- ===================================================== -->
+                        <!-- INNER CONTENT: DEVELOPER TOOLS                        -->
+                        <!-- ===================================================== -->
+                        <div id="inner-content-tools" style="display: none; margin-top: 0;">
+                            <!-- Panel Header -->
+                            <div style="margin-bottom: 1.5rem;">
+                                <h3 style="margin: 0 0 0.5rem 0; font-size: 1.15rem; color: #ffffff; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fa-solid fa-screwdriver-wrench"></i> Developer Tools
+                                </h3>
+                                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Gunakan alat pembantu untuk mempermudah pekerjaan database Anda.</p>
+                            </div>
+                            <!-- Tools Grid: SP Generator & Database Backup/Restore [NEW] -->
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 1.5rem; align-items: start;">
+                                
+                                <!-- Stored Procedure Generator Card -->
+                                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); border-radius: 10px; padding: 1.5rem;">
+                                    <h4 style="margin: 0 0 1rem 0; font-size: 0.95rem; color: #ffffff; display: flex; align-items: center; gap: 0.4rem; border-bottom: 1px solid var(--border-flat); padding-bottom: 0.5rem;">
+                                        <i class="fa-solid fa-file-code" style="color: var(--accent-teal);"></i> Stored Procedure Generator
+                                    </h4>
+                                    <div style="display: flex; flex-direction: column; gap: 1.2rem;">
+                                        <!-- DB Source/Target Selection -->
+                                        <div>
+                                            <label style="display: block; font-size: 0.82rem; font-weight: 600; color: #ffffff; margin-bottom: 0.4rem;">Pilih Referensi Database</label>
+                                            <div style="display: flex; gap: 1.5rem; align-items: center;">
+                                                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--text-light); cursor: pointer;">
+                                                    <input type="radio" name="tool-db-ref" value="source" checked onchange="populateToolsTableDatalist(true)" style="accent-color: var(--accent-purple); cursor: pointer;">
+                                                    <span>Source DB</span>
+                                                </label>
+                                                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--text-light); cursor: pointer;">
+                                                    <input type="radio" name="tool-db-ref" value="target" onchange="populateToolsTableDatalist(true)" style="accent-color: var(--accent-purple); cursor: pointer;">
+                                                    <span>Target DB</span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <!-- Table Selector with Autocomplete -->
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label for="tool-table-name" style="display: block; font-size: 0.82rem; font-weight: 600; color: #ffffff; margin-bottom: 0.4rem;">Nama Tabel</label>
+                                            <div class="table-search-field">
+                                                <input id="tool-table-name" class="form-control table-search-input" autocomplete="off" placeholder="Ketik atau pilih nama tabel..." style="font-size: 0.82rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%;">
+                                                <button type="button" class="table-search-toggle" data-table-input="tool-table-name" title="Tampilkan tabel">
+                                                    <i class="fa-solid fa-chevron-down"></i>
+                                                </button>
+                                                <div id="tool-table-options" class="table-autocomplete" style="max-height: 200px; overflow-y: auto;"></div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Key Column / PK -->
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label for="tool-key-column" style="display: block; font-size: 0.82rem; font-weight: 600; color: #ffffff; margin-bottom: 0.4rem;">Kolom Kunci (Primary Key)</label>
+                                            <input type="text" id="tool-key-column" value="Id" placeholder="Misal: Id, idcustomer, NIK..." class="form-control" style="font-size: 0.82rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%;">
+                                        </div>
+
+                                        <!-- Options Checkboxes -->
+                                        <div style="display: flex; flex-direction: column; gap: 0.75rem; padding: 0.25rem 0;">
+                                            <label style="display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.8rem; color: var(--text-light); cursor: pointer; line-height: 1.4;">
+                                                <input type="checkbox" id="tool-exclude-identity" checked style="accent-color: var(--accent-purple); margin-top: 3px; cursor: pointer;">
+                                                <span>Eksklusi Kolom Kunci pada script <strong>INSERT</strong> (Identity Auto-Increment)</span>
+                                            </label>
+                                        </div>
+
+                                        <!-- Action Buttons -->
+                                        <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem;">
+                                            <button class="btn btn-secondary" onclick="generateToolSpScript('insert')" style="flex: 1; padding: 0.6rem 1rem; font-size: 0.82rem; border-color: var(--accent-teal); color: var(--accent-teal); background: rgba(0,173,181,0.05); font-weight: 600; height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; cursor: pointer;">
+                                                <i class="fa-solid fa-file-circle-plus"></i> Generate SP INSERT
+                                            </button>
+                                            <button class="btn btn-secondary" onclick="generateToolSpScript('update')" style="flex: 1; padding: 0.6rem 1rem; font-size: 0.82rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06); font-weight: 600; height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; cursor: pointer;">
+                                                <i class="fa-solid fa-file-signature"></i> Generate SP UPDATE
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Database Backup & Restore Card -->
+                                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); border-radius: 10px; padding: 1.5rem;">
+                                    <h4 style="margin: 0 0 1rem 0; font-size: 0.95rem; color: #ffffff; display: flex; align-items: center; gap: 0.4rem; border-bottom: 1px solid var(--border-flat); padding-bottom: 0.5rem;">
+                                        <i class="fa-solid fa-database" style="color: var(--accent-indigo);"></i> Database Backup & Restore
+                                    </h4>
+                                    
+                                    <!-- Info Section -->
+                                    <div style="display: flex; flex-direction: column; gap: 0.65rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border-flat); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 1.25rem;">
+                                        <div style="font-size: 0.82rem; color: var(--text-light); display: flex; justify-content: space-between;">
+                                            <span style="color: var(--text-muted);">Database Target:</span>
+                                            <strong id="tool-backup-target-db-text" style="color: #ffffff;">TargetDB</strong>
+                                        </div>
+                                        <div style="font-size: 0.82rem; color: var(--text-light); display: flex; flex-direction: column; gap: 0.2rem;">
+                                            <span style="color: var(--text-muted);">Direktori Backup Server:</span>
+                                            <strong id="tool-backup-path-text" style="color: #ffffff; font-family: Consolas, monospace; word-break: break-all; font-size: 0.78rem;">Belum Diatur</strong>
+                                        </div>
+                                    </div>
+
+                                    <!-- Section 1: Backup Database -->
+                                    <div style="margin-bottom: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 1.25rem;">
+                                        <h5 style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: #ffffff; display: flex; align-items: center; gap: 0.35rem;">
+                                            <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-teal);"></span> Backup Database Target
+                                        </h5>
+                                        <p style="margin: 0 0 0.85rem 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;">
+                                            Backup database target sekarang secara aman. File backup ber-ekstensi <code>.bak</code> dikompresi otomatis untuk menghemat ruang penyimpanan.
+                                        </p>
+                                        <button class="btn btn-secondary" onclick="runDatabaseBackup()" id="btn-run-db-backup" style="width: 100%; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06); font-weight: 600; padding: 0.6rem 1rem; font-size: 0.82rem; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; cursor: pointer;">
+                                            <i class="fa-solid fa-download"></i> Backup Target Database
+                                        </button>
+                                    </div>
+
+                                    <!-- Section 2: Restore Database -->
+                                    <div>
+                                        <h5 style="margin: 0 0 0.75rem 0; font-size: 0.85rem; color: #ffffff; display: flex; align-items: center; gap: 0.35rem;">
+                                            <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-purple);"></span> Restore Database
+                                        </h5>
+                                        <div style="display: flex; flex-direction: column; gap: 0.85rem;">
+                                            <!-- File Selector -->
+                                            <div class="form-group" style="margin-bottom: 0;">
+                                                <label for="tool-restore-file-select" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: 600; color: #ffffff; margin-bottom: 0.4rem;">
+                                                    <span>Pilih File Backup (.bak)</span>
+                                                    <a href="#" onclick="scanBackupFiles(); return false;" style="color: var(--accent-purple); font-size: 0.75rem; text-decoration: none; display: inline-flex; align-items: center; gap: 0.2rem;" title="Pindai Ulang Folder Backup">
+                                                        <i class="fa-solid fa-arrows-rotate"></i> Pindai Folder
+                                                    </a>
+                                                </label>
+                                                <select id="tool-restore-file-select" class="form-control" style="font-size: 0.82rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); padding: 0 0.5rem;">
+                                                    <option value="">-- Pindai file backup terlebih dahulu --</option>
+                                                </select>
+                                            </div>
+
+                                            <!-- Restore Mode -->
+                                            <div class="form-group" style="margin-bottom: 0;">
+                                                <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #ffffff; margin-bottom: 0.4rem;">Tujuan Restore</label>
+                                                <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                                                    <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--text-light); cursor: pointer;">
+                                                        <input type="radio" name="tool-restore-mode" value="existing" checked onchange="toggleRestoreMode()" style="accent-color: var(--accent-purple); cursor: pointer;">
+                                                        <span>Restore ke Database Existing (<span id="tool-restore-target-name-preview" style="font-weight: 600;">TargetDB</span>)</span>
+                                                    </label>
+                                                    <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--text-light); cursor: pointer;">
+                                                        <input type="radio" name="tool-restore-mode" value="new" onchange="toggleRestoreMode()" style="accent-color: var(--accent-purple); cursor: pointer;">
+                                                        <span>Restore ke Nama Database Baru</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <!-- New DB Name Input -->
+                                            <div class="form-group" id="tool-restore-new-db-group" style="margin-bottom: 0; display: none;">
+                                                <label for="tool-restore-new-db-name" style="display: block; font-size: 0.8rem; font-weight: 600; color: #ffffff; margin-bottom: 0.4rem;">Nama Database Baru</label>
+                                                <input type="text" id="tool-restore-new-db-name" placeholder="Contoh: TargetDB_Backup_2026" class="form-control" style="font-size: 0.82rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                                            </div>
+
+                                            <!-- Restore Button -->
+                                            <button class="btn btn-danger" onclick="runDatabaseRestore()" id="btn-run-db-restore" style="width: 100%; font-weight: 600; padding: 0.6rem 1rem; font-size: 0.82rem; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; cursor: pointer; border: none; background: var(--color-error); margin-top: 0.25rem;">
+                                                <i class="fa-solid fa-rotate-left"></i> Jalankan Restore Database
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- end job-editor-panel -->
+
+            <!-- Welcome Panel (saat tidak ada job yang dipilih) -->
+            <div class="panel-card" id="welcome-panel" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4rem 2rem; text-align: center;">
+                <i class="fa-solid fa-network-wired" style="font-size: 4rem; color: var(--text-dark); margin-bottom: 1.5rem;"></i>
+                <h3 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">Selamat Datang di DbMigrator</h3>
+                <p style="color: var(--text-muted); max-width: 480px; font-size: 0.95rem; line-height: 1.6;">
+                    Pilih <strong>Migration Job</strong> di panel kiri untuk mulai mengelola migrasi.<br>
+                    Setiap job memiliki tab <strong>Data Migration</strong> dan <strong>Object Migration</strong> yang menggunakan connection yang sama.
+                </p>
+                <button class="btn btn-secondary" onclick="openNewJobForm()" style="margin-top: 1.5rem; width: auto; padding: 0.6rem 1.5rem; font-size: 0.9rem;">
+                    <i class="fa-solid fa-plus"></i> Buat Job Pertama
+                </button>
+            </div>
+
+        </div><!-- end right panel -->
+
+    </div><!-- end dashboard-grid -->
+    </div><!-- end main-screen-migration -->

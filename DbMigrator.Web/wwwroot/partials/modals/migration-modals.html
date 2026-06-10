@@ -1,0 +1,767 @@
+﻿<!-- ============================================================================
+     MODAL: DATA MIGRATION NATIVE SQL
+     ============================================================================ -->
+<div class="modal-overlay" id="data-native-sql-modal">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <div>
+                <h3>Data Native SQL</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Tambahkan script SQL sebagai langkah dalam urutan migrasi data. Gunakan <code>{{SOURCE_DB}}</code> dan <code>{{TARGET_DB}}</code> untuk query antar database di server yang sama.</p>
+            </div>
+            <button class="close-btn" onclick="closeDataNativeSqlModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <input type="hidden" id="data-native-sql-id" value="0">
+            <div class="form-group">
+                <label for="data-native-sql-name">Nama Langkah</label>
+                <input type="text" id="data-native-sql-name" class="form-control" placeholder="Contoh: Update status pelanggan">
+            </div>
+            <div class="form-group">
+                <label for="data-native-sql-mode">Template</label>
+                <select id="data-native-sql-mode" class="form-control" onchange="updateDataNativeSqlTemplate()">
+                    <option value="target">Target DB only</option>
+                    <option value="source-target">Source DB ke Target DB</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="data-native-sql-script">Script SQL</label>
+                <textarea id="data-native-sql-script" class="form-control" placeholder="Contoh: UPDATE dbo.Customers SET IsActive = 1;" style="font-family: Consolas, monospace; min-height: 220px; font-size: 0.85rem;"></textarea>
+                <small id="data-native-sql-hint" style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.4rem;"></small>
+                <div class="sql-example-box collapsed" id="data-native-sql-example-box">
+                    <button type="button" class="sql-example-title" onclick="toggleSqlExample('data-native-sql-example-box')">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <span>Contoh penggunaan</span>
+                        <i class="fa-solid fa-chevron-down sql-example-chevron"></i>
+                    </button>
+                    <pre id="data-native-sql-example"></pre>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeDataNativeSqlModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" id="data-native-sql-submit-btn" onclick="addDataNativeSqlItem()" style="width: auto;"><i class="fa-solid fa-plus"></i> Tambah ke Data Migration</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- ============================================================================
+     MODAL: TABLE MAPPING FORM
+     ============================================================================ -->
+<div class="modal-overlay" id="table-mapping-modal">
+    <div class="modal-content" style="max-width: 550px;">
+        <div class="modal-header">
+            <h3 id="table-modal-title">Pemetaan Tabel Baru</h3>
+            <button class="close-btn" onclick="closeTableMappingModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="table-mapping-id" value="0">
+            <div class="form-group">
+                <label for="source-table-select">Nama Tabel Asal (Source Table)</label>
+                <div class="table-search-field">
+                    <input id="source-table-select" class="form-control table-search-input" autocomplete="off" placeholder="Ketik nama tabel asal...">
+                    <button type="button" class="table-search-toggle" data-table-input="source-table-select" title="Tampilkan tabel">
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div id="source-table-options" class="table-autocomplete"></div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="target-table-select">Nama Tabel Tujuan (Target Table)</label>
+                <div class="table-search-field">
+                    <input id="target-table-select" class="form-control table-search-input" autocomplete="off" placeholder="Ketik nama tabel tujuan...">
+                    <button type="button" class="table-search-toggle" data-table-input="target-table-select" title="Tampilkan tabel">
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div id="target-table-options" class="table-autocomplete"></div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="execution-order">Urutan Eksekusi (Execution Order)</label>
+                <input type="number" id="execution-order" class="form-control" value="1" min="1">
+                <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.25rem;">
+                    Angka lebih kecil akan dieksekusi lebih dulu (misal: Tabel Induk = 1, Tabel Anak = 2).
+                </small>
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
+                <input type="checkbox" id="truncate-target" style="width: 18px; height: 18px; cursor: pointer;">
+                <label for="truncate-target" style="margin: 0; cursor: pointer;">Kosongkan tabel tujuan sebelum migrasi (Truncate/Delete)</label>
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
+                <input type="checkbox" id="table-mapping-enabled" checked style="width: 18px; height: 18px; cursor: pointer;">
+                <label for="table-mapping-enabled" style="margin: 0; cursor: pointer;">Aktifkan Pemetaan ini (Jalankan saat migrasi)</label>
+            </div>
+            <div class="form-group" style="margin-top: 1rem;">
+                <label for="table-post-migration-script">Post-Migration SQL Script (Table-Level)</label>
+                <textarea id="table-post-migration-script" class="form-control" placeholder="Contoh: ALTER INDEX ALL ON TargetCustomers REBUILD;" style="font-family: Consolas, monospace; min-height: 80px;"></textarea>
+            </div>
+            <div class="form-group" style="margin-top: 1rem;">
+                <label for="table-where-clause">Filter Kueri Asal (WHERE Clause - Opsional)</label>
+                <textarea id="table-where-clause" class="form-control" placeholder="Contoh: IDCustomer IN (SELECT idcustomer FROM TCustomer)" style="font-family: Consolas, monospace; min-height: 60px;"></textarea>
+                <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.25rem;">
+                    Gunakan syntax SQL Server. Anda bisa langsung menulis kondisinya saja (WHERE akan ditambahkan otomatis jika tidak ada).
+                </small>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeTableMappingModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="saveTableMapping()" style="width: auto;">Simpan</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: COLUMN MAPPING DESIGNER
+     ============================================================================ -->
+<div class="modal-overlay" id="column-mapping-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div>
+                <h3 id="column-modal-title">Desainer Kolom Dinamis</h3>
+                <p id="column-modal-subtitle" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;"></p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <button class="btn-icon" id="btn-maximize-modal" onclick="toggleMaximizeColumnModal()" title="Perbesar Layar" style="margin: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass);">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+                <button class="close-btn" onclick="closeColumnMappingModal()" style="margin: 0;">&times;</button>
+            </div>
+        </div>
+        <div class="modal-body" style="padding: 1rem 2rem;">
+            <div style="background: rgba(255,255,255,0.02); padding: 1rem; border-radius: 12px; margin-bottom: 1.5rem; border: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.9rem; color: var(--text-muted);"><i class="fa-solid fa-circle-info"></i> Petakan kolom database target di bawah. Gunakan opsi untuk membuat mapping dinamis.</span>
+                <button class="btn btn-secondary" onclick="autoMapColumns()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.8rem;">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Auto Map (Nama Sama)
+                </button>
+            </div>
+            <div class="mapper-table-wrapper" style="max-height: 480px; overflow-y: auto; overflow-x: auto;">
+                <table class="mapper-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 250px;">Kolom Database Tujuan</th>
+                            <th style="width: 150px;">Tipe Pemetaan</th>
+                            <th>Detail Konfigurasi Mapping</th>
+                            <th style="width: 200px;">Jika Null</th>
+                            <th style="width: 80px; text-align: center;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="column-mapper-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeColumnMappingModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="saveColumnMappings()" style="width: auto;">
+                <i class="fa-solid fa-floppy-disk"></i> Simpan Semua Kolom
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: GENERATED SP VIEWER
+     ============================================================================ -->
+<div class="modal-overlay" id="sp-generator-modal">
+    <div class="modal-content" style="max-width: 850px; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3 id="sp-modal-title">Generated Stored Procedure</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">SQL Script untuk eksekusi migrasi manual di SQL Server Management Studio.</p>
+            </div>
+            <button class="close-btn" onclick="closeSpGeneratorModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <span style="font-size: 0.85rem; color: var(--accent-teal);"><i class="fa-solid fa-code"></i> Salin script SQL Server di bawah dan jalankan di SSMS.</span>
+                <button class="btn btn-secondary" onclick="copySpScript()" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                    <i class="fa-solid fa-copy"></i> Copy to Clipboard
+                </button>
+            </div>
+            <textarea id="sp-sql-textarea" class="form-control" readonly style="font-family: 'Consolas', 'Courier New', monospace; font-size: 0.85rem; height: 380px; background: #07090d; border: 1px solid var(--border-flat); color: #22c55e; resize: none; padding: 1.25rem; white-space: pre; overflow-x: auto;"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="closeSpGeneratorModal()" style="width: auto;">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: OBJECT SCANNER (Scan & Select Objects from Source DB)
+     ============================================================================ -->
+<div class="modal-overlay" id="obj-scanner-modal">
+    <div class="modal-content" style="max-width: 700px; transition: all 0.3s ease;">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3>Scan Objek Database</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Pilih objek dari Source DB untuk ditambahkan ke daftar migrasi.</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <button class="btn-toggle-fullscreen" onclick="toggleScannerFullscreen()" style="background: none; border: none; color: var(--text-muted); font-size: 1.1rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0.25rem; transition: color 0.2s;" title="Toggle Fullscreen">
+                    <i class="fa-solid fa-expand" id="scanner-fullscreen-icon"></i>
+                </button>
+                <button class="close-btn" onclick="closeObjScannerModal()" style="margin: 0;">&times;</button>
+            </div>
+        </div>
+        <div class="modal-body" style="padding: 1rem 2rem;">
+            <!-- Filters row -->
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; align-items: center;">
+                <button class="btn btn-secondary obj-filter-btn active" onclick="filterScanResults('ALL')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">Semua</button>
+                <button class="btn btn-secondary obj-filter-btn" onclick="filterScanResults('TABLE')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">Table</button>
+                <button class="btn btn-secondary obj-filter-btn" onclick="filterScanResults('PROCEDURE')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">SP</button>
+                <button class="btn btn-secondary obj-filter-btn" onclick="filterScanResults('FUNCTION')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">Function</button>
+                <button class="btn btn-secondary obj-filter-btn" onclick="filterScanResults('VIEW')" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.8rem;">View</button>
+                <div style="flex: 1;"></div>
+                <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--text-muted); cursor: pointer;">
+                    <input type="checkbox" id="obj-scan-select-all" onchange="toggleAllScanItems(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
+                    Pilih Semua
+                </label>
+            </div>
+            <!-- Search bar -->
+            <div class="search-container" style="position: relative; margin-bottom: 1rem; width: 100%;">
+                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+                <input type="text" id="obj-scan-search" oninput="applyScanFiltering()" placeholder="Cari nama objek (misal: Account)..." class="form-control" style="padding-left: 2.25rem; font-size: 0.85rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%;">
+            </div>
+            <div id="obj-scan-results" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.35rem;">
+                <p style="color: var(--text-muted); text-align: center; padding: 2rem;">Klik "Scan" untuk memindai objek dari Source DB...</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="startObjScan()" style="width: auto;"><i class="fa-solid fa-radar"></i> Scan Ulang</button>
+            <button class="btn btn-primary" onclick="addSelectedScanItems()" style="width: auto;"><i class="fa-solid fa-plus"></i> Tambah yang Dipilih</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: NATIVE SQL EDITOR
+     ============================================================================ -->
+<div class="modal-overlay" id="obj-native-sql-modal">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <div>
+                <h3 id="native-sql-modal-title">Native SQL Script</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Tulis script SQL native. Gunakan placeholder <code>{{SOURCE_DB}}</code> dan <code>{{TARGET_DB}}</code> untuk query antar database di server yang sama.</p>
+            </div>
+            <button class="close-btn" onclick="closeObjNativeSqlModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <input type="hidden" id="native-sql-id" value="0">
+            <div class="form-group">
+                <label for="native-sql-name">Nama Identifikasi</label>
+                <input type="text" id="native-sql-name" class="form-control" placeholder="Contoh: Add Index on CustomerNIK">
+            </div>
+            <div class="form-group">
+                <label for="native-sql-mode">Mode Eksekusi</label>
+                <select id="native-sql-mode" class="form-control" onchange="updateNativeSqlTemplate()">
+                    <option value="target">Target DB only</option>
+                    <option value="source-target">Source DB ke Target DB</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="native-sql-script">Script SQL</label>
+                <textarea id="native-sql-script" class="form-control" placeholder="Contoh: UPDATE dbo.Customers SET IsActive = 1;" style="font-family: Consolas, monospace; min-height: 220px; font-size: 0.85rem;"></textarea>
+                <small id="native-sql-hint" style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.4rem;"></small>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeObjNativeSqlModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" id="native-sql-submit-btn" onclick="addNativeSqlItem()" style="width: auto;"><i class="fa-solid fa-plus"></i> Tambah ke Daftar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: TABLE OBJECT EDIT OPTIONS
+     ============================================================================ -->
+<div class="modal-overlay" id="obj-table-edit-modal">
+    <div class="modal-content" style="max-width: 550px; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3>Pengaturan Objek Tabel</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Konfigurasi aturan sinkronisasi skema untuk tabel target.</p>
+            </div>
+            <button class="close-btn" onclick="closeObjTableEditModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <input type="hidden" id="edit-table-obj-id" value="0">
+            <div class="form-group">
+                <label>Nama Tabel</label>
+                <input type="text" id="edit-table-obj-name" class="form-control" readonly style="background: rgba(255,255,255,0.05); color: var(--text-muted);">
+            </div>
+            
+            <div class="form-group" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); padding: 1rem 1.25rem; border-radius: 8px;">
+                <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                    <input type="checkbox" id="edit-table-allow-drop" style="width: auto; margin-top: 0.25rem; cursor: pointer;">
+                    <div>
+                        <label for="edit-table-allow-drop" style="font-weight: 600; color: #ffffff; cursor: pointer; display: inline-block; margin-bottom: 0.25rem;">Izinkan Hapus Kolom (Drop Columns)</label>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.45;">Jika diaktifkan, kolom pada tabel Target yang <strong>tidak ada</strong> di tabel Source akan dihapus selama migrasi skema tabel dijalankan.</p>
+                    </div>
+                </div>
+                <div class="alert-warning" id="drop-warning" style="display: none; margin-top: 0.75rem; padding: 0.75rem 1rem; border-radius: 6px; font-size: 0.75rem; line-height: 1.45; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); color: #fbbf24;">
+                    <i class="fa-solid fa-triangle-exclamation" style="margin-right: 0.35rem;"></i>
+                    <strong>PERINGATAN:</strong> Mengaktifkan opsi ini berisiko menghapus data kolom pada database Target jika kolom tersebut tidak ada di database Source. Harap gunakan dengan hati-hati.
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeObjTableEditModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="saveObjTableEdit()" style="width: auto;"><i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: TAMBAH TABEL PEMBERSIH (CLEAN TARGET TABLES)
+     ============================================================================ -->
+<div class="modal-overlay" id="clean-table-modal">
+    <div class="modal-content" style="max-width: 500px; border-color: var(--accent-purple);">
+        <div class="modal-header">
+            <div>
+                <h3>Tambah Tabel Pembersih</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Masukkan satu atau beberapa nama tabel target.</p>
+            </div>
+            <button class="close-btn" onclick="closeCleanTableModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <div class="form-group">
+                <label for="clean-bulk-textarea">Nama Tabel (Pisahkan dengan Koma jika banyak)</label>
+                <textarea id="clean-bulk-textarea" class="form-control" placeholder="Contoh: TableA, TableB, TableC" style="min-height: 120px; font-family: Consolas, monospace; font-size: 0.88rem;"></textarea>
+                <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.4rem;">Anda dapat mengetik satu nama tabel atau menulis banyak tabel sekaligus dengan pemisah koma.</small>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeCleanTableModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="addCleanTables()" style="width: auto;"><i class="fa-solid fa-plus"></i> Tambah ke Daftar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: TARGET TABLE SCANNER (Scan & Select Tables from Target DB)
+     ============================================================================ -->
+<div class="modal-overlay" id="clean-table-scanner-modal">
+    <div class="modal-content" style="max-width: 600px; border-color: var(--accent-indigo);">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3>Scan Tabel Target</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Pilih tabel dari Target DB untuk dimasukkan ke daftar pembersih.</p>
+            </div>
+            <button class="close-btn" onclick="closeCleanTableScannerModal()" style="margin: 0;">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1rem 2rem;">
+            <!-- Filters & Select All row -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <span style="font-size: 0.8rem; color: var(--text-muted);">Tipe: <strong style="color: var(--accent-indigo);">TABLE</strong></span>
+                <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--text-muted); cursor: pointer;">
+                    <input type="checkbox" id="clean-table-scan-select-all" onchange="toggleAllCleanTableScanItems(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
+                    Pilih Semua
+                </label>
+            </div>
+            <!-- Search bar -->
+            <div class="search-container" style="position: relative; margin-bottom: 1rem; width: 100%;">
+                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+                <input type="text" id="clean-table-scan-search" oninput="applyCleanTableScanFiltering()" placeholder="Cari nama tabel..." class="form-control" style="padding-left: 2.25rem; font-size: 0.85rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%;">
+            </div>
+            <div id="clean-table-scan-results" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.35rem;">
+                <p style="color: var(--text-muted); text-align: center; padding: 2rem;">Klik "Scan Ulang" untuk memindai tabel...</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="startCleanTableScan()" style="width: auto;"><i class="fa-solid fa-radar"></i> Scan Ulang</button>
+            <button class="btn btn-primary" onclick="addSelectedCleanTableScanItems()" style="width: auto;"><i class="fa-solid fa-plus"></i> Tambah Terpilih</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- ============================================================================
+     MODAL: BACKUP VERSION VIEWER
+     ============================================================================ -->
+<div class="modal-overlay" id="obj-backup-modal">
+    <div class="modal-content" style="max-width: 850px; border-color: var(--accent-purple);">
+        <div class="modal-header">
+            <div>
+                <h3 id="obj-backup-modal-title">Backup Versions</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Histori backup objek berversi. Klik download untuk mengunduh file .sql.</p>
+            </div>
+            <button class="close-btn" onclick="closeObjBackupModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <div id="obj-backup-list" style="display: flex; flex-direction: column; gap: 1rem;">
+                <p style="color: var(--text-muted); text-align: center;">Memuat backup...</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="closeObjBackupModal()" style="width: auto;">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: CONNECTION STRING BUILDER ← BARU
+     ============================================================================ -->
+<div class="modal-overlay" id="conn-builder-modal">
+    <div class="modal-content" style="max-width: 540px; border-color: rgba(139,92,246,0.4);">
+        <div class="modal-header">
+            <div>
+                <h3 style="display: flex; align-items: center; gap: 0.6rem;">
+                    <i class="fa-solid fa-wrench" style="color: var(--accent-purple, #8b5cf6);"></i>
+                    Connection String Builder
+                </h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Konfigurasi koneksi SQL Server — connection string dihasilkan otomatis</p>
+            </div>
+            <button class="close-btn" onclick="closeConnBuilder()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem;">
+
+            <!-- Server & Database -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label for="cb-server" style="font-size: 0.85rem;">Server Name</label>
+                    <input type="text" id="cb-server" class="form-control" placeholder="RASIMIN\MSSQLSERVER2022" oninput="updateConnPreview()" style="font-family: Consolas, monospace; font-size: 0.85rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label for="cb-database" style="font-size: 0.85rem;">Database Name</label>
+                    <input type="text" id="cb-database" class="form-control" placeholder="MyDatabase" oninput="updateConnPreview()" style="font-family: Consolas, monospace; font-size: 0.85rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label for="cb-username" style="font-size: 0.85rem;">Username</label>
+                    <input type="text" id="cb-username" class="form-control" placeholder="sa" oninput="updateConnPreview()" autocomplete="off" style="font-family: Consolas, monospace; font-size: 0.85rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label for="cb-password" style="font-size: 0.85rem;">Password</label>
+                    <div style="position: relative;">
+                        <input type="password" id="cb-password" class="form-control" placeholder="••••••••" oninput="updateConnPreview()" autocomplete="new-password" style="font-family: Consolas, monospace; font-size: 0.85rem; padding-right: 2.5rem;">
+                        <button onclick="togglePasswordVisibility()" title="Tampilkan/sembunyikan password" id="btn-toggle-pwd"
+                            style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; padding: 0;">
+                            <i class="fa-solid fa-eye" id="pwd-eye-icon"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Options -->
+            <div style="display: flex; gap: 1.5rem; padding: 0.65rem 0.85rem; background: var(--bg-app); border: 1px solid var(--border-flat); border-radius: 6px; margin-bottom: 0.85rem;">
+                <label style="display: flex; align-items: center; gap: 0.45rem; cursor: pointer; font-size: 0.82rem; color: var(--text-muted);">
+                    <input type="checkbox" id="cb-trust-cert" checked onchange="updateConnPreview()" style="width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent-teal);">
+                    TrustServerCertificate=True
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.45rem; cursor: pointer; font-size: 0.82rem; color: var(--text-muted);">
+                    <input type="checkbox" id="cb-encrypt" onchange="updateConnPreview()" style="width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent-teal);">
+                    Encrypt=True
+                </label>
+            </div>
+
+            <!-- Preview -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 0.4rem;">
+                    <span>Preview Connection String</span>
+                    <span style="font-size: 0.72rem; color: var(--accent-teal); font-style: italic;">Realtime ✦</span>
+                </label>
+                <textarea id="cb-preview" class="form-control" readonly rows="3"
+                    style="font-family: Consolas, monospace; font-size: 0.8rem; background: #07090d; color: var(--accent-teal); border: 1px solid var(--border-flat); resize: none; padding: 0.65rem 0.85rem; letter-spacing: 0.01em;"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary btn-test-conn" onclick="testConnBuilderConn()" style="width: auto; margin-right: auto;">
+                <i class="fa-solid fa-plug"></i> Test Connection
+            </button>
+            <button class="btn btn-secondary" onclick="closeConnBuilder()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="applyConnBuilder()" style="width: auto;">
+                <i class="fa-solid fa-check"></i> OK — Gunakan
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: APPIMS DATABASE BACKUP & RESTORE [NEW]
+     ============================================================================ -->
+<div class="modal-overlay" id="appims-backup-modal">
+    <div class="modal-content" style="max-width: 580px; border-color: var(--accent-indigo);">
+        <div class="modal-header">
+            <div>
+                <h3 style="display: flex; align-items: center; gap: 0.6rem;">
+                    <i class="fa-solid fa-gears" style="color: var(--accent-indigo);"></i>
+                    Backup & Restore AppIMS
+                </h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Kelola backup dan restore database konfigurator migrasi (AppIMS) secara aman.</p>
+            </div>
+            <button class="close-btn" onclick="closeAppimsBackupModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem; display: flex; flex-direction: column; gap: 1.25rem;">
+            
+            <!-- Pengaturan Path Backup (General App Settings) -->
+            <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-flat); padding: 1rem; border-radius: 8px;">
+                <label for="appims-backup-path" style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.4rem; display: block; color: #ffffff;">Database Server Backup Directory Path (General)</label>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="text" id="appims-backup-path" class="form-control" placeholder="Contoh: D:\DatabaseBackup atau C:\SQLBackup (Path lokal server database)" style="font-size: 0.82rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); flex: 1;">
+                    <button class="btn btn-primary" onclick="saveAppimsBackupSettings()" id="btn-save-appims-settings" style="width: auto; height: 36px; padding: 0 0.85rem; display: flex; align-items: center; justify-content: center; gap: 0.35rem; font-size: 0.8rem; cursor: pointer; flex-shrink: 0;" title="Simpan Path Backup">
+                        <i class="fa-solid fa-floppy-disk"></i> Simpan
+                    </button>
+                </div>
+                <small style="color: var(--text-muted); font-size: 0.72rem; display: block; margin-top: 0.4rem; line-height: 1.4;">
+                    Path ini disimpan dalam berkas general <code style="color: var(--accent-teal); font-family: Consolas, monospace;">app-config.json</code> di root web app, bukan di database.
+                </small>
+            </div>
+
+            <!-- Database Info & Backup Action -->
+            <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-flat); padding: 1rem; border-radius: 8px;">
+                <h4 style="font-size: 0.85rem; margin-bottom: 0.75rem; color: var(--accent-indigo); display: flex; align-items: center; gap: 0.35rem;">
+                    <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-indigo);"></span>
+                    Backup Database AppIMS
+                </h4>
+                
+                <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; font-size: 0.82rem; padding: 0.75rem; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.02); margin-bottom: 0.85rem;">
+                    <span style="color: var(--text-muted);">Database:</span>
+                    <strong style="color: #ffffff;">appims (Configurator DB)</strong>
+                    
+                    <span style="color: var(--text-muted);">Target:</span>
+                    <strong id="appims-info-server" style="color: #ffffff;">Loading...</strong>
+                    
+                    <span style="color: var(--text-muted);">Direktori Backup:</span>
+                    <strong id="appims-info-path" style="color: var(--accent-teal); font-family: Consolas, monospace; word-break: break-all;">Belum Diatur</strong>
+                </div>
+
+                <p style="font-size: 0.76rem; color: var(--text-muted); line-height: 1.45; margin-bottom: 0.85rem;">
+                    Cadangkan database konfigurator sekarang. Hasil pencadangan berupa berkas <code style="color: var(--accent-indigo);">.bak</code> yang dikompresi otomatis demi optimalisasi ruang penyimpanan.
+                </p>
+
+                <button class="btn btn-secondary" onclick="runAppimsBackup()" id="btn-run-appims-backup" style="width: 100%; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06); font-weight: 600; padding: 0.6rem 1rem; font-size: 0.82rem; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; cursor: pointer;">
+                    <i class="fa-solid fa-download"></i> Backup Database AppIMS
+                </button>
+            </div>
+
+            <!-- Restore Action -->
+            <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-flat); padding: 1rem; border-radius: 8px;">
+                <h4 style="font-size: 0.85rem; margin-bottom: 0.75rem; color: var(--accent-purple); display: flex; align-items: center; gap: 0.35rem;">
+                    <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-purple);"></span>
+                    Restore Database AppIMS
+                </h4>
+
+                <div class="form-group" style="margin-bottom: 0.85rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <label for="appims-restore-file-select" style="font-size: 0.8rem; margin: 0; font-weight: 600;">Pilih File Backup (.bak)</label>
+                        <a href="#" onclick="scanAppimsBackupFiles(); return false;" style="color: var(--accent-purple); font-size: 0.75rem; text-decoration: none; display: inline-flex; align-items: center; gap: 0.2rem;" title="Pindai Ulang Folder Backup">
+                            <i class="fa-solid fa-arrows-rotate"></i> Pindai Folder
+                        </a>
+                    </div>
+                    <select id="appims-restore-file-select" class="form-control" style="font-size: 0.82rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%;">
+                        <option value="">-- Pindai file backup terlebih dahulu --</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0.85rem;">
+                    <label style="font-size: 0.8rem; font-weight: 600; margin-bottom: 0.4rem; display: block;">Tujuan Restore</label>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; background: rgba(0,0,0,0.15); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border-flat);">
+                        <label style="display: flex; align-items: center; gap: 0.45rem; cursor: pointer; font-size: 0.8rem; color: #ffffff;">
+                            <input type="radio" name="appims-restore-mode" value="existing" checked onchange="toggleAppimsRestoreMode()" style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--accent-purple);">
+                            Restore ke Database Existing (appims)
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.45rem; cursor: pointer; font-size: 0.8rem; color: #ffffff;">
+                            <input type="radio" name="appims-restore-mode" value="new" onchange="toggleAppimsRestoreMode()" style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--accent-purple);">
+                            Restore ke Nama Database Baru
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Input Nama Database Baru (Hidden by default) -->
+                <div class="form-group" id="appims-restore-new-db-group" style="display: none; margin-bottom: 0.85rem; padding-left: 0.5rem; border-left: 2px solid var(--accent-purple);">
+                    <label for="appims-restore-new-db-name" style="font-size: 0.8rem; margin-bottom: 0.35rem; display: block; font-weight: 600;">Nama Database Baru</label>
+                    <input type="text" id="appims-restore-new-db-name" placeholder="Contoh: appims_backup_2026" class="form-control" style="font-size: 0.82rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                </div>
+
+                <button class="btn btn-danger" onclick="runAppimsRestore()" id="btn-run-appims-restore" style="width: 100%; font-weight: 600; padding: 0.6rem 1rem; font-size: 0.82rem; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; cursor: pointer; background: #ef4444; border-color: #ef4444; color: #ffffff;">
+                    <i class="fa-solid fa-arrows-spin"></i> Jalankan Restore Database
+                </button>
+            </div>
+
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeAppimsBackupModal()" style="width: auto;">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: JOB CONFIGURATION (Tambah / Edit Job)
+     ============================================================================ -->
+<div class="modal-overlay" id="job-form-modal">
+    <div class="modal-content" style="max-width: 650px;">
+        <div class="modal-header">
+            <h3 id="job-form-title">Tambah Job Baru</h3>
+            <button class="close-btn" onclick="closeJobForm()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 2rem;">
+            <input type="hidden" id="job-id" value="0">
+
+            <!-- Nama Job -->
+            <div class="form-group">
+                <label for="job-name">Nama Job</label>
+                <input type="text" id="job-name" class="form-control" placeholder="Contoh: Migrasi Transaksi Core Banking">
+            </div>
+
+            <!-- Source Connection String -->
+            <div class="form-group">
+                <label>Source Database Connection String</label>
+                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                    <textarea id="source-conn" class="form-control" placeholder="Server=RASIMIN\MSSQLSERVER2022;Database=SourceDB;User Id=sa;Password=..." style="flex: 1; min-height: 64px;"></textarea>
+                    <button onclick="openConnBuilder('source')" title="Buka Connection String Builder"
+                        style="flex-shrink: 0; background: var(--bg-input); border: 1px solid var(--border-flat); color: var(--accent-purple); border-radius: 6px; padding: 0.55rem 0.65rem; cursor: pointer; font-size: 0.9rem; transition: var(--transition-fast);"
+                        onmouseover="this.style.borderColor='var(--accent-purple)'" onmouseout="this.style.borderColor='var(--border-flat)'">
+                        <i class="fa-solid fa-wrench"></i>
+                    </button>
+                </div>
+                <button class="btn btn-secondary" id="btn-test-source" onclick="testConnection('source')"
+                    style="margin-top: 0.5rem; width: auto; font-size: 0.8rem; background: rgba(79,70,229,0.1); color: #a5b4fc; border: 1px solid rgba(79,70,229,0.3); padding: 6px 12px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem;">
+                    <i class="fa-solid fa-plug"></i> Test Connection
+                </button>
+            </div>
+
+            <!-- Target Connection String -->
+            <div class="form-group">
+                <label>Target Database Connection String</label>
+                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                    <textarea id="target-conn" class="form-control" placeholder="Server=RASIMIN\MSSQLSERVER2022;Database=TargetDB;User Id=sa;Password=..." style="flex: 1; min-height: 64px;"></textarea>
+                    <button onclick="openConnBuilder('target')" title="Buka Connection String Builder"
+                        style="flex-shrink: 0; background: var(--bg-input); border: 1px solid var(--border-flat); color: var(--accent-purple); border-radius: 6px; padding: 0.55rem 0.65rem; cursor: pointer; font-size: 0.9rem; transition: var(--transition-fast);"
+                        onmouseover="this.style.borderColor='var(--accent-purple)'" onmouseout="this.style.borderColor='var(--border-flat)'">
+                        <i class="fa-solid fa-wrench"></i>
+                    </button>
+                </div>
+                <button class="btn btn-secondary" id="btn-test-target" onclick="testConnection('target')"
+                    style="margin-top: 0.5rem; width: auto; font-size: 0.8rem; background: rgba(79,70,229,0.1); color: #a5b4fc; border: 1px solid rgba(79,70,229,0.3); padding: 6px 12px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem;">
+                    <i class="fa-solid fa-plug"></i> Test Connection
+                </button>
+            </div>
+
+            <!-- Backup Path -->
+            <div class="form-group" style="margin-top: 0.75rem; margin-bottom: 0.75rem;">
+                <label for="job-backup-path">Database Server Backup Directory Path</label>
+                <input type="text" id="job-backup-path" class="form-control" placeholder="Contoh: D:\DatabaseBackup atau C:\SQLBackup (Path lokal server database)" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat);">
+                <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.25rem;">
+                    Masukkan path folder tempat file backup disimpan <strong>di server database</strong>. Pastikan akun layanan SQL Server memiliki hak akses menulis ke folder tersebut.
+                </small>
+            </div>
+
+            <!-- Post-Migration Script -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="post-migration-script">Post-Migration SQL Script <span style="font-size:0.75rem; color: var(--text-muted);">(Opsional, dieksekusi setelah semua tabel selesai)</span></label>
+                <textarea id="post-migration-script" class="form-control" placeholder="Contoh: UPDATE TargetCustomers SET PunyaSaldo = 1;" style="font-family: Consolas, monospace; min-height: 70px; font-size: 0.82rem;"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeJobForm()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="saveJob()" style="width: auto;">
+                <i class="fa-solid fa-floppy-disk"></i> Simpan
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: SCHEMA DDL DIFF VIEWER
+     ============================================================================ -->
+<div class="modal-overlay" id="schema-diff-modal">
+    <div class="modal-content schema-diff-content">
+        <div class="modal-header">
+            <div>
+                <h3 id="schema-diff-title">Perbandingan DDL Objek</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Membandingkan definisi kode SQL objek database antara Source DB vs Target DB.</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <button class="close-btn" id="btn-schema-diff-maximize" onclick="toggleSchemaDiffMaximize()" title="Maksimalkan Ukuran" style="font-size: 0.95rem; color: var(--text-muted);"><i class="fa-solid fa-maximize"></i></button>
+                <button class="close-btn" onclick="closeSchemaDiffModal()">&times;</button>
+            </div>
+        </div>
+        <div class="modal-body schema-diff-body" style="display: flex; flex-direction: column; gap: 0;">
+            <div class="schema-diff-headers" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--border-flat); border-bottom: none; border-radius: 8px 8px 0 0; overflow: hidden; background: #07090d; flex-shrink: 0;">
+                <div class="schema-diff-pane-header source" style="border-bottom: none;">
+                    <span>Source DB (Referensi Asal)</span>
+                    <span style="font-size: 0.72rem; color: var(--text-muted);">DDL Lama / Asal</span>
+                </div>
+                <div class="schema-diff-pane-header target" style="border-bottom: none; border-left: 1px solid var(--border-flat);">
+                    <span>Target DB (Tujuan)</span>
+                    <span style="font-size: 0.72rem; color: var(--text-muted);">DDL Saat Ini / Tujuan</span>
+                </div>
+            </div>
+            <div id="schema-diff-monaco-container"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeSchemaDiffModal()" style="width: auto;">Tutup</button>
+            <button class="btn btn-primary" id="btn-schema-diff-apply" onclick="" style="width: auto;">
+                <i class="fa-solid fa-arrows-spin"></i> Update Target DDL
+            </button>
+        </div>
+</div>
+</div>
+
+<!-- ============================================================================
+     MODAL: COLUMN SYNC BEFORE/AFTER VIEW
+     ============================================================================ -->
+<div class="modal-overlay" id="column-sync-modal">
+    <div class="modal-content" style="max-width: 780px; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3 id="column-sync-title">Rencana Sinkronisasi Kolom</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Menampilkan perbandingan skema kolom tabel sebelum (Before) vs sesudah (After) sinkronisasi.</p>
+            </div>
+            <button class="close-btn" onclick="closeColumnSyncModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                <!-- BEFORE (Current Target DB) -->
+                <div>
+                    <h5 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: var(--accent-purple); display: flex; align-items: center; gap: 0.35rem; font-weight: 600;">
+                        <i class="fa-solid fa-triangle-exclamation"></i> BEFORE (Target DB Saat Ini)
+                    </h5>
+                    <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-flat); border-radius: 6px; padding: 0.75rem; max-height: 320px; overflow-y: auto;">
+                        <table class="mapper-table" style="margin: 0; font-size: 0.8rem; width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>Nama Kolom</th>
+                                    <th>Tipe Data</th>
+                                </tr>
+                            </thead>
+                            <tbody id="column-sync-before-tbody">
+                                <!-- Loaded dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- AFTER (Proposed Schema) -->
+                <div>
+                    <h5 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: var(--accent-teal); display: flex; align-items: center; gap: 0.35rem; font-weight: 600;">
+                        <i class="fa-solid fa-circle-check"></i> AFTER (Source DB / Hasil Akhir)
+                    </h5>
+                    <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-flat); border-radius: 6px; padding: 0.75rem; max-height: 320px; overflow-y: auto;">
+                        <table class="mapper-table" style="margin: 0; font-size: 0.8rem; width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>Nama Kolom</th>
+                                    <th>Tipe Data</th>
+                                </tr>
+                            </thead>
+                            <tbody id="column-sync-after-tbody">
+                                <!-- Loaded dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SQL Script Preview -->
+            <div style="margin-top: 1.25rem;">
+                <h5 style="margin: 0 0 0.4rem 0; font-size: 0.82rem; color: #ffffff; font-weight: 600;">Script SQL Eksekusi:</h5>
+                <pre style="margin: 0; padding: 0.75rem; background: #07090d; border-radius: 6px; border: 1px solid var(--border-flat); overflow-x: auto; font-family: Consolas, monospace; font-size: 0.82rem;"><code id="column-sync-sql" class="language-sql"></code></pre>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeColumnSyncModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" id="btn-execute-column-sync" style="width: auto; background: var(--accent-teal); color: #0d0f14; border-color: var(--accent-teal);">
+                <i class="fa-solid fa-play"></i> Jalankan Eksekusi Sinkronisasi
+            </button>
+        </div>
+    </div>
+</div>

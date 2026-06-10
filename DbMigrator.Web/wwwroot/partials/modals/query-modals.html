@@ -1,0 +1,83 @@
+﻿<!-- ============================================================================
+     MODAL: GENERATE INSERT SCRIPT
+     ============================================================================ -->
+<div class="modal-overlay" id="generate-insert-modal">
+    <div class="modal-content" style="max-width: 500px; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3>Generate INSERT Script</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Hasilkan script kueri INSERT SQL dari data tabel berdasarkan kondisi WHERE.</p>
+            </div>
+            <button class="close-btn" onclick="closeGenerateInsertModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem; min-height: 360px;">
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Pilih Tabel:</label>
+                <div class="query-table-custom-select">
+                    <div id="query-table-trigger" onclick="toggleTableDropdown(event)">
+                        <span id="query-table-trigger-text">-- Pilih Tabel --</span>
+                        <i class="fa-solid fa-chevron-down" style="font-size: 0.7rem; opacity: 0.7;"></i>
+                    </div>
+                    <div id="query-table-dropdown">
+                        <input type="text" id="query-table-search" placeholder="Cari tabel..." oninput="filterTableList(this.value)" autocomplete="off">
+                        <div id="query-table-list">
+                            <!-- Items loaded dynamically -->
+                        </div>
+                    </div>
+                </div>
+                <input type="hidden" id="insert-table-select" value="">
+            </div>
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label for="insert-where-clause" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">WHERE Clause (Opsional):</label>
+                <input type="text" id="insert-where-clause" class="form-control" placeholder="Contoh: IDAgentStructure = 144" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;">
+                <small style="color: var(--text-muted); font-size: 0.75rem; margin-top: 0.25rem; display: block;">Kosongkan untuk mengambil semua data (maksimal 1000 baris).</small>
+            </div>
+            <div class="form-group" style="margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem; user-select: none;">
+                <input type="checkbox" id="insert-use-variables" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-teal);">
+                <label for="insert-use-variables" style="font-size: 0.82rem; color: #ffffff; cursor: pointer; margin: 0;">Gunakan Variabel T-SQL (DECLARE & SET)</label>
+            </div>
+            <div id="generate-insert-status" style="display: none; font-size: 0.8rem; padding: 0.5rem 0.75rem; border-radius: 6px; margin-top: 1rem;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeGenerateInsertModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" id="btn-generate-insert-exec" onclick="executeGenerateInsertScript()" style="width: auto; background: var(--accent-teal); color: #0d0f14; border-color: var(--accent-teal); display: inline-flex; align-items: center; gap: 0.35rem;">
+                <i class="fa-solid fa-gears"></i> Generate Script
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     MODAL: SCHEMA VIEW DDL
+     ============================================================================ -->
+<div class="modal-overlay" id="schema-viewer-modal">
+    <div class="modal-content" style="max-width: 900px; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3 id="schema-viewer-title">Tampilan Skema Objek</h3>
+                <p id="schema-viewer-subtitle" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Definisi DDL SQL untuk objek database terpilih.</p>
+                <div id="schema-viewer-dates" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem; display: flex; gap: 1rem;">
+                    <span>Created: <strong id="schema-viewer-created" style="color: #ffffff;">-</strong></span>
+                    <span>Modified: <strong id="schema-viewer-modified" style="color: #ffffff;">-</strong></span>
+                </div>
+            </div>
+            <button class="close-btn" onclick="closeSchemaViewerModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem;">
+            <div style="margin-bottom: 0.85rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button class="btn btn-secondary" onclick="copySchemaToClipboard()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);">
+                    <i class="fa-solid fa-copy"></i> Salin ke Clipboard
+                </button>
+                <button class="btn btn-primary" onclick="insertSchemaToEditor()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+                    <i class="fa-solid fa-square-plus"></i> Masukkan ke SQL Editor
+                </button>
+            </div>
+            <div style="background: #07090d; border-radius: 8px; border: 1px solid var(--border-flat); overflow: hidden; position: relative;">
+                <div id="schema-viewer-monaco-container" style="height: 400px; width: 100%;"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeSchemaViewerModal()" style="width: auto;">Tutup</button>
+        </div>
+    </div>
+</div>

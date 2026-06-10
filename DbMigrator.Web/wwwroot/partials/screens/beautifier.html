@@ -1,0 +1,101 @@
+﻿    <div id="main-screen-beautifier" class="main-screen beautifier-screen" style="display: none;">
+        <div class="beautifier-layout panel-card">
+            <!-- Page header -->
+            <header class="beautifier-header">
+                <div class="beautifier-header-brand">
+                    <div class="beautifier-header-icon" aria-hidden="true">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </div>
+                    <div>
+                        <h2 class="beautifier-header-title">Code Beautifier</h2>
+                        <p class="beautifier-header-subtitle">Rapikan SQL, JSON, atau XML — hasil muncul otomatis saat mengetik</p>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Toolbar: langsung di atas editor -->
+            <div class="beautifier-toolbar" role="toolbar" aria-label="Beautifier controls">
+                <div class="beautifier-toolbar-group beautifier-toolbar-lang">
+                    <span class="beautifier-toolbar-label">Bahasa</span>
+                    <div class="beautifier-lang-pills" role="tablist" aria-label="Pilih bahasa">
+                        <button type="button" class="beautifier-lang-pill active" data-lang="sql" role="tab" aria-selected="true" onclick="setBeautifierLang('sql')">SQL</button>
+                        <button type="button" class="beautifier-lang-pill" data-lang="json" role="tab" aria-selected="false" onclick="setBeautifierLang('json')">JSON</button>
+                        <button type="button" class="beautifier-lang-pill" data-lang="xml" role="tab" aria-selected="false" onclick="setBeautifierLang('xml')">XML</button>
+                    </div>
+                    <select id="beautifier-lang" onchange="onBeautifierLangChange()" class="beautifier-lang-select-hidden" aria-hidden="true" tabindex="-1">
+                        <option value="sql" selected>SQL</option>
+                        <option value="json">JSON</option>
+                        <option value="xml">XML</option>
+                    </select>
+                    <button type="button" class="beautifier-btn beautifier-btn-ghost" onclick="autoDetectBeautifierLang()" title="Deteksi bahasa otomatis dari isi editor">
+                        <i class="fa-solid fa-wand-magic"></i>
+                        <span class="beautifier-btn-text">Auto Detect</span>
+                    </button>
+                </div>
+
+                <div class="beautifier-toolbar-divider" aria-hidden="true"></div>
+
+                <div class="beautifier-toolbar-group beautifier-toolbar-status">
+                    <span id="beautifier-status-badge" class="beautifier-status-badge is-idle">
+                        <i class="fa-solid fa-circle"></i>
+                        <span id="beautifier-status-text">Siap</span>
+                    </span>
+                </div>
+
+                <div class="beautifier-toolbar-spacer"></div>
+
+                <div class="beautifier-toolbar-group beautifier-toolbar-actions">
+                    <button type="button" class="beautifier-btn beautifier-btn-primary" onclick="beautifyCode()">
+                        <i class="fa-solid fa-sparkles"></i>
+                        <span>Beautify</span>
+                    </button>
+                    <button type="button" id="beautifier-copy-btn" class="beautifier-btn beautifier-btn-ghost" onclick="copyBeautifiedCode()" title="Salin hasil ke clipboard">
+                        <i class="fa-solid fa-copy"></i>
+                        <span class="beautifier-btn-text">Copy</span>
+                    </button>
+                    <button type="button" class="beautifier-btn beautifier-btn-danger" onclick="clearBeautifier()" title="Kosongkan kedua panel">
+                        <i class="fa-solid fa-trash"></i>
+                        <span class="beautifier-btn-text">Clear</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dual editor panels -->
+            <div id="beautifier-editor-container" class="beautifier-panels">
+                <section class="beautifier-panel beautifier-panel-input" aria-label="Input kode asli">
+                    <div class="beautifier-panel-header">
+                        <div class="beautifier-panel-title">
+                            <i class="fa-solid fa-file-lines"></i>
+                            <span>Input</span>
+                        </div>
+                        <span class="beautifier-panel-badge beautifier-panel-badge-edit">Dapat diedit</span>
+                    </div>
+                    <div class="beautifier-panel-body">
+                        <div id="beautifier-editor-left" class="beautifier-editor-mount"></div>
+                    </div>
+                </section>
+
+                <div class="beautifier-panel-arrow" aria-hidden="true">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+
+                <section class="beautifier-panel beautifier-panel-output" aria-label="Hasil formatting">
+                    <div class="beautifier-panel-header">
+                        <div class="beautifier-panel-title">
+                            <i class="fa-solid fa-square-check"></i>
+                            <span>Hasil</span>
+                        </div>
+                        <span class="beautifier-panel-badge beautifier-panel-badge-readonly">Read-only</span>
+                    </div>
+                    <div class="beautifier-panel-body">
+                        <div id="beautifier-editor-right" class="beautifier-editor-mount"></div>
+                    </div>
+                </section>
+            </div>
+
+            <footer class="beautifier-footer">
+                <i class="fa-solid fa-circle-info"></i>
+                <span>Format otomatis dengan jeda 400ms · Tekan <kbd>Ctrl</kbd>+<kbd>Enter</kbd> untuk format manual</span>
+            </footer>
+        </div>
+    </div>
