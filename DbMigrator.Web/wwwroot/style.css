@@ -57,6 +57,193 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
+/* ============================================================================
+   UI DIALOG (alert / confirm / prompt)
+   ============================================================================ */
+body.ui-dialog-open {
+    overflow: hidden;
+}
+
+.ui-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    background: rgba(8, 10, 14, 0.72);
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+}
+
+.ui-dialog-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.ui-dialog-card {
+    width: min(100%, 440px);
+    background: var(--bg-card);
+    border: 1px solid var(--border-flat);
+    border-radius: 12px;
+    box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.65);
+    transform: translateY(8px) scale(0.98);
+    transition: transform 0.18s ease;
+    overflow: hidden;
+}
+
+.ui-dialog-overlay.active .ui-dialog-card {
+    transform: translateY(0) scale(1);
+}
+
+.ui-dialog-body {
+    display: flex;
+    gap: 1rem;
+    padding: 1.35rem 1.35rem 0.5rem;
+    align-items: flex-start;
+}
+
+.ui-dialog-icon-wrap {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 1.1rem;
+}
+
+.ui-dialog-icon-info {
+    color: var(--accent-teal);
+    background: rgba(0, 173, 181, 0.12);
+    border: 1px solid rgba(0, 173, 181, 0.22);
+}
+
+.ui-dialog-icon-success {
+    color: var(--color-success);
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.22);
+}
+
+.ui-dialog-icon-warning,
+.ui-dialog-icon-question {
+    color: var(--color-warning);
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.22);
+}
+
+.ui-dialog-icon-error {
+    color: var(--color-error);
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.22);
+}
+
+.ui-dialog-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.ui-dialog-title {
+    margin: 0 0 0.45rem;
+    font-family: var(--font-heading);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1.3;
+}
+
+.ui-dialog-message {
+    font-size: 0.86rem;
+    color: var(--text-muted);
+    line-height: 1.55;
+    word-break: break-word;
+}
+
+.ui-dialog-input-wrap {
+    margin-top: 0.85rem;
+}
+
+.ui-dialog-input {
+    width: 100%;
+    height: 38px;
+    font-size: 0.85rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-flat);
+    color: #ffffff;
+    padding: 0 0.75rem;
+}
+
+.ui-dialog-input.is-invalid {
+    border-color: rgba(239, 68, 68, 0.55);
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.12);
+}
+
+.ui-dialog-input-hint {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--color-error);
+}
+
+.ui-dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.85rem 1.35rem 1.15rem;
+}
+
+.ui-dialog-btn {
+    height: 36px;
+    padding: 0 1rem;
+    border-radius: 7px;
+    font-family: var(--font-primary);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: var(--transition-fast);
+    white-space: nowrap;
+}
+
+.ui-dialog-btn-secondary {
+    background: var(--bg-input);
+    border-color: var(--border-flat);
+    color: var(--text-primary);
+}
+
+.ui-dialog-btn-secondary:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-flat-hover);
+}
+
+.ui-dialog-btn-primary {
+    background: var(--accent-teal);
+    border-color: var(--accent-teal);
+    color: #0d0f14;
+}
+
+.ui-dialog-btn-primary:hover {
+    background: var(--accent-teal-dark);
+    border-color: var(--accent-teal-dark);
+}
+
+.ui-dialog-btn-danger {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+}
+
+.ui-dialog-btn-danger:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.6);
+    color: #ffffff;
+}
+
 /* App loading splash (while partials fetch) */
 .app-loading {
     position: fixed;

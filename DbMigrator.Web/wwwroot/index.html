@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DbMigrator.NET - Premium Control Panel</title>
     <meta name="description" content="Dynamic Metadata-Driven SQL Server Database Migration Tool — kelola migrasi data dan objek DDL antar database secara visual.">
-    <link rel="stylesheet" href="style.css?v=3.12">
+    <link rel="stylesheet" href="style.css?v=3.13">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -37,6 +37,26 @@
 
 <div id="app-modals-root"></div>
 
+<!-- System dialog (alert / confirm / prompt) -->
+<div id="ui-dialog-overlay" class="ui-dialog-overlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="ui-dialog-title">
+    <div id="ui-dialog-card" class="ui-dialog-card ui-dialog-info">
+        <div class="ui-dialog-body">
+            <div id="ui-dialog-icon" class="ui-dialog-icon-wrap ui-dialog-icon-info" aria-hidden="true">
+                <i id="ui-dialog-icon-i" class="fa-solid fa-circle-info"></i>
+            </div>
+            <div class="ui-dialog-content">
+                <h3 id="ui-dialog-title" class="ui-dialog-title">Informasi</h3>
+                <div id="ui-dialog-message" class="ui-dialog-message"></div>
+                <div id="ui-dialog-input-wrap" class="ui-dialog-input-wrap" style="display: none;">
+                    <input type="text" id="ui-dialog-input" class="ui-dialog-input form-control" autocomplete="off">
+                    <small id="ui-dialog-input-hint" class="ui-dialog-input-hint" style="display: none;"></small>
+                </div>
+            </div>
+        </div>
+        <div id="ui-dialog-footer" class="ui-dialog-footer"></div>
+    </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
 <script src="lib/sql-formatter.min.js"></script>
 <script src="lib/monaco-editor/min/vs/loader.js"></script>
@@ -60,7 +80,8 @@
 </script>
 
 <script src="layout-loader.js?v=1.0"></script>
-<script src="app.js?v=3.12"></script>
+<script src="ui-dialog.js?v=1.0"></script>
+<script src="app.js?v=3.14"></script>
 
 </body>
 </html>

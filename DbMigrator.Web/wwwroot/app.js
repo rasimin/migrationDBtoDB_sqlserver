@@ -368,7 +368,7 @@ async function loadJobs() {
 
 async function deleteJob(event, id, name) {
     event.stopPropagation();
-    if (!confirm(`Apakah Anda yakin ingin menghapus Job [${name}] beserta seluruh konfigurasi tabel dan kolomnya? Tindakan ini tidak dapat dibatalkan!`)) return;
+    if (!(await uiConfirm(`Apakah Anda yakin ingin menghapus Job [${name}] beserta seluruh konfigurasi tabel dan kolomnya? Tindakan ini tidak dapat dibatalkan!`))) return;
 
     try {
         const res = await fetch(`${API_BASE}/jobs/${id}`, { method: 'DELETE' });
@@ -388,11 +388,11 @@ async function deleteJob(event, id, name) {
             }
             loadJobs();
         } else {
-            alert("Gagal menghapus job.");
+            await uiAlert("Gagal menghapus job.");
         }
     } catch (err) {
         console.error(err);
-        alert("Terjadi kesalahan: " + err.message);
+        await uiAlert("Terjadi kesalahan: " + err.message);
     }
 }
 
@@ -539,7 +539,7 @@ async function testConnection(type) {
     const btn = document.getElementById(btnId);
 
     if (!connStr) {
-        alert("Harap isi connection string terlebih dahulu!");
+        await uiAlert("Harap isi connection string terlebih dahulu!");
         return;
     }
 
@@ -557,17 +557,17 @@ async function testConnection(type) {
         if (res.ok) {
             const data = await res.json();
             if (data.Success || data.success) {
-                alert(data.Message || data.message || "Koneksi berhasil terhubung!");
+                await uiAlert(data.Message || data.message || "Koneksi berhasil terhubung!");
             } else {
-                alert(data.Message || data.message || "Gagal terhubung.");
+                await uiAlert(data.Message || data.message || "Gagal terhubung.");
             }
         } else {
             const errText = await res.text();
-            alert("Gagal melakukan tes koneksi: " + errText);
+            await uiAlert("Gagal melakukan tes koneksi: " + errText);
         }
     } catch (err) {
         console.error(err);
-        alert("Terjadi kesalahan: " + err.message);
+        await uiAlert("Terjadi kesalahan: " + err.message);
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
@@ -599,7 +599,7 @@ async function saveJob() {
     const postScript = document.getElementById('post-migration-script') ? document.getElementById('post-migration-script').value.trim() : null;
 
     if (!name || !source || !target) {
-        alert("Harap isi semua kolom form!");
+        await uiAlert("Harap isi semua kolom form!");
         return;
     }
 
@@ -612,7 +612,7 @@ async function saveJob() {
         if (!testSrc.Success) msg += `- Source DB: ${testSrc.Message}\n`;
         if (!testTgt.Success) msg += `- Target DB: ${testTgt.Message}\n`;
         msg += "\nApakah Anda yakin tetap ingin menyimpan konfigurasi Job ini?";
-        if (!confirm(msg)) {
+        if (!(await uiConfirm(msg))) {
             return;
         }
     }
@@ -640,7 +640,7 @@ async function saveJob() {
             selectJob(saved.Id || saved.id);
         } else {
             const err = await res.text();
-            alert("Gagal menyimpan job: " + err);
+            await uiAlert("Gagal menyimpan job: " + err);
         }
     } catch (err) {
         console.error(err);
@@ -976,7 +976,7 @@ async function saveSortableOrder(container, endpoint, itemSelector) {
         }
     } catch (err) {
         console.error(err);
-        alert('Gagal menyimpan urutan. Data akan dimuat ulang.');
+        await uiAlert('Gagal menyimpan urutan. Data akan dimuat ulang.');
         if (activeJob) {
             loadTableMappings(activeJob.Id || activeJob.id);
             loadObjItems(activeJob.Id || activeJob.id);
@@ -1157,7 +1157,7 @@ async function addDataNativeSqlItem() {
     const script = document.getElementById('data-native-sql-script').value.trim();
 
     if (!name || !script) {
-        alert('Harap isi nama langkah dan script SQL!');
+        await uiAlert('Harap isi nama langkah dan script SQL!');
         return;
     }
 
@@ -1202,7 +1202,7 @@ async function addDataNativeSqlItem() {
             closeDataNativeSqlModal();
             loadTableMappings(activeJob.Id || activeJob.id);
         } else {
-            alert((id > 0 ? 'Gagal mengubah' : 'Gagal menambahkan') + ' Native SQL: ' + await res.text());
+            await uiAlert((id > 0 ? 'Gagal mengubah' : 'Gagal menambahkan') + ' Native SQL: ' + await res.text());
         }
     } catch (err) {
         console.error(err);
@@ -1286,7 +1286,7 @@ function setupTableAutocomplete(inputId, menuId, tables) {
     }
 }
 
-function escapeHtml(value) {
+async function escapeHtml(value) {
     return String(value ?? '')
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;')
@@ -1309,17 +1309,17 @@ async function saveTableMapping() {
     const whereClause = document.getElementById('table-where-clause') ? document.getElementById('table-where-clause').value.trim() : null;
 
     if (!sourceTable || !targetTable) {
-        alert("Harap pilih tabel asal dan tujuan!");
+        await uiAlert("Harap pilih tabel asal dan tujuan!");
         return;
     }
 
     if (!sourceTables.includes(sourceTable)) {
-        alert("Nama tabel asal tidak ditemukan di daftar Source DB.");
+        await uiAlert("Nama tabel asal tidak ditemukan di daftar Source DB.");
         return;
     }
 
     if (!targetTables.includes(targetTable)) {
-        alert("Nama tabel tujuan tidak ditemukan di daftar Target DB.");
+        await uiAlert("Nama tabel tujuan tidak ditemukan di daftar Target DB.");
         return;
     }
 
@@ -1358,7 +1358,7 @@ async function saveTableMapping() {
             }
         } else {
             const errText = await res.text();
-            alert("Gagal menyimpan pemetaan tabel: " + errText);
+            await uiAlert("Gagal menyimpan pemetaan tabel: " + errText);
         }
     } catch (err) {
         console.error(err);
@@ -1366,7 +1366,7 @@ async function saveTableMapping() {
 }
 
 async function deleteTableMapping(id) {
-    if (!confirm("Apakah Anda yakin ingin menghapus pemetaan tabel ini beserta konfigurasi kolomnya?")) return;
+    if (!(await uiConfirm("Apakah Anda yakin ingin menghapus pemetaan tabel ini beserta konfigurasi kolomnya?"))) return;
 
     try {
         const res = await fetch(`${API_BASE}/mappings/tables/${id}`, { method: 'DELETE' });
@@ -1751,7 +1751,7 @@ async function loadLookupColumns(selectElement, selectedKey = null, selectedValu
     }
 }
 
-function autoMapColumns() {
+async function autoMapColumns() {
     const tbody = document.getElementById('column-mapper-tbody');
     const rows = tbody.querySelectorAll('tr');
 
@@ -1779,9 +1779,9 @@ function autoMapColumns() {
     });
 
     if (mapCount > 0) {
-        alert(`Sukses mencocokkan otomatis ${mapCount} kolom!`);
+        await uiAlert(`Sukses mencocokkan otomatis ${mapCount} kolom!`);
     } else {
-        alert("Tidak ada kolom dengan nama yang sama untuk dicocokkan otomatis.");
+        await uiAlert("Tidak ada kolom dengan nama yang sama untuk dicocokkan otomatis.");
     }
     console.log(`Auto-mapped ${mapCount} kolom dengan nama yang sama.`);
 }
@@ -1814,7 +1814,7 @@ async function saveColumnMappings() {
         if (mappingType === 'Direct') {
             const srcCol = fieldsContainer.querySelector('.col-source-select').value;
             if (!srcCol) {
-                alert(`Kolom "${targetColName}" bertipe "Direct" harus memilih kolom asal.`);
+                await uiAlert(`Kolom "${targetColName}" bertipe "Direct" harus memilih kolom asal.`);
                 return;
             }
             colMapping.SourceColumnName = srcCol;
@@ -1822,7 +1822,7 @@ async function saveColumnMappings() {
         else if (mappingType === 'Constant') {
             const constVal = fieldsContainer.querySelector('.col-constant-input').value.trim();
             if (constVal === '') {
-                alert(`Kolom "${targetColName}" bertipe "Constant" harus diisi nilai default.`);
+                await uiAlert(`Kolom "${targetColName}" bertipe "Constant" harus diisi nilai default.`);
                 return;
             }
             colMapping.ConstantValue = constVal;
@@ -1834,7 +1834,7 @@ async function saveColumnMappings() {
             const srcCol = fieldsContainer.querySelector('.col-source-select').value;
 
             if (!lkpTable || !lkpKey || !lkpVal || !srcCol) {
-                alert(`Kolom "${targetColName}" bertipe "Lookup" harus mengisi tabel referensi, key pencari, ID hasil, dan kolom asal.`);
+                await uiAlert(`Kolom "${targetColName}" bertipe "Lookup" harus mengisi tabel referensi, key pencari, ID hasil, dan kolom asal.`);
                 return;
             }
 
@@ -1846,7 +1846,7 @@ async function saveColumnMappings() {
         else if (mappingType === 'Expression') {
             const exprSql = fieldsContainer.querySelector('.col-expression-input').value.trim();
             if (exprSql === '') {
-                alert(`Kolom "${targetColName}" bertipe "Expression" harus diisi ekspresi SQL.`);
+                await uiAlert(`Kolom "${targetColName}" bertipe "Expression" harus diisi ekspresi SQL.`);
                 return;
             }
             colMapping.ExpressionSQL = exprSql;
@@ -1863,11 +1863,11 @@ async function saveColumnMappings() {
         });
 
         if (res.ok) {
-            alert("Semua pemetaan kolom sukses disimpan!");
+            await uiAlert("Semua pemetaan kolom sukses disimpan!");
             closeColumnMappingModal();
         } else {
             const errText = await res.text();
-            alert("Gagal menyimpan: " + errText);
+            await uiAlert("Gagal menyimpan: " + errText);
         }
     } catch (err) {
         console.error(err);
@@ -1882,7 +1882,7 @@ async function saveColumnMappings() {
 // ============================================================================
 async function runMigrationJob() {
     if (!activeJob) return;
-    if (!confirm(`Apakah Anda yakin ingin memulai migrasi untuk job "${activeJob.JobName || activeJob.jobName}" sekarang?`)) return;
+    if (!(await uiConfirm(`Apakah Anda yakin ingin memulai migrasi untuk job "${activeJob.JobName || activeJob.jobName}" sekarang?`))) return;
 
     // Reset State & Dashboard UI
     isCancellationRequested = false;
@@ -1931,7 +1931,7 @@ async function runMigrationJob() {
             logLine.innerText = `[${new Date().toLocaleTimeString()}] ${msg.Message}`;
             logsBox.appendChild(logLine);
         } else {
-            alert("Gagal menjalankan migrasi.");
+            await uiAlert("Gagal menjalankan migrasi.");
         }
     } catch (err) {
         console.error(err);
@@ -1963,13 +1963,13 @@ async function cancelMigration() {
             logsBox.scrollTop = logsBox.scrollHeight;
         } else {
             const text = await res.text();
-            alert("Gagal membatalkan: " + text);
+            await uiAlert("Gagal membatalkan: " + text);
             btn.disabled = false;
             btn.innerHTML = `<i class="fa-solid fa-ban"></i> Batalkan Migrasi`;
         }
     } catch (err) {
         console.error(err);
-        alert("Gagal membatalkan: " + err.message);
+        await uiAlert("Gagal membatalkan: " + err.message);
         btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-ban"></i> Batalkan Migrasi`;
     }
@@ -1995,7 +1995,7 @@ async function exportActiveJob() {
         downloadAnchor.remove();
     } catch (err) {
         console.error(err);
-        alert("Terjadi kesalahan ekspor: " + err.message);
+        await uiAlert("Terjadi kesalahan ekspor: " + err.message);
     }
 }
 
@@ -2004,7 +2004,7 @@ function triggerImport() {
     document.getElementById('import-file-input').click();
 }
 
-function importJsonFile(event) {
+async function importJsonFile(event) {
     const file = event.target.files[0];
     if (!file) return;
 
@@ -2021,16 +2021,16 @@ function importJsonFile(event) {
 
             if (res.ok) {
                 const newJob = await res.json();
-                alert(`Sukses mengimpor job: ${newJob.JobName || newJob.jobName}`);
+                await uiAlert(`Sukses mengimpor job: ${newJob.JobName || newJob.jobName}`);
                 loadJobs();
                 selectJob(newJob.Id || newJob.id);
             } else {
                 const errText = await res.text();
-                alert("Gagal mengimpor job: " + errText);
+                await uiAlert("Gagal mengimpor job: " + errText);
             }
         } catch (err) {
             console.error(err);
-            alert("Gagal membaca file JSON: " + err.message);
+            await uiAlert("Gagal membaca file JSON: " + err.message);
         } finally {
             event.target.value = '';
         }
@@ -2169,7 +2169,7 @@ async function generateSpScript(mappingId) {
         const res = await fetch(`${API_BASE}/mappings/tables/${mappingId}/generate-sp`);
         if (!res.ok) {
             const text = await res.text();
-            alert("Gagal meng-generate SP: " + text);
+            await uiAlert("Gagal meng-generate SP: " + text);
             return;
         }
         const data = await res.json();
@@ -2179,7 +2179,7 @@ async function generateSpScript(mappingId) {
         document.getElementById('sp-generator-modal').classList.add('active');
     } catch (err) {
         console.error(err);
-        alert("Terjadi kesalahan: " + err.message);
+        await uiAlert("Terjadi kesalahan: " + err.message);
     }
 }
 
@@ -2187,18 +2187,18 @@ function closeSpGeneratorModal() {
     document.getElementById('sp-generator-modal').classList.remove('active');
 }
 
-function copySpScript() {
+async function copySpScript() {
     const textarea = document.getElementById('sp-sql-textarea');
     textarea.select();
     textarea.setSelectionRange(0, 99999); /* For mobile devices */
 
     navigator.clipboard.writeText(textarea.value)
-        .then(() => {
-            alert("Script SQL Stored Procedure berhasil disalin ke clipboard!");
+        .then(async () => {
+            await uiAlert("Script SQL Stored Procedure berhasil disalin ke clipboard!");
         })
-        .catch(err => {
+        .catch(async (err) => {
             console.error("Gagal menyalin: ", err);
-            alert("Gagal menyalin ke clipboard. Silakan salin secara manual.");
+            await uiAlert("Gagal menyalin ke clipboard. Silakan salin secara manual.");
         });
 }
 
@@ -2281,12 +2281,12 @@ function populateToolsTableDatalist(forceClear = false) {
 
 async function generateToolSpScript(opType) {
     if (!activeJob) {
-        alert("Harap pilih Job terlebih dahulu!");
+        await uiAlert("Harap pilih Job terlebih dahulu!");
         return;
     }
     const tableName = document.getElementById('tool-table-name').value.trim();
     if (!tableName) {
-        alert("Harap masukkan atau pilih Nama Tabel!");
+        await uiAlert("Harap masukkan atau pilih Nama Tabel!");
         return;
     }
 
@@ -2300,12 +2300,12 @@ async function generateToolSpScript(opType) {
         const res = await fetch(`${API_BASE}/db/columns?jobId=${jobId}&dbType=${dbType}&tableName=${encodeURIComponent(tableName)}`);
         if (!res.ok) {
             const errText = await res.text();
-            alert("Gagal memuat kolom tabel: " + errText);
+            await uiAlert("Gagal memuat kolom tabel: " + errText);
             return;
         }
         const columns = await res.json();
         if (!columns || columns.length === 0) {
-            alert(`Tidak ada kolom ditemukan pada tabel "${tableName}"! Pastikan nama tabel benar.`);
+            await uiAlert(`Tidak ada kolom ditemukan pada tabel "${tableName}"! Pastikan nama tabel benar.`);
             return;
         }
 
@@ -2385,7 +2385,7 @@ GO`;
             const colsToSet = columns.filter(c => c.Name.toLowerCase() !== keyColumn.toLowerCase());
 
             if (colsToSet.length === 0) {
-                alert("Tidak ada kolom selain Kolom Kunci yang dapat di-update!");
+                await uiAlert("Tidak ada kolom selain Kolom Kunci yang dapat di-update!");
                 return;
             }
 
@@ -2441,7 +2441,7 @@ GO`;
 
     } catch (err) {
         console.error(err);
-        alert("Terjadi kesalahan saat generate SP: " + err.message);
+        await uiAlert("Terjadi kesalahan saat generate SP: " + err.message);
     }
 }
 
@@ -2492,18 +2492,18 @@ async function scanBackupFiles() {
 
 async function runDatabaseBackup() {
     if (!activeJob) {
-        alert("Harap pilih Job terlebih dahulu!");
+        await uiAlert("Harap pilih Job terlebih dahulu!");
         return;
     }
     
     const backupPath = activeJob.BackupPath || activeJob.backupPath || '';
     if (!backupPath) {
-        alert("Path backup kosong! Harap atur path folder backup terlebih dahulu di konfigurasi Edit Job.");
+        await uiAlert("Path backup kosong! Harap atur path folder backup terlebih dahulu di konfigurasi Edit Job.");
         return;
     }
 
     const targetDb = parseConnectionStringDb(activeJob.TargetConnectionString || activeJob.targetConnectionString || '');
-    if (!confirm(`Apakah Anda yakin ingin mem-backup database target [${targetDb}] ke path:\n"${backupPath}"?`)) {
+    if (!(await uiConfirm(`Apakah Anda yakin ingin mem-backup database target [${targetDb}] ke path:\n"${backupPath}"?`))) {
         return;
     }
 
@@ -2520,20 +2520,20 @@ async function runDatabaseBackup() {
 
         if (!res.ok) {
             const errText = await res.text();
-            alert("Gagal backup: " + errText);
+            await uiAlert("Gagal backup: " + errText);
             return;
         }
 
         const data = await res.json();
         if (data.Success || data.success) {
-            alert(data.Message || "Backup database berhasil diselesaikan!");
+            await uiAlert(data.Message || "Backup database berhasil diselesaikan!");
             scanBackupFiles();
         } else {
-            alert(data.Message || "Gagal backup.");
+            await uiAlert(data.Message || "Gagal backup.");
         }
     } catch (err) {
         console.error(err);
-        alert("Terjadi kesalahan koneksi saat backup: " + err.message);
+        await uiAlert("Terjadi kesalahan koneksi saat backup: " + err.message);
     } finally {
         btn.innerHTML = originalHtml;
         btn.disabled = false;
@@ -2542,13 +2542,13 @@ async function runDatabaseBackup() {
 
 async function runDatabaseRestore() {
     if (!activeJob) {
-        alert("Harap pilih Job terlebih dahulu!");
+        await uiAlert("Harap pilih Job terlebih dahulu!");
         return;
     }
 
     const backupFile = document.getElementById('tool-restore-file-select').value;
     if (!backupFile) {
-        alert("Harap pilih file backup (.bak) yang akan di-restore!");
+        await uiAlert("Harap pilih file backup (.bak) yang akan di-restore!");
         return;
     }
 
@@ -2559,11 +2559,11 @@ async function runDatabaseRestore() {
     if (restoreMode === 'new') {
         restoreDbName = document.getElementById('tool-restore-new-db-name').value.trim();
         if (!restoreDbName) {
-            alert("Harap masukkan nama database baru untuk restore!");
+            await uiAlert("Harap masukkan nama database baru untuk restore!");
             return;
         }
         if (!/^[a-zA-Z0-9_-]+$/.test(restoreDbName)) {
-            alert("Nama database hanya boleh mengandung huruf, angka, underscore (_), atau dash (-).");
+            await uiAlert("Nama database hanya boleh mengandung huruf, angka, underscore (_), atau dash (-).");
             return;
         }
     }
@@ -2580,14 +2580,25 @@ async function runDatabaseRestore() {
                      `Apakah Anda yakin ingin melanjutkan?`;
     }
 
-    if (!confirm(confirmMsg)) {
+    if (!(await uiConfirm(confirmMsg))) {
         return;
     }
 
     if (restoreMode === 'existing') {
-        const doubleCheck = prompt(`Harap ketik nama database target "${restoreDbName}" untuk mengonfirmasi penulisan ulang database:`);
+        const doubleCheck = await uiPrompt(
+            `Ketik nama database target untuk mengonfirmasi penulisan ulang database.`,
+            {
+                title: 'Konfirmasi Restore',
+                placeholder: restoreDbName,
+                matchValue: restoreDbName,
+                matchError: 'Nama database tidak cocok. Restore dibatalkan.',
+                variant: 'warning'
+            }
+        );
         if (doubleCheck !== restoreDbName) {
-            alert("Konfirmasi gagal. Proses restore dibatalkan.");
+            if (doubleCheck !== null) {
+                await uiAlert("Konfirmasi gagal. Proses restore dibatalkan.", { variant: 'error' });
+            }
             return;
         }
     }
@@ -2610,22 +2621,22 @@ async function runDatabaseRestore() {
 
         if (!res.ok) {
             const errText = await res.text();
-            alert("Gagal me-restore: " + errText);
+            await uiAlert("Gagal me-restore: " + errText);
             return;
         }
 
         const data = await res.json();
         if (data.Success || data.success) {
-            alert(data.Message || "Restore database berhasil diselesaikan!");
+            await uiAlert(data.Message || "Restore database berhasil diselesaikan!");
             if (restoreMode === 'new') {
-                alert(`Database baru [${restoreDbName}] telah berhasil dibuat dan aktif.`);
+                await uiAlert(`Database baru [${restoreDbName}] telah berhasil dibuat dan aktif.`);
             }
         } else {
-            alert(data.Message || "Gagal me-restore database.");
+            await uiAlert(data.Message || "Gagal me-restore database.");
         }
     } catch (err) {
         console.error(err);
-        alert("Terjadi kesalahan koneksi saat me-restore database: " + err.message);
+        await uiAlert("Terjadi kesalahan koneksi saat me-restore database: " + err.message);
     } finally {
         btn.innerHTML = originalHtml;
         btn.disabled = false;
@@ -2775,7 +2786,7 @@ function renderObjItems(items, isFilterActive) {
 }
 
 async function deleteObjItem(id) {
-    if (!confirm("Hapus objek ini dari daftar migrasi?")) return;
+    if (!(await uiConfirm("Hapus objek ini dari daftar migrasi?"))) return;
     try {
         await fetch(`${API_BASE}/obj-items/${id}`, { method: 'DELETE' });
         if (activeJob) loadObjItems(activeJob.Id || activeJob.id);
@@ -2833,7 +2844,7 @@ async function toggleTableMappingEnabled(id, isChecked) {
         }
     } catch (err) {
         console.error(err);
-        alert("Gagal merubah status pemetaan: " + err.message);
+        await uiAlert("Gagal merubah status pemetaan: " + err.message);
         
         map.IsEnabled = originalValue;
         map.isEnabled = originalValue;
@@ -2898,7 +2909,7 @@ async function toggleObjItemEnabled(id, isChecked) {
         }
     } catch (err) {
         console.error(err);
-        alert("Gagal merubah status objek: " + err.message);
+        await uiAlert("Gagal merubah status objek: " + err.message);
         
         item.IsEnabled = originalValue;
         item.isEnabled = originalValue;
@@ -2994,7 +3005,7 @@ function applyScanFiltering() {
 }
 
 async function startObjScan() {
-    if (!activeJob) { alert('Silakan pilih Job terlebih dahulu.'); return; }
+    if (!activeJob) { await uiAlert('Silakan pilih Job terlebih dahulu.'); return; }
     const container = document.getElementById('obj-scan-results');
     container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 2rem;"><i class="fa-solid fa-spinner fa-spin"></i> Memindai objek dari Source DB...</p>`;
 
@@ -3052,7 +3063,7 @@ function toggleAllScanItems(checked) {
 async function addSelectedScanItems() {
     const checkboxes = document.querySelectorAll('.scan-checkbox:checked');
     if (checkboxes.length === 0) {
-        alert("Pilih minimal satu objek untuk ditambahkan!");
+        await uiAlert("Pilih minimal satu objek untuk ditambahkan!");
         return;
     }
 
@@ -3074,15 +3085,15 @@ async function addSelectedScanItems() {
 
         if (res.ok) {
             const data = await res.json();
-            alert(data.Message || `${items.length} objek ditambahkan.`);
+            await uiAlert(data.Message || `${items.length} objek ditambahkan.`);
             closeObjScannerModal();
             loadObjItems(jobId);
         } else {
-            alert("Gagal menambahkan: " + await res.text());
+            await uiAlert("Gagal menambahkan: " + await res.text());
         }
     } catch (err) {
         console.error(err);
-        alert("Error: " + err.message);
+        await uiAlert("Error: " + err.message);
     }
 }
 
@@ -3148,7 +3159,7 @@ async function addNativeSqlItem() {
     const script = document.getElementById('native-sql-script').value.trim();
 
     if (!name || !script) {
-        alert("Harap isi nama dan script SQL!");
+        await uiAlert("Harap isi nama dan script SQL!");
         return;
     }
 
@@ -3193,7 +3204,7 @@ async function addNativeSqlItem() {
             closeObjNativeSqlModal();
             loadObjItems(activeJob.Id || activeJob.id);
         } else {
-            alert("Gagal menyimpan: " + await res.text());
+            await uiAlert("Gagal menyimpan: " + await res.text());
         }
     } catch (err) {
         console.error(err);
@@ -3203,7 +3214,7 @@ async function addNativeSqlItem() {
 // ============================================================================
 // OBJECT EDITING FUNCTIONS
 // ============================================================================
-function editObjItem(id) {
+async function editObjItem(id) {
     const item = objItemsCache.find(m => (m.Id || m.id) === id);
     if (!item) return;
 
@@ -3214,7 +3225,7 @@ function editObjItem(id) {
     } else if (objType === 'table') {
         openObjTableEditModal(item);
     } else {
-        alert("Pengeditan tidak didukung untuk tipe objek ini.");
+        await uiAlert("Pengeditan tidak didukung untuk tipe objek ini.");
     }
 }
 
@@ -3273,7 +3284,7 @@ async function saveObjTableEdit() {
             closeObjTableEditModal();
             loadObjItems(activeJob.Id || activeJob.id);
         } else {
-            alert("Gagal menyimpan pengaturan tabel: " + await res.text());
+            await uiAlert("Gagal menyimpan pengaturan tabel: " + await res.text());
         }
     } catch (err) {
         console.error(err);
@@ -3284,7 +3295,7 @@ async function saveObjTableEdit() {
 // 12. RUN OBJECT MIGRATION
 // ============================================================================
 async function runObjMigration() {
-    if (!activeJob) { alert('Silakan pilih Job terlebih dahulu.'); return; }
+    if (!activeJob) { await uiAlert('Silakan pilih Job terlebih dahulu.'); return; }
     const jobName = activeJob.JobName || activeJob.jobName;
 
     // Reset cancellation flag
@@ -3297,11 +3308,11 @@ async function runObjMigration() {
     });
 
     if (enabledItems.length === 0) {
-        alert("Tidak ada objek aktif untuk dimigrasi.");
+        await uiAlert("Tidak ada objek aktif untuk dimigrasi.");
         return;
     }
 
-    if (!confirm(`Jalankan migrasi objek untuk job "${jobName}"?\n\nSP/Function/View: akan di-drop & create ulang.\nTable: akan CREATE baru atau ALTER sync kolom.\nNative SQL: akan dieksekusi langsung.\n\nSemua objek yang sudah ada di Target akan di-backup otomatis.`)) return;
+    if (!(await uiConfirm(`Jalankan migrasi objek untuk job "${jobName}"?\n\nSP/Function/View: akan di-drop & create ulang.\nTable: akan CREATE baru atau ALTER sync kolom.\nNative SQL: akan dieksekusi langsung.\n\nSemua objek yang sudah ada di Target akan di-backup otomatis.`))) return;
 
     const jobId = activeJob.Id || activeJob.id;
 
@@ -3672,10 +3683,10 @@ function updateConnPreview() {
 /**
  * Terapkan connection string hasil builder ke textarea
  */
-function applyConnBuilder() {
+async function applyConnBuilder() {
     const connStr = document.getElementById('cb-preview').value.trim();
     if (!connStr) {
-        alert('Connection string kosong. Harap isi minimal Server Name dan Database Name.');
+        await uiAlert('Connection string kosong. Harap isi minimal Server Name dan Database Name.');
         return;
     }
     const targetEl = document.getElementById(connBuilderTarget + '-conn');
@@ -3696,7 +3707,7 @@ function closeConnBuilder() {
 async function testConnBuilderConn() {
     const connStr = document.getElementById('cb-preview').value.trim();
     if (!connStr) {
-        alert('Connection string kosong. Harap isi Server Name dan Database Name terlebih dahulu.');
+        await uiAlert('Connection string kosong. Harap isi Server Name dan Database Name terlebih dahulu.');
         return;
     }
 
@@ -3717,16 +3728,16 @@ async function testConnBuilderConn() {
         if (res.ok) {
             const data = await res.json();
             if (data.Success || data.success) {
-                alert('✅ Koneksi berhasil!\n' + (data.Message || data.message || 'Database dapat diakses.'));
+                await uiAlert('✅ Koneksi berhasil!\n' + (data.Message || data.message || 'Database dapat diakses.'));
             } else {
-                alert('❌ Koneksi gagal:\n' + (data.Message || data.message || 'Tidak dapat terhubung.'));
+                await uiAlert('❌ Koneksi gagal:\n' + (data.Message || data.message || 'Tidak dapat terhubung.'));
             }
         } else {
             const errText = await res.text();
-            alert('❌ HTTP Error:\n' + errText);
+            await uiAlert('❌ HTTP Error:\n' + errText);
         }
     } catch (err) {
-        alert('❌ Error: ' + err.message);
+        await uiAlert('❌ Error: ' + err.message);
     } finally {
         if (btn) {
             btn.innerHTML = originalHtml;
@@ -3910,7 +3921,7 @@ async function addCleanTables() {
     const bulkVal = bulkInput ? bulkInput.value.trim() : '';
 
     if (!bulkVal) {
-        alert("Harap isi nama tabel!");
+        await uiAlert("Harap isi nama tabel!");
         return;
     }
 
@@ -3927,7 +3938,7 @@ async function addCleanTables() {
             if (data.Skipped.length > 0) {
                 alertMsg += `\n\nSkipped (sudah terdaftar): ${data.Skipped.join(', ')}`;
             }
-            alert(alertMsg);
+            await uiAlert(alertMsg);
 
             // Clear & close modal
             if (bulkInput) bulkInput.value = '';
@@ -3935,22 +3946,22 @@ async function addCleanTables() {
 
             loadCleanTables(jobId);
         } else {
-            alert("Gagal menambahkan: " + await res.text());
+            await uiAlert("Gagal menambahkan: " + await res.text());
         }
     } catch (err) {
         console.error(err);
-        alert("Error: " + err.message);
+        await uiAlert("Error: " + err.message);
     }
 }
 
 async function deleteCleanTable(id) {
-    if (!confirm("Apakah Anda yakin ingin menghapus tabel ini dari daftar pembersih?")) return;
+    if (!(await uiConfirm("Apakah Anda yakin ingin menghapus tabel ini dari daftar pembersih?"))) return;
     try {
         const res = await fetch(`${API_BASE}/clean-tables/${id}`, { method: 'DELETE' });
         if (res.ok) {
             if (activeJob) loadCleanTables(activeJob.Id || activeJob.id);
         } else {
-            alert("Gagal menghapus.");
+            await uiAlert("Gagal menghapus.");
         }
     } catch (err) {
         console.error(err);
@@ -3993,7 +4004,7 @@ async function runSingleClean(id) {
         `2. RESEED Identity ke 0 (jika ada kolom Identity).\n\n` +
         `Apakah Anda benar-benar yakin? Tindakan ini bersifat permanen dan tidak dapat dibatalkan!`;
 
-    if (!confirm(confirmMsg)) return;
+    if (!(await uiConfirm(confirmMsg))) return;
 
     try {
         const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables/run?id=${id}`, { method: 'POST' });
@@ -4001,17 +4012,17 @@ async function runSingleClean(id) {
             const data = await res.json();
             const result = data.Results[0];
             if (result.Status === 'Completed') {
-                alert(`✅ Sukses membersihkan tabel ${result.TableName}!\n\n${result.Message}`);
+                await uiAlert(`✅ Sukses membersihkan tabel ${result.TableName}!\n\n${result.Message}`);
             } else {
-                alert(`❌ Gagal membersihkan tabel ${result.TableName}!\n\nDetail: ${result.Message}`);
+                await uiAlert(`❌ Gagal membersihkan tabel ${result.TableName}!\n\nDetail: ${result.Message}`);
             }
             loadCleanTables(jobId);
         } else {
-            alert("Gagal mengeksekusi pembersihan: " + await res.text());
+            await uiAlert("Gagal mengeksekusi pembersihan: " + await res.text());
         }
     } catch (err) {
         console.error(err);
-        alert("Error: " + err.message);
+        await uiAlert("Error: " + err.message);
     }
 }
 
@@ -4026,7 +4037,7 @@ async function runAllCleanInternal(confirmFirst = false) {
     const dbInfo = parseConnectionStringDb(connStr);
 
     if (cleanTablesCache.length === 0) {
-        alert("Tidak ada tabel di daftar untuk dibersihkan.");
+        await uiAlert("Tidak ada tabel di daftar untuk dibersihkan.");
         return;
     }
 
@@ -4042,7 +4053,7 @@ async function runAllCleanInternal(confirmFirst = false) {
             `2. RESEED Identity ke 0 (jika ada kolom Identity).\n\n` +
             `Apakah Anda benar-benar yakin ingin membersihkan data seluruh tabel ini? Tindakan ini bersifat permanen!`;
 
-        if (!confirm(confirmMsg)) return;
+        if (!(await uiConfirm(confirmMsg))) return;
     }
 
     // Reset cancellation flag
@@ -4196,7 +4207,7 @@ async function runAllCleanInternal(confirmFirst = false) {
 
 async function generateCleanSpScript() {
     if (!activeJob) {
-        alert("Pilih Job terlebih dahulu!");
+        await uiAlert("Pilih Job terlebih dahulu!");
         return;
     }
 
@@ -4216,11 +4227,11 @@ async function generateCleanSpScript() {
             document.getElementById('sp-sql-textarea').value = data.SqlScript;
             document.getElementById('sp-generator-modal').classList.add('active');
         } else {
-            alert("Gagal meng-generate SP Pembersih: " + await res.text());
+            await uiAlert("Gagal meng-generate SP Pembersih: " + await res.text());
         }
     } catch (err) {
         console.error(err);
-        alert("Error: " + err.message);
+        await uiAlert("Error: " + err.message);
     } finally {
         if (btn) {
             btn.innerHTML = originalHtml;
@@ -4237,7 +4248,7 @@ async function runSingleMapping(mappingId) {
     if (!activeJob) return;
     const jobId = activeJob.Id || activeJob.id;
     const confirmMsg = `Apakah Anda yakin ingin menjalankan pemetaan tabel terpilih ini saja?`;
-    if (!confirm(confirmMsg)) return;
+    if (!(await uiConfirm(confirmMsg))) return;
 
     // Reset State & Dashboard UI
     migrationProcessedTables = {};
@@ -4281,11 +4292,11 @@ async function runSingleMapping(mappingId) {
             logLine.innerText = `[${new Date().toLocaleTimeString()}] ${msg.Message}`;
             logsBox.appendChild(logLine);
         } else {
-            alert("Gagal menjalankan migrasi.");
+            await uiAlert("Gagal menjalankan migrasi.");
         }
     } catch (err) {
         console.error(err);
-        alert("Error: " + err.message);
+        await uiAlert("Error: " + err.message);
     }
 }
 
@@ -4297,7 +4308,7 @@ async function runSingleObjItem(itemId) {
     const objName = row ? row.querySelector('span[style*="font-weight: 600"]').textContent.trim() : 'Objek terpilih';
 
     const confirmMsg = `Jalankan migrasi objek "${objName}" sekarang?`;
-    if (!confirm(confirmMsg)) return;
+    if (!(await uiConfirm(confirmMsg))) return;
 
     try {
         const res = await fetch(`${API_BASE}/jobs/${jobId}/obj-run?itemId=${itemId}`, { method: 'POST' });
@@ -4305,17 +4316,17 @@ async function runSingleObjItem(itemId) {
             const data = await res.json();
             const result = data.Results[0];
             if (result.Status === 'Completed') {
-                alert(`✅ Sukses memigrasi objek ${result.ObjectName}!\n\nDetail: ${result.Message}`);
+                await uiAlert(`✅ Sukses memigrasi objek ${result.ObjectName}!\n\nDetail: ${result.Message}`);
             } else {
-                alert(`❌ Gagal memigrasi objek ${result.ObjectName}!\n\nDetail: ${result.Message}`);
+                await uiAlert(`❌ Gagal memigrasi objek ${result.ObjectName}!\n\nDetail: ${result.Message}`);
             }
             loadObjItems(jobId);
         } else {
-            alert("Gagal menjalankan migrasi objek: " + await res.text());
+            await uiAlert("Gagal menjalankan migrasi objek: " + await res.text());
         }
     } catch (err) {
         console.error(err);
-        alert("Error: " + err.message);
+        await uiAlert("Error: " + err.message);
     }
 }
 
@@ -4328,7 +4339,7 @@ async function cleanAndResetAllData() {
         `3. Mereset status migrasi seluruh tabel kembali ke PENDING.\n\n` +
         `Apakah Anda benar-benar yakin? Tindakan ini tidak dapat dibatalkan!`;
         
-    if (!confirm(confirmMsg)) return;
+    if (!(await uiConfirm(confirmMsg))) return;
 
     const btn = document.getElementById('btn-clean-reset-all');
     const originalHtml = btn ? btn.innerHTML : '';
@@ -4355,7 +4366,7 @@ async function cleanAndResetAllData() {
         loadTableMappings(jobId);
     } catch (err) {
         console.error(err);
-        alert("Error: " + err.message);
+        await uiAlert("Error: " + err.message);
     } finally {
         if (btn) {
             btn.innerHTML = originalHtml;
@@ -4367,57 +4378,57 @@ async function cleanAndResetAllData() {
 async function resetDataStatuses() {
     if (!activeJob) return;
     const jobId = activeJob.Id || activeJob.id;
-    if (!confirm("Apakah Anda yakin ingin me-reset semua status pemetaan data ke 'Pending'?")) return;
+    if (!(await uiConfirm("Apakah Anda yakin ingin me-reset semua status pemetaan data ke 'Pending'?"))) return;
 
     try {
         const res = await fetch(`${API_BASE}/jobs/${jobId}/mappings/reset-status`, { method: 'POST' });
         if (res.ok) {
-            alert("Status pemetaan data berhasil di-reset!");
+            await uiAlert("Status pemetaan data berhasil di-reset!");
             loadTableMappings(jobId);
         } else {
-            alert("Gagal me-reset status: " + await res.text());
+            await uiAlert("Gagal me-reset status: " + await res.text());
         }
     } catch (err) {
         console.error(err);
-        alert("Error: " + err.message);
+        await uiAlert("Error: " + err.message);
     }
 }
 
 async function resetObjStatuses() {
     if (!activeJob) return;
     const jobId = activeJob.Id || activeJob.id;
-    if (!confirm("Apakah Anda yakin ingin me-reset semua status objek migrasi ke 'Pending'?")) return;
+    if (!(await uiConfirm("Apakah Anda yakin ingin me-reset semua status objek migrasi ke 'Pending'?"))) return;
 
     try {
         const res = await fetch(`${API_BASE}/jobs/${jobId}/obj-items/reset-status`, { method: 'POST' });
         if (res.ok) {
-            alert("Status objek migrasi berhasil di-reset!");
+            await uiAlert("Status objek migrasi berhasil di-reset!");
             loadObjItems(jobId);
         } else {
-            alert("Gagal me-reset status: " + await res.text());
+            await uiAlert("Gagal me-reset status: " + await res.text());
         }
     } catch (err) {
         console.error(err);
-        alert("Error: " + err.message);
+        await uiAlert("Error: " + err.message);
     }
 }
 
 async function resetCleanStatuses() {
     if (!activeJob) return;
     const jobId = activeJob.Id || activeJob.id;
-    if (!confirm("Apakah Anda yakin ingin me-reset semua status pembersihan tabel ke 'Pending'?")) return;
+    if (!(await uiConfirm("Apakah Anda yakin ingin me-reset semua status pembersihan tabel ke 'Pending'?"))) return;
 
     try {
         const res = await fetch(`${API_BASE}/jobs/${jobId}/clean-tables/reset-status`, { method: 'POST' });
         if (res.ok) {
-            alert("Status pembersihan tabel berhasil di-reset!");
+            await uiAlert("Status pembersihan tabel berhasil di-reset!");
             loadCleanTables(jobId);
         } else {
-            alert("Gagal me-reset status: " + await res.text());
+            await uiAlert("Gagal me-reset status: " + await res.text());
         }
     } catch (err) {
         console.error(err);
-        alert("Error: " + err.message);
+        await uiAlert("Error: " + err.message);
     }
 }
 
@@ -4446,7 +4457,7 @@ function closeCleanTableScannerModal() {
 }
 
 async function startCleanTableScan() {
-    if (!activeJob) { alert('Silakan pilih Job terlebih dahulu.'); return; }
+    if (!activeJob) { await uiAlert('Silakan pilih Job terlebih dahulu.'); return; }
     const jobId = activeJob.Id || activeJob.id;
     const container = document.getElementById('clean-table-scan-results');
     container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 2rem;"><i class="fa-solid fa-spinner fa-spin"></i> Memindai tabel dari Target DB...</p>`;
@@ -4501,7 +4512,7 @@ function toggleAllCleanTableScanItems(checked) {
 async function addSelectedCleanTableScanItems() {
     const checkboxes = document.querySelectorAll('.clean-scan-checkbox:checked');
     if (checkboxes.length === 0) {
-        alert("Pilih minimal satu tabel untuk ditambahkan!");
+        await uiAlert("Pilih minimal satu tabel untuk ditambahkan!");
         return;
     }
 
@@ -4521,14 +4532,14 @@ async function addSelectedCleanTableScanItems() {
             if (data.Skipped.length > 0) {
                 alertMsg += `\n\nSkipped (sudah terdaftar): ${data.Skipped.join(', ')}`;
             }
-            alert(alertMsg);
+            await uiAlert(alertMsg);
             closeCleanTableScannerModal();
             loadCleanTables(jobId);
         } else {
-            alert("Gagal menambahkan: " + await res.text());
+            await uiAlert("Gagal menambahkan: " + await res.text());
         }
     } catch (err) {
-        alert("Error: " + err.message);
+        await uiAlert("Error: " + err.message);
     }
 }
 
@@ -4614,7 +4625,7 @@ async function saveAppimsBackupSettings() {
     
     const path = pathInput.value.trim();
     if (!path) {
-        alert("Harap masukkan path direktori backup!");
+        await uiAlert("Harap masukkan path direktori backup!");
         return;
     }
     
@@ -4631,19 +4642,19 @@ async function saveAppimsBackupSettings() {
         });
         
         if (!res.ok) {
-            alert("Gagal menyimpan pengaturan: " + await res.text());
+            await uiAlert("Gagal menyimpan pengaturan: " + await res.text());
             return;
         }
         
         const data = await res.json();
         if (data.Success || data.success) {
-            alert(data.Message || "Pengaturan berhasil disimpan ke app-config.json!");
+            await uiAlert(data.Message || "Pengaturan berhasil disimpan ke app-config.json!");
             await loadAppimsBackupSettings();
         } else {
-            alert("Gagal: " + data.Message);
+            await uiAlert("Gagal: " + data.Message);
         }
     } catch (err) {
-        alert("Error koneksi: " + err.message);
+        await uiAlert("Error koneksi: " + err.message);
     } finally {
         btn.innerHTML = origHtml;
         btn.disabled = false;
@@ -4682,11 +4693,11 @@ async function scanAppimsBackupFiles() {
 
 async function runAppimsBackup() {
     if (!appimsBackupPathLoaded) {
-        alert("Path backup belum diatur atau kosong! Harap atur path folder backup terlebih dahulu.");
+        await uiAlert("Path backup belum diatur atau kosong! Harap atur path folder backup terlebih dahulu.");
         return;
     }
     
-    if (!confirm(`Apakah Anda yakin ingin mem-backup database AppIMS [appims] ke path:\n"${appimsBackupPathLoaded}"?`)) {
+    if (!(await uiConfirm(`Apakah Anda yakin ingin mem-backup database AppIMS [appims] ke path:\n"${appimsBackupPathLoaded}"?`))) {
         return;
     }
     
@@ -4701,19 +4712,19 @@ async function runAppimsBackup() {
         });
         
         if (!res.ok) {
-            alert("Gagal backup: " + await res.text());
+            await uiAlert("Gagal backup: " + await res.text());
             return;
         }
         
         const data = await res.json();
         if (data.Success || data.success) {
-            alert(data.Message || "Backup database AppIMS berhasil diselesaikan!");
+            await uiAlert(data.Message || "Backup database AppIMS berhasil diselesaikan!");
             scanAppimsBackupFiles();
         } else {
-            alert("Gagal backup: " + data.Message);
+            await uiAlert("Gagal backup: " + data.Message);
         }
     } catch (err) {
-        alert("Terjadi kesalahan koneksi saat backup: " + err.message);
+        await uiAlert("Terjadi kesalahan koneksi saat backup: " + err.message);
     } finally {
         btn.innerHTML = origHtml;
         btn.disabled = false;
@@ -4731,7 +4742,7 @@ function toggleAppimsRestoreMode() {
 async function runAppimsRestore() {
     const backupFile = document.getElementById('appims-restore-file-select').value;
     if (!backupFile) {
-        alert("Harap pilih file backup (.bak) yang akan di-restore!");
+        await uiAlert("Harap pilih file backup (.bak) yang akan di-restore!");
         return;
     }
     
@@ -4741,11 +4752,11 @@ async function runAppimsRestore() {
     if (restoreMode === 'new') {
         restoreDbName = document.getElementById('appims-restore-new-db-name').value.trim();
         if (!restoreDbName) {
-            alert("Harap masukkan nama database baru untuk restore!");
+            await uiAlert("Harap masukkan nama database baru untuk restore!");
             return;
         }
         if (!/^[a-zA-Z0-9_-]+$/.test(restoreDbName)) {
-            alert("Nama database hanya boleh mengandung huruf, angka, underscore (_), atau dash (-).");
+            await uiAlert("Nama database hanya boleh mengandung huruf, angka, underscore (_), atau dash (-).");
             return;
         }
     }
@@ -4762,14 +4773,25 @@ async function runAppimsRestore() {
                      `Apakah Anda yakin ingin melanjutkan?`;
     }
     
-    if (!confirm(confirmMsg)) {
+    if (!(await uiConfirm(confirmMsg))) {
         return;
     }
     
     if (restoreMode === 'existing') {
-        const doubleCheck = prompt(`Harap ketik nama database AppIMS "${restoreDbName}" untuk mengonfirmasi penulisan ulang database:`);
+        const doubleCheck = await uiPrompt(
+            `Ketik nama database AppIMS untuk mengonfirmasi penulisan ulang database.`,
+            {
+                title: 'Konfirmasi Restore AppIMS',
+                placeholder: restoreDbName,
+                matchValue: restoreDbName,
+                matchError: 'Nama database tidak cocok. Restore dibatalkan.',
+                variant: 'warning'
+            }
+        );
         if (doubleCheck !== restoreDbName) {
-            alert("Konfirmasi nama database tidak sesuai. Proses restore dibatalkan.");
+            if (doubleCheck !== null) {
+                await uiAlert("Konfirmasi nama database tidak sesuai. Proses restore dibatalkan.", { variant: 'error' });
+            }
             return;
         }
     }
@@ -4790,21 +4812,21 @@ async function runAppimsRestore() {
         });
         
         if (!res.ok) {
-            alert("Gagal me-restore: " + await res.text());
+            await uiAlert("Gagal me-restore: " + await res.text());
             return;
         }
         
         const data = await res.json();
         if (data.Success || data.success) {
-            alert(data.Message || "Restore database AppIMS berhasil diselesaikan!");
+            await uiAlert(data.Message || "Restore database AppIMS berhasil diselesaikan!");
             if (restoreDbName === 'existing') {
                 window.location.reload();
             }
         } else {
-            alert("Gagal me-restore: " + data.Message);
+            await uiAlert("Gagal me-restore: " + data.Message);
         }
     } catch (err) {
-        alert("Terjadi kesalahan koneksi saat restore: " + err.message);
+        await uiAlert("Terjadi kesalahan koneksi saat restore: " + err.message);
     } finally {
         btn.innerHTML = origHtml;
         btn.disabled = false;
@@ -5069,14 +5091,14 @@ async function deleteSavedConnectionClick() {
     
     const id = parseInt(select.value);
     if (isNaN(id) || id <= 0) {
-        alert("Pilih histori koneksi yang ingin dihapus terlebih dahulu!");
+        await uiAlert("Pilih histori koneksi yang ingin dihapus terlebih dahulu!");
         return;
     }
     
     const conn = savedConnectionsCache.find(c => (c.Id || c.id) === id);
     const connName = conn ? (conn.ConnectionName || conn.connectionName) : "koneksi";
     
-    if (!confirm(`Apakah Anda yakin ingin menghapus "${connName}" dari histori bersama?`)) {
+    if (!(await uiConfirm(`Apakah Anda yakin ingin menghapus "${connName}" dari histori bersama?`))) {
         return;
     }
     
@@ -5086,7 +5108,7 @@ async function deleteSavedConnectionClick() {
         });
         if (!res.ok) throw new Error("Gagal menghapus koneksi");
         
-        alert("Koneksi berhasil dihapus dari histori bersama.");
+        await uiAlert("Koneksi berhasil dihapus dari histori bersama.");
         await loadSavedConnections();
         
         // Reset connection fields
@@ -5102,7 +5124,7 @@ async function deleteSavedConnectionClick() {
         toggleQueryAuthFields();
     } catch (err) {
         console.error(err);
-        alert("Gagal menghapus histori koneksi: " + err.message);
+        await uiAlert("Gagal menghapus histori koneksi: " + err.message);
     }
 }
 
@@ -5113,12 +5135,12 @@ async function connectQueryConsole(isSilent = false, targetDatabase = null) {
     const password = document.getElementById('query-password').value;
     
     if (!serverName) {
-        if (!isSilent) alert("Harap masukkan Server Name!");
+        if (!isSilent) await uiAlert("Harap masukkan Server Name!");
         return;
     }
     
     if (authType === 'SQL' && !login) {
-        if (!isSilent) alert("Harap masukkan Login username!");
+        if (!isSilent) await uiAlert("Harap masukkan Login username!");
         return;
     }
     
@@ -5219,7 +5241,7 @@ async function connectQueryConsole(isSilent = false, targetDatabase = null) {
         await loadQueryConsoleSchema();
     } catch (err) {
         if (!isSilent) {
-            alert("Koneksi Gagal: " + err.message);
+            await uiAlert("Koneksi Gagal: " + err.message);
         } else {
             console.error("Auto-connect failed:", err.message);
             disconnectQueryConsole();
@@ -5871,9 +5893,9 @@ const schemaDummyResults = [
     { name: "dbo.SessionTokens", type: "Table", status: "Missing", info: "Objek tidak ditemukan sama sekali di Target DB.", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.SessionTokens')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06);"><i class="fa-solid fa-plus"></i> Buat Baru</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.SessionTokens')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
 
     // Outdated SPs (3 items as shown in stats card)
-    { name: "dbo.sp_GetCustomerReport", type: "Stored Procedure", status: "Outdated", info: "Hash DDL berbeda (Script source memiliki modifikasi terbaru).", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="alert('Pembaruan Stored Procedure berhasil dieksekusi!')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);"><i class="fa-solid fa-arrows-spin"></i> Update SP</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.sp_GetCustomerReport')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
-    { name: "dbo.sp_ProcessOrder", type: "Stored Procedure", status: "Outdated", info: "Hash DDL berbeda (Script source memiliki modifikasi terbaru).", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="alert('Pembaruan Stored Procedure berhasil dieksekusi!')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);"><i class="fa-solid fa-arrows-spin"></i> Update SP</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.sp_ProcessOrder')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
-    { name: "dbo.sp_SyncInventory", type: "Stored Procedure", status: "Outdated", info: "Hash DDL berbeda (Script source memiliki modifikasi terbaru).", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="alert('Pembaruan Stored Procedure berhasil dieksekusi!')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);"><i class="fa-solid fa-arrows-spin"></i> Update SP</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.sp_SyncInventory')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
+    { name: "dbo.sp_GetCustomerReport", type: "Stored Procedure", status: "Outdated", info: "Hash DDL berbeda (Script source memiliki modifikasi terbaru).", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="await uiAlert('Pembaruan Stored Procedure berhasil dieksekusi!')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);"><i class="fa-solid fa-arrows-spin"></i> Update SP</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.sp_GetCustomerReport')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
+    { name: "dbo.sp_ProcessOrder", type: "Stored Procedure", status: "Outdated", info: "Hash DDL berbeda (Script source memiliki modifikasi terbaru).", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="await uiAlert('Pembaruan Stored Procedure berhasil dieksekusi!')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);"><i class="fa-solid fa-arrows-spin"></i> Update SP</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.sp_ProcessOrder')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
+    { name: "dbo.sp_SyncInventory", type: "Stored Procedure", status: "Outdated", info: "Hash DDL berbeda (Script source memiliki modifikasi terbaru).", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="await uiAlert('Pembaruan Stored Procedure berhasil dieksekusi!')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);"><i class="fa-solid fa-arrows-spin"></i> Update SP</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.sp_SyncInventory')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
 
     // Missing Function (1 item as shown in stats card)
     { name: "dbo.fn_CalculateTax", type: "Function", status: "Missing", info: "Objek tidak ditemukan sama sekali di Target DB.", action: `<div style="display: flex; gap: 0.4rem;"><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.fn_CalculateTax')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(99,102,241,0.06);"><i class="fa-solid fa-plus"></i> Buat Baru</button><button class="btn btn-secondary" onclick="openSchemaDiffModal('dbo.fn_CalculateTax')" style="width: auto; padding: 0.35rem 0.65rem; font-size: 0.72rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.05);"><i class="fa-solid fa-code-compare"></i> Compare DDL</button></div>` },
@@ -6151,7 +6173,7 @@ async function clearSchemaComparison() {
     if (!activeJob) return;
     const jobId = activeJob.Id || activeJob.id;
 
-    if (!confirm("Apakah Anda yakin ingin menghapus hasil pemindaian skema yang tersimpan?")) {
+    if (!(await uiConfirm("Apakah Anda yakin ingin menghapus hasil pemindaian skema yang tersimpan?"))) {
         return;
     }
 
@@ -6192,7 +6214,7 @@ async function runSchemaComparison() {
     const btn = document.getElementById('btn-schema-scan') || document.querySelector('#inner-content-schema button[onclick="runSchemaComparison()"]');
     if (!btn) return;
     if (!activeJob) {
-        alert("Pilih job terlebih dahulu sebelum menjalankan pemindaian skema.");
+        await uiAlert("Pilih job terlebih dahulu sebelum menjalankan pemindaian skema.");
         return;
     }
     
@@ -6272,7 +6294,7 @@ async function runSchemaComparison() {
                 </tr>
             `;
         }
-        alert("Pemindaian skema gagal: " + (err.message || err));
+        await uiAlert("Pemindaian skema gagal: " + (err.message || err));
     } finally {
         if (btn.id === 'btn-schema-scan' && schemaComparisonResults.length > 0) {
             btn.innerHTML = `<i class="fa-solid fa-arrows-rotate"></i> Memindai Ulang`;
@@ -6580,10 +6602,10 @@ const columnSyncDetails = {
     }
 };
 
-function openColumnSyncModal(tableName) {
+async function openColumnSyncModal(tableName) {
     const detail = schemaColumnSyncDetails[tableName];
     if (!detail) {
-        alert("Detail sinkronisasi kolom untuk " + tableName + " tidak tersedia.");
+        await uiAlert("Detail sinkronisasi kolom untuk " + tableName + " tidak tersedia.");
         return;
     }
 
@@ -6632,8 +6654,8 @@ function openColumnSyncModal(tableName) {
     // Configure execute button
     const execBtn = document.getElementById('btn-execute-column-sync');
     if (execBtn) {
-        execBtn.onclick = () => {
-            alert('Sinkronisasi kolom untuk tabel ' + tableName + ' berhasil dieksekusi secara sukses!');
+        execBtn.onclick = async () => {
+            await uiAlert('Sinkronisasi kolom untuk tabel ' + tableName + ' berhasil dieksekusi secara sukses!');
             closeColumnSyncModal();
             markObjectAsSynced(tableName);
         };
@@ -6650,10 +6672,10 @@ function closeColumnSyncModal() {
     }
 }
 
-function openSchemaDiffModal(objName) {
+async function openSchemaDiffModal(objName) {
     const ddl = schemaComparisonDdl[objName];
     if (!ddl) {
-        alert("Data DDL untuk objek " + objName + " tidak ditemukan!");
+        await uiAlert("Data DDL untuk objek " + objName + " tidak ditemukan!");
         return;
     }
 
@@ -6674,8 +6696,8 @@ function openSchemaDiffModal(objName) {
     if (applyBtn) {
         if (ddl.target.includes('tidak ditemukan')) {
             applyBtn.innerHTML = `<i class="fa-solid fa-plus"></i> Buat di Target DB`;
-            applyBtn.onclick = () => {
-                alert('Objek ' + objName + ' berhasil dibuat di database target!');
+            applyBtn.onclick = async () => {
+                await uiAlert('Objek ' + objName + ' berhasil dibuat di database target!');
                 closeSchemaDiffModal();
                 markObjectAsSynced(objName);
             };
@@ -6684,8 +6706,8 @@ function openSchemaDiffModal(objName) {
             applyBtn.style.display = 'none'; // Identik
         } else {
             applyBtn.innerHTML = `<i class="fa-solid fa-arrows-spin"></i> Sinkronisasikan Target DDL`;
-            applyBtn.onclick = () => {
-                alert('Definisi DDL target untuk ' + objName + ' berhasil disinkronkan dengan Source DB!');
+            applyBtn.onclick = async () => {
+                await uiAlert('Definisi DDL target untuk ' + objName + ' berhasil disinkronkan dengan Source DB!');
                 closeSchemaDiffModal();
                 markObjectAsSynced(objName);
             };
@@ -6836,7 +6858,7 @@ const queryConsoleDummyResults = {
 async function runQueryConsole() {
     const queryText = (queryConsoleEditor ? queryConsoleEditor.getValue() : '').trim();
     if (!queryText) {
-        alert("Harap masukkan query SQL!");
+        await uiAlert("Harap masukkan query SQL!");
         return;
     }
 
@@ -7048,10 +7070,10 @@ function clearQueryConsole() {
     document.getElementById('query-results-box').style.display = 'none';
 }
 
-function exportQueryResults() {
+async function exportQueryResults() {
     const data = window.lastQueryResults;
     if (!data || !data.Headers || !data.Rows || data.Rows.length === 0) {
-        alert("Tidak ada data hasil kueri untuk diekspor!");
+        await uiAlert("Tidak ada data hasil kueri untuk diekspor!");
         return;
     }
 
@@ -7075,10 +7097,10 @@ function exportQueryResults() {
     document.body.removeChild(link);
 }
 
-function copyQueryResultGrid() {
+async function copyQueryResultGrid() {
     const data = window.lastQueryResults;
     if (!data || !data.Headers || !data.Rows || data.Rows.length === 0) {
-        alert("Tidak ada data hasil kueri untuk disalin!");
+        await uiAlert("Tidak ada data hasil kueri untuk disalin!");
         return;
     }
 
@@ -7094,12 +7116,12 @@ function copyQueryResultGrid() {
     });
 
     navigator.clipboard.writeText(textContent)
-        .then(() => {
-            alert("Hasil kueri berhasil disalin ke clipboard beserta header!");
+        .then(async () => {
+            await uiAlert("Hasil kueri berhasil disalin ke clipboard beserta header!");
         })
-        .catch(err => {
+        .catch(async (err) => {
             console.error("Gagal menyalin hasil kueri: ", err);
-            alert("Gagal menyalin data: " + err.message);
+            await uiAlert("Gagal menyalin data: " + err.message);
         });
 }
 function initTableResizers(table) {
@@ -7272,11 +7294,11 @@ function onBeautifierLangChange() {
     beautifyCode({ silent: true });
 }
 
-function autoDetectBeautifierLang() {
+async function autoDetectBeautifierLang() {
     if (!beautifierLeftEditor) return;
     const code = beautifierLeftEditor.getValue().trim();
     if (!code) {
-        alert("Editor kiri kosong! Harap masukkan kode terlebih dahulu.");
+        await uiAlert("Editor kiri kosong! Harap masukkan kode terlebih dahulu.");
         return;
     }
 
@@ -7397,13 +7419,13 @@ function preprocessSqlForDeclare(sql) {
     return lines.join('\n');
 }
 
-function beautifyCode(options = {}) {
+async function beautifyCode(options = {}) {
     if (!beautifierLeftEditor || !beautifierRightEditor) return;
     const code = beautifierLeftEditor.getValue().trim();
     
     if (!code) {
         if (!options.silent) {
-            alert("Harap masukkan kode terlebih dahulu di panel kiri!");
+            await uiAlert("Harap masukkan kode terlebih dahulu di panel kiri!");
         }
         beautifierRightEditor.setValue("");
         updateBeautifierStatus('Siap', 'idle');
@@ -7446,7 +7468,7 @@ function beautifyCode(options = {}) {
         updateBeautifierStatus('Berhasil diformat', 'success');
     } catch (err) {
         if (!options.silent) {
-            alert("Gagal merapikan kode: " + err.message);
+            await uiAlert("Gagal merapikan kode: " + err.message);
         }
         updateBeautifierStatus('Input tidak valid', 'error');
     }
@@ -7515,7 +7537,7 @@ function fallbackFormatSqlString(sql) {
     return formatted.trim();
 }
 
-function copyBeautifiedCode() {
+async function copyBeautifiedCode() {
     if (!beautifierRightEditor) return;
     const code = beautifierRightEditor.getValue();
     const copyBtn = document.getElementById('beautifier-copy-btn');
@@ -7536,8 +7558,8 @@ function copyBeautifiedCode() {
             }
             updateBeautifierStatus('Disalin ke clipboard', 'success');
         })
-        .catch(err => {
-            alert("Gagal menyalin: " + err.message);
+        .catch(async (err) => {
+            await uiAlert("Gagal menyalin: " + err.message);
         });
 }
 
@@ -7548,9 +7570,9 @@ function clearBeautifier() {
 }
 
 // ── Generate INSERT Script Logic ───────────────────────────────────────────
-function openGenerateInsertModal() {
+async function openGenerateInsertModal() {
     if (!queryConsoleActiveServer) {
-        alert("Hubungkan ke database server terlebih dahulu!");
+        await uiAlert("Hubungkan ke database server terlebih dahulu!");
         return;
     }
     
@@ -7669,7 +7691,7 @@ function selectTableForInsert(tableName) {
 async function executeGenerateInsertScript() {
     const tableSelect = document.getElementById('insert-table-select');
     if (!tableSelect || !tableSelect.value) {
-        alert("Pilih tabel terlebih dahulu!");
+        await uiAlert("Pilih tabel terlebih dahulu!");
         return;
     }
     
@@ -7729,7 +7751,7 @@ async function executeGenerateInsertScript() {
             queryConsoleEditor.focus();
         }
         
-        alert(`Script INSERT berhasil digenerate (${data.RowCount} baris) dan dimasukkan ke editor!`);
+        await uiAlert(`Script INSERT berhasil digenerate (${data.RowCount} baris) dan dimasukkan ke editor!`);
         closeGenerateInsertModal();
     } catch (err) {
         console.error(err);
@@ -7738,7 +7760,7 @@ async function executeGenerateInsertScript() {
             statusDiv.style.color = '#f43f5e';
             statusDiv.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Error: ' + err.message;
         }
-        alert("Gagal memproses pembuatan script: " + err.message);
+        await uiAlert("Gagal memproses pembuatan script: " + err.message);
     } finally {
         if (btn) {
             btn.innerHTML = origHtml;
@@ -7752,7 +7774,7 @@ let schemaViewerActiveCode = "";
 
 async function searchSchemaObjects() {
     if (!queryConsoleActiveServer) {
-        alert("Hubungkan ke database server terlebih dahulu!");
+        await uiAlert("Hubungkan ke database server terlebih dahulu!");
         return;
     }
 
@@ -7832,10 +7854,10 @@ async function searchSchemaObjects() {
     }
 }
 
-function copySchemaObjectList() {
+async function copySchemaObjectList() {
     const objects = window.lastSchemaObjects;
     if (!objects || objects.length === 0) {
-        alert("Tidak ada daftar objek hasil pencarian untuk disalin!");
+        await uiAlert("Tidak ada daftar objek hasil pencarian untuk disalin!");
         return;
     }
 
@@ -7847,12 +7869,12 @@ function copySchemaObjectList() {
     });
 
     navigator.clipboard.writeText(textContent)
-        .then(() => {
-            alert(`Daftar objek (${objects.length} item) berhasil disalin ke clipboard!`);
+        .then(async () => {
+            await uiAlert(`Daftar objek (${objects.length} item) berhasil disalin ke clipboard!`);
         })
-        .catch(err => {
+        .catch(async (err) => {
             console.error("Gagal menyalin daftar objek: ", err);
-            alert("Gagal menyalin data: " + err.message);
+            await uiAlert("Gagal menyalin data: " + err.message);
         });
 }
 
@@ -7958,25 +7980,25 @@ function closeSchemaViewerModal() {
     }
 }
 
-function copySchemaToClipboard() {
+async function copySchemaToClipboard() {
     if (!schemaViewerActiveCode) {
-        alert("Tidak ada kode untuk disalin!");
+        await uiAlert("Tidak ada kode untuk disalin!");
         return;
     }
 
     navigator.clipboard.writeText(schemaViewerActiveCode)
-        .then(() => {
-            alert("Skema SQL berhasil disalin ke clipboard!");
+        .then(async () => {
+            await uiAlert("Skema SQL berhasil disalin ke clipboard!");
         })
-        .catch(err => {
+        .catch(async (err) => {
             console.error("Gagal menyalin: ", err);
-            alert("Gagal menyalin teks.");
+            await uiAlert("Gagal menyalin teks.");
         });
 }
 
-function insertSchemaToEditor() {
+async function insertSchemaToEditor() {
     if (!schemaViewerActiveCode) {
-        alert("Tidak ada kode untuk dimasukkan!");
+        await uiAlert("Tidak ada kode untuk dimasukkan!");
         return;
     }
 
@@ -7988,10 +8010,10 @@ function insertSchemaToEditor() {
         queryConsoleEditor.executeEdits("insert-schema", [textEdit]);
         queryConsoleEditor.focus();
         
-        alert("Skema SQL berhasil dimasukkan ke SQL Editor!");
+        await uiAlert("Skema SQL berhasil dimasukkan ke SQL Editor!");
         closeSchemaViewerModal();
     } else {
-        alert("SQL Editor tidak ditemukan!");
+        await uiAlert("SQL Editor tidak ditemukan!");
     }
 }
 
@@ -8159,7 +8181,7 @@ async function createNewWhiteboardExec() {
     const tagName = document.getElementById('whiteboard-new-tag').value.trim();
     
     if (!aliasName) {
-        alert("Nama sketsa (Alias Name) tidak boleh kosong!");
+        await uiAlert("Nama sketsa (Alias Name) tidak boleh kosong!");
         return;
     }
     
@@ -8186,11 +8208,11 @@ async function createNewWhiteboardExec() {
             openWhiteboardWorkspace(saved.Id || saved.id);
         } else {
             const errText = await res.text();
-            alert("Gagal membuat sketsa: " + errText);
+            await uiAlert("Gagal membuat sketsa: " + errText);
         }
     } catch (err) {
         console.error("Gagal menyimpan sketsa baru: ", err);
-        alert("Terjadi kesalahan: " + err.message);
+        await uiAlert("Terjadi kesalahan: " + err.message);
     }
 }
 
@@ -8198,7 +8220,7 @@ async function openWhiteboardWorkspace(id) {
     try {
         const res = await fetch(`${API_BASE}/whiteboards/${id}`);
         if (!res.ok) {
-            alert("Gagal memuat detail sketsa.");
+            await uiAlert("Gagal memuat detail sketsa.");
             return;
         }
         const wb = await res.json();
@@ -8258,7 +8280,7 @@ async function openWhiteboardWorkspace(id) {
         );
     } catch (err) {
         console.error("Error open whiteboard workspace: ", err);
-        alert("Terjadi kesalahan saat membuka sketsa: " + err.message);
+        await uiAlert("Terjadi kesalahan saat membuka sketsa: " + err.message);
     }
 }
 
@@ -8302,7 +8324,7 @@ async function saveActiveWhiteboard() {
         }
     } catch (err) {
         console.error("Gagal menyimpan whiteboard: ", err);
-        alert("Gagal menyimpan sketsa: " + err.message);
+        await uiAlert("Gagal menyimpan sketsa: " + err.message);
         btn.innerHTML = originalText;
         btn.disabled = false;
     }
@@ -8323,14 +8345,14 @@ async function executeSaveWhiteboard(id, json, thumbnailBase64, btn, originalTex
         });
         
         if (res.ok) {
-            alert("Sketsa berhasil disimpan!");
+            await uiAlert("Sketsa berhasil disimpan!");
         } else {
             const errText = await res.text();
-            alert("Gagal menyimpan sketsa: " + errText);
+            await uiAlert("Gagal menyimpan sketsa: " + errText);
         }
     } catch (err) {
         console.error(err);
-        alert("Error saving: " + err.message);
+        await uiAlert("Error saving: " + err.message);
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
@@ -8356,15 +8378,15 @@ function closeWhiteboardWorkspace() {
     loadWhiteboards();
 }
 
-function resetWorkspaceCanvas() {
+async function resetWorkspaceCanvas() {
     console.log("resetWorkspaceCanvas called");
     if (!excalidrawReactRef) {
         console.warn("excalidrawReactRef is null!");
-        alert("Kanvas belum siap. Coba beberapa saat lagi.");
+        await uiAlert("Kanvas belum siap. Coba beberapa saat lagi.");
         return;
     }
     
-    if (confirm("Apakah Anda yakin ingin mengosongkan kanvas sketsa saat ini? Tindakan ini tidak dapat dibatalkan!")) {
+    if (await uiConfirm("Apakah Anda yakin ingin mengosongkan kanvas sketsa saat ini? Tindakan ini tidak dapat dibatalkan!")) {
         try {
             console.log("Resetting canvas scene");
             excalidrawReactRef.updateScene({
@@ -8373,7 +8395,7 @@ function resetWorkspaceCanvas() {
             console.log("Canvas scene reset successfully");
         } catch (e) {
             console.error("Gagal reset scene:", e);
-            alert("Gagal mengosongkan kanvas: " + e.message);
+            await uiAlert("Gagal mengosongkan kanvas: " + e.message);
         }
     }
 }
@@ -8385,7 +8407,7 @@ async function deleteWhiteboard(id, event) {
         event.stopPropagation();
     }
     
-    const confirmed = confirm("Apakah Anda yakin ingin menghapus sketsa coretan ini secara permanen?");
+    const confirmed = await uiConfirm("Apakah Anda yakin ingin menghapus sketsa coretan ini secara permanen?");
     console.log("Confirmation result:", confirmed);
     if (!confirmed) {
         return;
@@ -8403,11 +8425,11 @@ async function deleteWhiteboard(id, event) {
         } else {
             const errText = await res.text();
             console.error("Deletion failed on server:", errText);
-            alert("Gagal menghapus sketsa: " + errText);
+            await uiAlert("Gagal menghapus sketsa: " + errText);
         }
     } catch (err) {
         console.error("Gagal menghapus: ", err);
-        alert("Terjadi kesalahan saat menghapus: " + err.message);
+        await uiAlert("Terjadi kesalahan saat menghapus: " + err.message);
     }
 }
 
