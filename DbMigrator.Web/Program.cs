@@ -1326,6 +1326,17 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request,
         }
 
         using var conn = new SqlConnection(builder.ConnectionString);
+        
+        // Capture PRINT output (InfoMessage events from SQL Server)
+        var printMessages = new List<string>();
+        conn.FireInfoMessageEventOnUserErrors = true;
+        conn.InfoMessage += (sender, e) => {
+            foreach (SqlError err in e.Errors)
+            {
+                printMessages.Add(err.Message);
+            }
+        };
+        
         await conn.OpenAsync(cancellationToken);
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -1341,9 +1352,14 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request,
 
             if (reader.FieldCount == 0)
             {
-                // Command completed without returning a result set (e.g. UPDATE, INSERT, DELETE)
-                headers.Add("Info");
-                rows.Add(new List<object> { $"{reader.RecordsAffected} baris terpengaruh." });
+                // Command completed without returning a result set (e.g. UPDATE, INSERT, DELETE, PRINT-only)
+                var affected = reader.RecordsAffected;
+                if (affected >= 0)
+                {
+                    headers.Add("Info");
+                    rows.Add(new List<object> { $"({affected} baris terpengaruh)" });
+                }
+                // If affected < 0 it's a PRINT/message-only statement — skip adding empty table
             }
             else
             {
@@ -1364,7 +1380,10 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request,
                 }
             }
 
-            tables.Add(new QueryResultTable { Headers = headers, Rows = rows });
+            if (headers.Count > 0)
+            {
+                tables.Add(new QueryResultTable { Headers = headers, Rows = rows });
+            }
         } while (await reader.NextResultAsync(cancellationToken));
 
         stopwatch.Stop();
@@ -1375,7 +1394,8 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request,
             Tables = tables,
             Headers = firstTable?.Headers ?? new List<string>(), 
             Rows = firstTable?.Rows ?? new List<List<object>>(), 
-            ExecutionTimeMs = stopwatch.ElapsedMilliseconds 
+            ExecutionTimeMs = stopwatch.ElapsedMilliseconds,
+            PrintMessages = printMessages
         });
     }
     catch (OperationCanceledException)

@@ -1,4 +1,4 @@
-﻿<!-- ============================================================================
+<!-- ============================================================================
      MODAL: GENERATE INSERT SCRIPT
      ============================================================================ -->
 <div class="modal-overlay" id="generate-insert-modal">
@@ -61,7 +61,12 @@
                     <span>Modified: <strong id="schema-viewer-modified" style="color: #ffffff;">-</strong></span>
                 </div>
             </div>
-            <button class="close-btn" onclick="closeSchemaViewerModal()">&times;</button>
+            <div style="display: flex; align-items: center; gap: 0.65rem;">
+                <button onclick="toggleSchemaViewerMaximize()" title="Maximize / Restore" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; transition: color 0.15s ease;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='var(--text-muted)'">
+                    <i class="fa-solid fa-expand" id="schema-viewer-maximize-icon"></i>
+                </button>
+                <button class="close-btn" onclick="closeSchemaViewerModal()" style="margin: 0;">&times;</button>
+            </div>
         </div>
         <div class="modal-body" style="padding: 1.25rem 1.75rem;">
             <div style="margin-bottom: 0.85rem; display: flex; gap: 0.5rem; justify-content: flex-end;">

@@ -1967,7 +1967,16 @@ const queryConsoleDummyResults = {
 };
 
 async function runQueryConsole() {
-    const queryText = (queryConsoleEditor ? queryConsoleEditor.getValue() : '').trim();
+    let queryText = '';
+    if (queryConsoleEditor) {
+        const selection = queryConsoleEditor.getSelection();
+        if (selection && !selection.isEmpty()) {
+            queryText = queryConsoleEditor.getModel().getValueInRange(selection);
+        } else {
+            queryText = queryConsoleEditor.getValue();
+        }
+    }
+    queryText = (queryText || '').trim();
     if (!queryText) {
         await uiAlert("Harap masukkan query SQL!");
         return;
@@ -2028,9 +2037,13 @@ async function runQueryConsole() {
         const data = await res.json();
 
         if (!data.Success) {
-            statusText.textContent = "Error: " + (data.Message || "Kesalahan eksekusi SQL");
+            const errMsg = data.Message || 'Kesalahan eksekusi SQL';
+            statusText.textContent = 'Error: ' + errMsg;
             statusText.style.color = '#f43f5e';
-            rowsCount.textContent = "Gagal (0 baris)";
+            rowsCount.textContent = 'Gagal';
+            // Show error in Messages tab
+            renderQueryMessages([`Msg 0, Level 16, State 1\n${errMsg}`], data.ExecutionTimeMs || 0, true);
+            switchQueryResultsTab('messages');
             return;
         }
 
@@ -2039,15 +2052,19 @@ async function runQueryConsole() {
             tables.push({ Headers: data.Headers, Rows: data.Rows });
         }
 
+        // ── Handle PRINT messages ──────────────────────────────────────────
+        const printMessages = data.PrintMessages || [];
+        renderQueryMessages(printMessages, data.ExecutionTimeMs, false);
+
         window.queryConsoleAllResults = tables;
 
-        let containerHtml = "";
+        let containerHtml = '';
         
         if (tables.length > 1) {
             containerHtml += `<div class="query-results-tabs">`;
             tables.forEach((table, index) => {
-                const rowCountText = table.Rows.length === 0 ? "0 baris" : `${table.Rows.length} baris`;
-                const isFirst = index === 0 ? "active" : "";
+                const rowCountText = table.Rows.length === 0 ? '0 baris' : `${table.Rows.length} baris`;
+                const isFirst = index === 0 ? 'active' : '';
                 containerHtml += `
                     <button class="query-tab-btn ${isFirst}" data-tab-idx="${index}" onclick="switchQueryTab(${index})">
                         <i class="fa-solid fa-table"></i> Hasil ${index + 1} (${rowCountText})
@@ -2093,36 +2110,46 @@ async function runQueryConsole() {
             initTableResizers(tbl);
         });
 
-        statusText.textContent = "Kueri berhasil dijalankan.";
+        statusText.textContent = 'Kueri berhasil dijalankan.';
         statusText.style.color = 'var(--accent-teal)';
 
         if (tables.length > 1) {
             const totalRows = tables.reduce((acc, t) => acc + t.Rows.length, 0);
             rowsCount.textContent = `${tables.length} tabel dikembalikan (total ${totalRows} baris) dalam ${data.ExecutionTimeMs}ms`;
-        } else {
+        } else if (tables.length === 1) {
             const rowCount = tables[0]?.Rows.length ?? 0;
-            rowsCount.textContent = `${rowCount} baris displayed (${data.ExecutionTimeMs}ms)`;
+            rowsCount.textContent = `${rowCount} baris (${data.ExecutionTimeMs}ms)`;
+        } else {
+            // PRINT-only or message-only query
+            rowsCount.textContent = `${data.ExecutionTimeMs}ms`;
         }
 
-        // Initialize active tab as the export target
+        // If tables have data - show Results tab, otherwise show Messages
         if (tables.length > 0) {
+            switchQueryResultsTab('results');
             window.lastQueryResults = {
                 Headers: tables[0].Headers,
                 Rows: tables[0].Rows
             };
         } else {
             window.lastQueryResults = null;
+            if (printMessages.length > 0) {
+                switchQueryResultsTab('messages');
+            }
         }
     } catch (err) {
         if (err.name === 'AbortError') {
-            statusText.textContent = "Eksekusi kueri dibatalkan oleh pengguna.";
+            statusText.textContent = 'Eksekusi kueri dibatalkan oleh pengguna.';
             statusText.style.color = 'var(--text-muted, #5d7290)';
-            rowsCount.textContent = "Dibatalkan";
+            rowsCount.textContent = 'Dibatalkan';
+            renderQueryMessages(['Query dibatalkan oleh pengguna.'], 0, false);
         } else {
             console.error(err);
-            statusText.textContent = "Error: " + err.message;
+            statusText.textContent = 'Error: ' + err.message;
             statusText.style.color = '#f43f5e';
-            rowsCount.textContent = "Gagal";
+            rowsCount.textContent = 'Gagal';
+            renderQueryMessages([err.message], 0, true);
+            switchQueryResultsTab('messages');
         }
     } finally {
         queryConsoleAbortController = null;
@@ -2178,7 +2205,87 @@ function clearQueryConsole() {
     if (queryConsoleEditor) {
         queryConsoleEditor.setValue('');
     }
-    document.getElementById('query-results-box').style.display = 'none';
+    const box = document.getElementById('query-results-box');
+    if (box) box.style.display = 'none';
+    // Reset messages tab
+    const msgContent = document.getElementById('query-messages-content');
+    if (msgContent) msgContent.innerHTML = '';
+    const badge = document.getElementById('query-tab-messages-badge');
+    if (badge) badge.style.display = 'none';
+    window.lastQueryResults = null;
+    window.queryConsoleAllResults = [];
+}
+
+// ── Results / Messages tab switcher (SSMS-style) ──────────────────────────
+function switchQueryResultsTab(tabName) {
+    const resultsPanel = document.getElementById('query-results-container');
+    const messagesPanel = document.getElementById('query-messages-container');
+    const tabResults = document.getElementById('query-tab-results');
+    const tabMessages = document.getElementById('query-tab-messages');
+
+    if (!resultsPanel || !messagesPanel || !tabResults || !tabMessages) return;
+
+    if (tabName === 'results') {
+        resultsPanel.style.display = 'block';
+        messagesPanel.style.display = 'none';
+        // Active style for Results
+        tabResults.style.background = 'rgba(45, 212, 191, 0.12)';
+        tabResults.style.color = 'var(--accent-teal)';
+        tabResults.style.borderTop = '2px solid var(--accent-teal)';
+        // Inactive style for Messages
+        tabMessages.style.background = 'transparent';
+        tabMessages.style.color = 'var(--text-muted)';
+        tabMessages.style.borderTop = '2px solid transparent';
+    } else {
+        resultsPanel.style.display = 'none';
+        messagesPanel.style.display = 'block';
+        // Active style for Messages
+        tabMessages.style.background = 'rgba(251, 146, 60, 0.08)';
+        tabMessages.style.color = '#fb923c';
+        tabMessages.style.borderTop = '2px solid #fb923c';
+        // Inactive style for Results
+        tabResults.style.background = 'transparent';
+        tabResults.style.color = 'var(--text-muted)';
+        tabResults.style.borderTop = '2px solid transparent';
+    }
+}
+
+// ── Render PRINT messages to Messages tab ─────────────────────────────────
+function renderQueryMessages(messages, executionTimeMs, isError) {
+    const msgContent = document.getElementById('query-messages-content');
+    const badge = document.getElementById('query-tab-messages-badge');
+    if (!msgContent) return;
+
+    const timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    
+    let html = '';
+    
+    if (messages && messages.length > 0) {
+        messages.forEach(msg => {
+            const color = isError ? '#f87171' : '#e2e8f0';
+            const icon = isError 
+                ? '<span style="color:#f87171;">⊗</span> ' 
+                : '<span style="color:#6ee7b7;">ℹ</span> ';
+            html += `<div style="color: ${color}; padding: 1px 0;">${icon}${escapeHtml(msg)}</div>`;
+        });
+    }
+    
+    // Always add execution time info line
+    if (executionTimeMs !== undefined && executionTimeMs !== null) {
+        html += `<div style="color: var(--text-muted); margin-top: 0.5rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.4rem; font-size: 0.78rem;">── Selesai pada ${timestamp} (${executionTimeMs}ms) ──</div>`;
+    }
+    
+    msgContent.innerHTML = html || `<span style="color: var(--text-muted); font-style: italic;">Tidak ada pesan.</span>`;
+    
+    // Show badge with count if there are print messages
+    if (badge) {
+        if (messages && messages.length > 0) {
+            badge.textContent = messages.length;
+            badge.style.display = 'inline';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
 }
 
 async function exportQueryResults() {
@@ -2476,7 +2583,96 @@ async function executeGenerateInsertScript() {
     }
 }
 
+// ── Schema Explorer Tree View Helpers ──────────────────────────────────────
+
+/**
+ * Toggle expand/collapse for a folder node.
+ * @param {HTMLElement} folderEl - The .se-folder element clicked
+ * @param {boolean} forceOpen   - If true, always opens without toggling
+ */
+function toggleSchemaFolder(folderEl, forceOpen = false) {
+    if (!folderEl) return;
+    const children = folderEl.nextElementSibling;
+    if (!children || !children.classList.contains('se-children')) return;
+
+    const isOpen = folderEl.classList.contains('open');
+    if (forceOpen && isOpen) return; // already open, nothing to do
+
+    if (isOpen && !forceOpen) {
+        folderEl.classList.remove('open');
+        children.classList.remove('open');
+    } else {
+        folderEl.classList.add('open');
+        children.classList.add('open');
+    }
+}
+
+/**
+ * Live filter the schema tree by keyword (called by the search input onkeydown=Enter or oninput).
+ * Filters .se-item nodes by name; hides folders with 0 matching children.
+ */
+function filterSchemaTree(keyword) {
+    const listContainer = document.getElementById('schema-exp-list');
+    if (!listContainer) return;
+
+    const term = (keyword || '').toLowerCase().trim();
+
+    const folders = listContainer.querySelectorAll('.se-folder');
+    folders.forEach(folder => {
+        const children = folder.nextElementSibling;
+        if (!children) return;
+
+        const items = children.querySelectorAll('.se-item');
+        let visibleCount = 0;
+
+        items.forEach(item => {
+            const name = item.getAttribute('data-name') || '';
+            const match = !term || name.includes(term);
+            item.style.display = match ? '' : 'none';
+            if (match) visibleCount++;
+        });
+
+        // Show/hide the entire folder group based on matches
+        const hide = visibleCount === 0 && !!term;
+        folder.style.display = hide ? 'none' : '';
+        children.style.display = hide ? 'none' : '';
+
+        // Update count badge to show matched count
+        const countBadge = folder.querySelector('.se-folder-count');
+        if (countBadge) {
+            countBadge.textContent = term ? `${visibleCount}/${items.length}` : items.length;
+        }
+
+        // Auto-open folder if there are matches (when filtering)
+        if (term && visibleCount > 0) {
+            folder.classList.add('open');
+            children.classList.add('open');
+        }
+    });
+}
+
+/**
+ * Expand or collapse all schema tree folders at once.
+ * @param {boolean} expand - true = expand all, false = collapse all
+ */
+function expandCollapseAllSchemaFolders(expand) {
+    const listContainer = document.getElementById('schema-exp-list');
+    if (!listContainer) return;
+    listContainer.querySelectorAll('.se-folder').forEach(folder => {
+        const children = folder.nextElementSibling;
+        if (!children || !children.classList.contains('se-children')) return;
+        if (expand) {
+            folder.classList.add('open');
+            children.classList.add('open');
+        } else {
+            folder.classList.remove('open');
+            children.classList.remove('open');
+        }
+    });
+}
+
 // ── Schema Explorer Logic ──
+
 let schemaViewerActiveCode = "";
 
 async function searchSchemaObjects() {
@@ -2485,14 +2681,21 @@ async function searchSchemaObjects() {
         return;
     }
 
-    const typeSelect = document.getElementById('schema-exp-type');
     const searchInput = document.getElementById('schema-exp-search');
     const listContainer = document.getElementById('schema-exp-list');
     const searchContentChk = document.getElementById('schema-exp-search-content');
 
-    const objType = typeSelect ? typeSelect.value : 'ALL';
+    // Always load ALL types — the tree-view groups them into folders
+    const objType = 'ALL';
     const searchTerm = searchInput ? searchInput.value.trim() : '';
     const searchInContent = searchContentChk ? searchContentChk.checked : false;
+
+    // Update load button state
+    const loadBtn = document.getElementById('btn-schema-exp-load');
+    if (loadBtn) {
+        loadBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Memuat...';
+        loadBtn.disabled = true;
+    }
 
     if (listContainer) {
         listContainer.innerHTML = `<div style="padding: 1.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;"><i class="fa-solid fa-spinner fa-spin"></i> Mencari objek...</div>`;
@@ -2531,32 +2734,74 @@ async function searchSchemaObjects() {
             return;
         }
 
-        listContainer.innerHTML = objects.map(obj => {
-            const createDate = obj.CreatedDate ? new Date(obj.CreatedDate).toLocaleString('id-ID') : '-';
-            const modifyDate = obj.ModifiedDate ? new Date(obj.ModifiedDate).toLocaleString('id-ID') : '-';
-            const badgeClass = (obj.Type || '').toLowerCase();
-            const escapedName = escapeHtml(obj.Name);
-            const escapedType = escapeHtml(obj.Type);
+        // ── Group by type ─────────────────────────────────────────────────────
+        const groups = {
+            'TABLE':     { label: 'Tables',            icon: 'fa-table',        typeClass: 'type-table',     items: [] },
+            'VIEW':      { label: 'Views',             icon: 'fa-eye',          typeClass: 'type-view',      items: [] },
+            'PROCEDURE': { label: 'Stored Procedures', icon: 'fa-terminal',     typeClass: 'type-procedure', items: [] },
+            'FUNCTION':  { label: 'Functions',         icon: 'fa-code',         typeClass: 'type-function',  items: [] },
+        };
 
-            const jsName = obj.Name.replace(/'/g, "\\'");
-            const jsType = obj.Type.replace(/'/g, "\\'");
-            const jsCreated = createDate.replace(/'/g, "\\'");
-            const jsModified = modifyDate.replace(/'/g, "\\'");
+        objects.forEach(obj => {
+            const t = (obj.Type || '').toUpperCase();
+            if (groups[t]) groups[t].items.push(obj);
+        });
 
-            return `
-                <div class="schema-exp-item" onclick="showSchemaDefinition('${jsName}', '${jsType}', '${jsCreated}', '${jsModified}')" style="cursor: pointer;">
-                    <div class="schema-exp-header" style="pointer-events: none;">
-                        <span class="schema-exp-name" title="${escapedName}">${escapedName}</span>
-                        <span class="schema-exp-badge ${badgeClass}">${escapedType}</span>
-                    </div>
+        // ── Build tree HTML ───────────────────────────────────────────────────
+        let html = '';
+        const typeKeys = ['TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION'];
+
+        typeKeys.forEach(typeKey => {
+            const grp = groups[typeKey];
+            if (grp.items.length === 0) return; // skip empty groups
+
+            // Folder label + chevron
+            html += `
+                <div class="se-folder" data-type="${typeKey}" onclick="toggleSchemaFolder(this)">
+                    <i class="fa-solid fa-chevron-right se-folder-chevron"></i>
+                    <i class="fa-solid ${grp.icon} se-folder-icon"></i>
+                    <span class="se-folder-label">${grp.label}</span>
+                    <span class="se-folder-count">${grp.items.length}</span>
                 </div>
-            `;
-        }).join('');
+                <div class="se-children">`;
+
+            grp.items.forEach(obj => {
+                const createDate = obj.CreatedDate ? new Date(obj.CreatedDate).toLocaleString('id-ID') : '-';
+                const modifyDate = obj.ModifiedDate ? new Date(obj.ModifiedDate).toLocaleString('id-ID') : '-';
+                const jsName     = obj.Name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const jsType     = typeKey;
+                const jsCreated  = createDate.replace(/'/g, "\\'");
+                const jsModified = modifyDate.replace(/'/g, "\\'");
+                const escapedName = escapeHtml(obj.Name);
+
+                html += `
+                    <div class="se-item" data-name="${escapedName.toLowerCase()}" onclick="showSchemaDefinition('${jsName}','${jsType}','${jsCreated}','${jsModified}')" title="${escapedName}">
+                        <i class="fa-solid ${grp.icon} se-item-icon ${grp.typeClass}"></i>
+                        <span class="se-item-name">${escapedName}</span>
+                    </div>`;
+            });
+
+            html += `</div>`;
+        });
+
+        listContainer.innerHTML = html;
+
+        // Auto-open first non-empty folder
+        const firstFolder = listContainer.querySelector('.se-folder');
+        if (firstFolder) toggleSchemaFolder(firstFolder, true);
+
     } catch (err) {
         console.error(err);
         window.lastSchemaObjects = [];
         if (listContainer) {
             listContainer.innerHTML = `<div style="padding: 1.5rem; font-size: 0.8rem; color: #f43f5e; text-align: center;"><i class="fa-solid fa-circle-exclamation"></i> Error: ${escapeHtml(err.message)}</div>`;
+        }
+    } finally {
+        // Restore load button
+        const loadBtn = document.getElementById('btn-schema-exp-load');
+        if (loadBtn) {
+            loadBtn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> Muat';
+            loadBtn.disabled = false;
         }
     }
 }
@@ -2684,6 +2929,39 @@ function closeSchemaViewerModal() {
     const modal = document.getElementById('schema-viewer-modal');
     if (modal) {
         modal.classList.remove('active');
+        const content = modal.querySelector('.modal-content');
+        if (content) {
+            content.classList.remove('maximized');
+        }
+        const icon = document.getElementById('schema-viewer-maximize-icon');
+        if (icon) {
+            icon.className = 'fa-solid fa-expand';
+        }
+    }
+}
+
+function toggleSchemaViewerMaximize() {
+    const modal = document.getElementById('schema-viewer-modal');
+    if (!modal) return;
+    const content = modal.querySelector('.modal-content');
+    const icon = document.getElementById('schema-viewer-maximize-icon');
+    
+    if (content) {
+        const isMaximized = content.classList.toggle('maximized');
+        if (icon) {
+            if (isMaximized) {
+                icon.className = 'fa-solid fa-compress';
+            } else {
+                icon.className = 'fa-solid fa-expand';
+            }
+        }
+        
+        // Monaco editor layout trigger to fill the container size
+        if (schemaViewerEditor) {
+            setTimeout(() => {
+                schemaViewerEditor.layout();
+            }, 210); // match transition speed
+        }
     }
 }
 
