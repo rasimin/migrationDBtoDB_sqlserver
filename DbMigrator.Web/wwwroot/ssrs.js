@@ -503,6 +503,18 @@ function getSsrsBaseReportUrl(url) {
     return base;
 }
 
+function getSsrsReportViewerUrl(url, path) {
+    const baseUrl = getSsrsBaseReportUrl(url);
+    const reportPath = encodeURIComponent(path);
+    return `${baseUrl}/Pages/ReportViewer.aspx?${reportPath}&rs:Command=Render`;
+}
+
+function openSsrsReportInNewTab() {
+    if (!ssrsConnection || !ssrsViewerActivePath) return;
+    const renderUrl = getSsrsReportViewerUrl(ssrsConnection.Url, ssrsViewerActivePath);
+    window.open(renderUrl, '_blank');
+}
+
 async function viewSsrsReportDefinition(path, type) {
     ssrsViewerActivePath = path;
     ssrsViewerActiveType = type;
@@ -524,18 +536,21 @@ async function viewSsrsReportDefinition(path, type) {
         previewContainer.innerHTML = '';
     }
     
-    // Setup tab buttons display based on type
+    // Setup tab buttons and open new tab button display based on type
     const isReport = type === 'Report' || type === 'report';
     const btnPreview = document.getElementById('ssrs-btn-tab-preview');
     const btnSource = document.getElementById('ssrs-btn-tab-source');
+    const btnNewTab = document.getElementById('ssrs-btn-open-new-tab');
     
     if (isReport) {
         if (btnPreview) btnPreview.style.display = 'inline-flex';
+        if (btnNewTab) btnNewTab.style.display = 'inline-flex';
         // Open Preview by default
         switchSsrsViewerTab('preview');
     } else {
-        // RSD or RDS - no preview possible, hide preview tab
+        // RSD or RDS - no preview possible, hide preview & new tab buttons
         if (btnPreview) btnPreview.style.display = 'none';
+        if (btnNewTab) btnNewTab.style.display = 'none';
         switchSsrsViewerTab('source');
     }
 }
@@ -556,9 +571,7 @@ async function switchSsrsViewerTab(tab) {
         
         // Load Iframe if not loaded yet
         if (previewWrapper && previewWrapper.innerHTML.trim() === '') {
-            const baseUrl = getSsrsBaseReportUrl(ssrsConnection.Url);
-            const reportPath = encodeURIComponent(ssrsViewerActivePath);
-            const renderUrl = `${baseUrl}?${reportPath}&rs:Command=Render`;
+            const renderUrl = getSsrsReportViewerUrl(ssrsConnection.Url, ssrsViewerActivePath);
             
             previewWrapper.innerHTML = `
                 <iframe src="${renderUrl}" style="width: 100%; height: 100%; border: none; background: #ffffff;"></iframe>
