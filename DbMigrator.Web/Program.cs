@@ -1349,6 +1349,7 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request,
         {
             var headers = new List<string>();
             var rows = new List<List<object>>();
+            bool isTruncated = false;
 
             if (reader.FieldCount == 0)
             {
@@ -1368,8 +1369,15 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request,
                     headers.Add(reader.GetName(i));
                 }
 
+                int rowCount = 0;
+                const int MaxConsoleRows = 1000;
                 while (await reader.ReadAsync(cancellationToken))
                 {
+                    if (rowCount >= MaxConsoleRows)
+                    {
+                        isTruncated = true;
+                        break;
+                    }
                     var row = new List<object>();
                     for (int i = 0; i < reader.FieldCount; i++)
                     {
@@ -1377,12 +1385,13 @@ app.MapPost("/api/query/execute", async ([FromBody] QueryExecuteRequest request,
                         row.Add(val == DBNull.Value ? null : val);
                     }
                     rows.Add(row);
+                    rowCount++;
                 }
             }
 
             if (headers.Count > 0)
             {
-                tables.Add(new QueryResultTable { Headers = headers, Rows = rows });
+                tables.Add(new QueryResultTable { Headers = headers, Rows = rows, IsTruncated = isTruncated });
             }
         } while (await reader.NextResultAsync(cancellationToken));
 
@@ -3988,6 +3997,7 @@ public class QueryResultTable
 {
     public List<string> Headers { get; set; } = new List<string>();
     public List<List<object>> Rows { get; set; } = new List<List<object>>();
+    public bool IsTruncated { get; set; } = false;
 }
 
 public class QuerySchemaObjectsRequest

@@ -2110,8 +2110,15 @@ async function runQueryConsole() {
             initTableResizers(tbl);
         });
 
-        statusText.textContent = 'Kueri berhasil dijalankan.';
-        statusText.style.color = 'var(--accent-teal)';
+        const isTruncated = tables.some(t => t.IsTruncated || t.isTruncated);
+
+        if (isTruncated) {
+            statusText.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-orange, #fb923c);"></i> Kueri dijalankan (Hasil dibatasi)`;
+            statusText.style.color = 'var(--accent-orange, #fb923c)';
+        } else {
+            statusText.textContent = 'Kueri berhasil dijalankan.';
+            statusText.style.color = 'var(--accent-teal)';
+        }
 
         if (tables.length > 1) {
             const totalRows = tables.reduce((acc, t) => acc + t.Rows.length, 0);
@@ -2122,6 +2129,10 @@ async function runQueryConsole() {
         } else {
             // PRINT-only or message-only query
             rowsCount.textContent = `${data.ExecutionTimeMs}ms`;
+        }
+
+        if (isTruncated) {
+            rowsCount.innerHTML += ` <span class="query-warning-badge" style="background: rgba(251, 146, 60, 0.15); color: #fb923c; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-left: 8px; font-weight: bold; border: 1px solid rgba(251, 146, 60, 0.3);" title="Hasil dibatasi untuk mencegah browser hang. Silakan tambahkan TOP atau filter WHERE pada kueri Anda."><i class="fa-solid fa-triangle-exclamation"></i> Hasil Dibatasi</span>`;
         }
 
         // If tables have data - show Results tab, otherwise show Messages
@@ -2196,7 +2207,10 @@ function switchQueryTab(index) {
         if (rowsCount) {
             const msMatch = rowsCount.textContent.match(/\((\d+ms)\)/);
             const msStr = msMatch ? ` (${msMatch[1]})` : "";
-            rowsCount.textContent = `Tabel ${index + 1}: ${activeTable.Rows.length} baris ditampilkan${msStr}`;
+            rowsCount.innerHTML = `Tabel ${index + 1}: ${activeTable.Rows.length} baris ditampilkan${msStr}`;
+            if (activeTable.IsTruncated || activeTable.isTruncated) {
+                rowsCount.innerHTML += ` <span class="query-warning-badge" style="background: rgba(251, 146, 60, 0.15); color: #fb923c; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-left: 8px; font-weight: bold; border: 1px solid rgba(251, 146, 60, 0.3);" title="Hasil dibatasi untuk mencegah browser hang. Silakan tambahkan TOP atau filter WHERE pada kueri Anda."><i class="fa-solid fa-triangle-exclamation"></i> Hasil Dibatasi</span>`;
+            }
         }
     }
 }
