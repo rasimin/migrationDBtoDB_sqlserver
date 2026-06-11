@@ -3154,10 +3154,21 @@ app.MapPost("/api/ssrs/upload", async (HttpRequest request) =>
             using var stream = file.OpenReadStream();
             using var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Read);
             
-            foreach (var entry in archive.Entries)
+            // Urutkan entri zip berdasarkan dependensi SSRS: 
+            // 1. DataSource (.rds), 2. DataSet (.rsd), 3. Report (.rdl), 4. Lainnya
+            var sortedEntries = archive.Entries
+                .Where(entry => !entry.FullName.EndsWith("/") && !string.IsNullOrEmpty(entry.Name))
+                .OrderBy(entry => {
+                    var entryExt = Path.GetExtension(entry.Name).ToLowerInvariant();
+                    if (entryExt == ".rds") return 1;
+                    if (entryExt == ".rsd") return 2;
+                    if (entryExt == ".rdl") return 3;
+                    return 4;
+                })
+                .ToList();
+            
+            foreach (var entry in sortedEntries)
             {
-                if (entry.FullName.EndsWith("/") || string.IsNullOrEmpty(entry.Name)) continue;
-
                 try
                 {
                     var (itemName, itemType) = MapFileToSsrsItem(entry.Name);
@@ -3177,6 +3188,12 @@ app.MapPost("/api/ssrs/upload", async (HttpRequest request) =>
                     using var ms = new MemoryStream();
                     await entryStream.CopyToAsync(ms);
                     var bytes = ms.ToArray();
+
+                    if (itemType == "Report" || itemType == "DataSet")
+                    {
+                        bytes = ModifySsrsXmlReferences(bytes, targetFolder);
+                    }
+
                     var base64Def = Convert.ToBase64String(bytes);
                     
                     await SendSsrsSoapRequestAsync(url, username, password, domain, "CreateCatalogItem", $@"
@@ -3213,13 +3230,19 @@ app.MapPost("/api/ssrs/upload", async (HttpRequest request) =>
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             var bytes = ms.ToArray();
-            var base64Def = Convert.ToBase64String(bytes);
 
             var targetFolder = parentPath;
             if (targetFolder != "/" && targetFolder.EndsWith("/"))
             {
                 targetFolder = targetFolder.TrimEnd('/');
             }
+
+            if (itemType == "Report" || itemType == "DataSet")
+            {
+                bytes = ModifySsrsXmlReferences(bytes, targetFolder);
+            }
+
+            var base64Def = Convert.ToBase64String(bytes);
 
             await SendSsrsSoapRequestAsync(url, username, password, domain, "CreateCatalogItem", $@"
                 <CreateCatalogItem xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
@@ -4740,6 +4763,115 @@ public partial class Program
             }
             
             currentPath = parent == "/" ? "/" + folderName : parent + "/" + folderName;
+        }
+    }
+
+    private static byte[] ModifySsrsXmlReferences(byte[] xmlBytes, string targetFolder)
+    {
+        try
+        {
+            var content = System.Text.Encoding.UTF8.GetString(xmlBytes);
+            
+            // Tentukan path module baru (root project modul, misal /QNB/SSO)
+            var modulePath = targetFolder;
+            if (modulePath.EndsWith("/RPT", StringComparison.OrdinalIgnoreCase))
+            {
+                modulePath = modulePath.Substring(0, modulePath.Length - 4);
+            }
+            else if (modulePath.EndsWith("/DST", StringComparison.OrdinalIgnoreCase))
+            {
+                modulePath = modulePath.Substring(0, modulePath.Length - 4);
+            }
+            else if (modulePath.EndsWith("/DS", StringComparison.OrdinalIgnoreCase))
+            {
+                modulePath = modulePath.Substring(0, modulePath.Length - 3);
+            }
+            
+            if (string.IsNullOrEmpty(modulePath))
+            {
+                modulePath = "/";
+            }
+
+            bool modified = false;
+
+            // 1. Ubah references untuk Shared Dataset (<SharedDataSetReference>...</SharedDataSetReference>)
+            var newContent = System.Text.RegularExpressions.Regex.Replace(content, @"<SharedDataSetReference>([^<]+)</SharedDataSetReference>", m => {
+                string path = m.Groups[1].Value.Trim();
+                string newPath = UpdateReferencePath(path, modulePath, "DataSet");
+                if (path != newPath)
+                {
+                    modified = true;
+                }
+                return $"<SharedDataSetReference>{newPath}</SharedDataSetReference>";
+            });
+
+            // 2. Ubah references untuk Shared Data Source (<DataSourceReference>...</DataSourceReference>)
+            newContent = System.Text.RegularExpressions.Regex.Replace(newContent, @"<DataSourceReference>([^<]+)</DataSourceReference>", m => {
+                string path = m.Groups[1].Value.Trim();
+                string newPath = UpdateReferencePath(path, modulePath, "DataSource");
+                if (path != newPath)
+                {
+                    modified = true;
+                }
+                return $"<DataSourceReference>{newPath}</DataSourceReference>";
+            });
+
+            if (modified)
+            {
+                return System.Text.Encoding.UTF8.GetBytes(newContent);
+            }
+        }
+        catch
+        {
+            // Jika gagal parsing, kembalikan bytes asli
+        }
+        return xmlBytes;
+    }
+
+    private static string UpdateReferencePath(string originalPath, string newModulePath, string referenceType)
+    {
+        if (string.IsNullOrEmpty(originalPath))
+            return originalPath;
+            
+        // Jika path adalah path absolut (dimulai dengan '/')
+        if (originalPath.StartsWith("/"))
+        {
+            // Cari posisi folder DS, DST, atau RPT dalam path asli
+            var dsIndex = originalPath.IndexOf("/DS/", StringComparison.OrdinalIgnoreCase);
+            if (dsIndex >= 0)
+            {
+                var suffix = originalPath.Substring(dsIndex); // misal "/DS/IMS_DB"
+                return newModulePath.TrimEnd('/') + suffix;
+            }
+            
+            var dstIndex = originalPath.IndexOf("/DST/", StringComparison.OrdinalIgnoreCase);
+            if (dstIndex >= 0)
+            {
+                var suffix = originalPath.Substring(dstIndex); // misal "/DST/dsCompany"
+                return newModulePath.TrimEnd('/') + suffix;
+            }
+            
+            var rptIndex = originalPath.IndexOf("/RPT/", StringComparison.OrdinalIgnoreCase);
+            if (rptIndex >= 0)
+            {
+                var suffix = originalPath.Substring(rptIndex); // misal "/RPT/ReportName"
+                return newModulePath.TrimEnd('/') + suffix;
+            }
+            
+            return originalPath;
+        }
+        else
+        {
+            // Jika path adalah path relatif (misal: "SSO" atau "GetCompany") dari Visual Studio / SSDT
+            if (referenceType == "DataSource")
+            {
+                return newModulePath.TrimEnd('/') + "/DS/" + originalPath.TrimStart('/');
+            }
+            else if (referenceType == "DataSet")
+            {
+                return newModulePath.TrimEnd('/') + "/DST/" + originalPath.TrimStart('/');
+            }
+            return originalPath;
         }
     }
 }
