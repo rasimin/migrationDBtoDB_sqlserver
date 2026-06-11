@@ -2408,6 +2408,10 @@ function renderObjItems(items, isFilterActive) {
                     <button class="btn-icon" onclick="editObjItem(${itemId})" title="Edit Objek" style="color: #fb923c;">
                         <i class="fa-solid fa-pen-to-square"></i>
                     </button>` : ''}
+                    ${!isNative ? `
+                    <button class="btn-icon" onclick="showObjItemSchemaDiff(${itemId}, '${objName.replace(/'/g, "\\'")}', '${objType.toUpperCase()}')" title="Bandingkan DDL Skema" style="color: var(--accent-indigo);">
+                        <i class="fa-solid fa-code-compare"></i>
+                    </button>` : ''}
                     <button class="btn-icon" onclick="openObjBackupModal(${itemId}, '${objName.replace(/'/g, "\\'")}')" title="Lihat Backup Versions" style="color: var(--accent-purple);">
                         <i class="fa-solid fa-clock-rotate-left"></i>
                     </button>
@@ -4370,5 +4374,71 @@ async function runAppimsRestore() {
     } finally {
         btn.innerHTML = origHtml;
         btn.disabled = false;
+    }
+}
+
+async function showObjItemSchemaDiff(itemId, objName, objType) {
+    if (!activeJob) return;
+    const jobId = activeJob.Id || activeJob.id;
+    
+    // Show modal
+    const modal = document.getElementById('schema-diff-modal');
+    if (!modal) return;
+
+    // Set title
+    const titleEl = document.getElementById('schema-diff-title');
+    if (titleEl) {
+        titleEl.innerHTML = `<i class="fa-solid fa-code-compare" style="color: var(--accent-purple);"></i> Perbandingan DDL: <span style="color: var(--accent-teal);">${objName}</span>`;
+    }
+
+    // Hide the apply button because this is a view-only comparison from the Migration page.
+    const applyBtn = document.getElementById('btn-schema-diff-apply');
+    if (applyBtn) {
+        applyBtn.style.display = 'none';
+    }
+
+    // Show loading spinner inside Monaco container
+    const container = document.getElementById('schema-diff-monaco-container');
+    if (container) {
+        container.innerHTML = `
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 350px; color: var(--text-muted); gap: 0.75rem;">
+                <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2rem; color: var(--accent-teal);"></i>
+                <span style="font-size: 0.9rem;">Mengambil definisi DDL dari database...</span>
+            </div>
+        `;
+    }
+
+    modal.classList.add('active');
+
+    try {
+        const res = await fetch(`${API_BASE}/jobs/${jobId}/obj-items/${itemId}/definition`);
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+        const data = await res.json();
+        if (data.Success || data.success) {
+            initMonacoDiffEditor(data.SourceDdl || '', data.TargetDdl || '');
+        } else {
+            if (container) {
+                container.innerHTML = `
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 350px; color: var(--color-error); gap: 0.5rem;">
+                        <i class="fa-solid fa-triangle-exclamation" style="font-size: 2rem;"></i>
+                        <span style="font-size: 0.9rem;">Gagal memuat DDL: ${data.Message || 'Kesalahan tidak diketahui'}</span>
+                    </div>
+                `;
+            }
+            await uiAlert("Gagal memuat detail DDL: " + (data.Message || "Kesalahan tidak diketahui"));
+        }
+    } catch (err) {
+        console.error(err);
+        if (container) {
+            container.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 350px; color: var(--color-error); gap: 0.5rem;">
+                    <i class="fa-solid fa-triangle-exclamation" style="font-size: 2rem;"></i>
+                    <span style="font-size: 0.9rem;">Terjadi kesalahan koneksi</span>
+                </div>
+            `;
+        }
+        await uiAlert("Terjadi kesalahan koneksi saat memuat skema: " + err.message);
     }
 }

@@ -45,6 +45,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     activeViewMode = localStorage.getItem('activeViewMode') || 'list';
     setViewMode(activeViewMode);
 
+    // Load top nav collapsed preference
+    const isTopNavCollapsed = localStorage.getItem('dbmigrator_top_nav_collapsed') === 'true';
+    if (isTopNavCollapsed) {
+        const wrapper = document.querySelector('.top-nav-wrapper');
+        if (wrapper) {
+            wrapper.classList.add('collapsed');
+            const toggleBtn = document.getElementById('top-nav-toggle-btn');
+            if (toggleBtn) {
+                const icon = toggleBtn.querySelector('i');
+                if (icon) {
+                    icon.className = 'fa-solid fa-chevron-down';
+                    toggleBtn.title = 'Tampilkan Menu';
+                }
+            }
+        }
+    }
+
     // Switch to active tab if saved
     const savedTab = localStorage.getItem('dbmigrator_active_tab');
     if (savedTab) {
@@ -381,4 +398,41 @@ function parseConnectionStringDb(connStr) {
     if (server && db) return `${db} (Server: ${server})`;
     if (db) return db;
     return server || "Unknown DB";
+}
+
+function toggleTopNav() {
+    const wrapper = document.querySelector('.top-nav-wrapper');
+    if (!wrapper) return;
+    
+    const isCollapsed = wrapper.classList.toggle('collapsed');
+    
+    localStorage.setItem('dbmigrator_top_nav_collapsed', isCollapsed ? 'true' : 'false');
+    
+    const toggleBtn = document.getElementById('top-nav-toggle-btn');
+    if (toggleBtn) {
+        const icon = toggleBtn.querySelector('i');
+        if (icon) {
+            if (isCollapsed) {
+                icon.className = 'fa-solid fa-chevron-down';
+                toggleBtn.title = 'Tampilkan Menu';
+            } else {
+                icon.className = 'fa-solid fa-chevron-up';
+                toggleBtn.title = 'Sembunyikan Menu';
+            }
+        }
+    }
+    
+    // Dispatch resize event and trigger Monaco layout re-calculations after animation
+    setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+        if (typeof queryConsoleEditor !== 'undefined' && queryConsoleEditor) {
+            queryConsoleEditor.layout();
+        }
+        if (typeof beautifierLeftEditor !== 'undefined' && beautifierLeftEditor) {
+            beautifierLeftEditor.layout();
+        }
+        if (typeof beautifierRightEditor !== 'undefined' && beautifierRightEditor) {
+            beautifierRightEditor.layout();
+        }
+    }, 320);
 }

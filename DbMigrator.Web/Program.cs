@@ -2732,6 +2732,52 @@ app.MapGet("/api/obj-backups/{id:int}/download", async (int id, IConfiguration c
     return Results.File(bytes, "application/sql", $"{safeObjectName}_v{version}_{backedUpAt:yyyyMMdd_HHmmss}.sql");
 });
 
+// OBJ-ITEM-DEFINITION. GET DDL DEFINITION (SOURCE & TARGET) FOR SINGLE OBJECT ITEM
+app.MapGet("/api/jobs/{jobId:int}/obj-items/{itemId:int}/definition", async (int jobId, int itemId, IConfiguration config) =>
+{
+    using var configConn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+    var job = await configConn.QuerySingleOrDefaultAsync<MigrationJob>("SELECT * FROM dbo.MigrationJobs WHERE Id = @Id", new { Id = jobId });
+    if (job == null) return Results.NotFound("Job tidak ditemukan");
+
+    var item = await configConn.QuerySingleOrDefaultAsync<ObjectMigrationItem>(
+        "SELECT * FROM dbo.ObjectMigrationItems WHERE Id = @Id AND JobId = @JobId", new { Id = itemId, JobId = jobId });
+    if (item == null) return Results.NotFound("Objek tidak ditemukan");
+
+    string objName = item.ObjectName;
+    string objType = item.ObjectType;
+
+    try
+    {
+        using var sourceConn = new SqlConnection(job.SourceConnectionString);
+        using var targetConn = new SqlConnection(job.TargetConnectionString);
+        await sourceConn.OpenAsync();
+        await targetConn.OpenAsync();
+
+        string sourceDdl = await LoadSingleObjectDdlHelper(sourceConn, objName, objType);
+        string targetDdl = "";
+        try
+        {
+            targetDdl = await LoadSingleObjectDdlHelper(targetConn, objName, objType);
+        }
+        catch
+        {
+            targetDdl = "-- Objek tidak ditemukan di Target DB --";
+        }
+
+        return Results.Ok(new {
+            Success = true,
+            ObjectName = objName,
+            ObjectType = objType,
+            SourceDdl = sourceDdl,
+            TargetDdl = targetDdl
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
 // OBJ-LOGS. GET LOGS FOR JOB
 app.MapGet("/api/jobs/{id:int}/obj-logs", async (int id, IConfiguration config) =>
 {
@@ -3586,6 +3632,54 @@ async Task SyncIndexes(SqlConnection srcConn, SqlConnection targetConn, string s
 // ============================================================================
 // HELPER FUNCTIONS FOR SCHEMA COMPARISON
 // ============================================================================
+async Task<string> LoadSingleObjectDdlHelper(SqlConnection conn, string fullName, string objectType)
+{
+    var parts = fullName.Split('.');
+    string schema = parts.Length > 1 ? parts[0] : "dbo";
+    string name = parts.Length > 1 ? parts[1] : parts[0];
+
+    schema = schema.Replace("[", "").Replace("]", "");
+    name = name.Replace("[", "").Replace("]", "");
+    string cleanFullName = $"{schema}.{name}";
+
+    var typeUpper = (objectType ?? "").ToUpper();
+
+    if (typeUpper == "TABLE")
+    {
+        var columns = (await conn.QueryAsync<SchemaColumnDto>(@"
+            SELECT c.name AS Name, ty.name AS DataType, c.max_length AS MaxLength,
+                   c.precision AS Precision, c.scale AS Scale, c.is_nullable AS IsNullable,
+                   c.is_identity AS IsIdentity, dc.definition AS DefaultDefinition, c.column_id AS Ordinal
+            FROM sys.columns c
+            JOIN sys.types ty ON c.user_type_id = ty.user_type_id
+            LEFT JOIN sys.default_constraints dc ON c.default_object_id = dc.object_id
+            WHERE c.object_id = OBJECT_ID(@FullName)
+            ORDER BY c.column_id",
+            new { FullName = cleanFullName })).ToList();
+
+        if (columns.Count == 0) return "-- Objek tidak ditemukan di database --";
+
+        var pkColumns = (await conn.QueryAsync<string>(@"
+            SELECT c.name
+            FROM sys.indexes i
+            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+            WHERE i.object_id = OBJECT_ID(@FullName) AND i.is_primary_key = 1
+            ORDER BY ic.key_ordinal",
+            new { FullName = cleanFullName })).ToList();
+
+        return GenerateComparableTableDdl(schema, name, columns, pkColumns);
+    }
+    else
+    {
+        string definition = await conn.QuerySingleOrDefaultAsync<string>(@"
+            SELECT OBJECT_DEFINITION(OBJECT_ID(@FullName))",
+            new { FullName = cleanFullName });
+
+        return definition ?? "-- Objek tidak ditemukan di database --";
+    }
+}
+
 async Task<Dictionary<string, ComparableDbObject>> LoadComparableObjects(SqlConnection conn)
 {
     var result = new Dictionary<string, ComparableDbObject>(StringComparer.OrdinalIgnoreCase);

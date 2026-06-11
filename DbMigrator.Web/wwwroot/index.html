@@ -17,20 +17,25 @@
 </div>
 
 <div class="app-container">
-    <nav class="top-nav">
-        <button class="nav-item active" id="main-nav-migration" onclick="switchMainTab('migration')">
-            <i class="fa-solid fa-route"></i> Migration
+    <div class="top-nav-wrapper">
+        <nav class="top-nav">
+            <button class="nav-item active" id="main-nav-migration" onclick="switchMainTab('migration')">
+                <i class="fa-solid fa-route"></i> Migration
+            </button>
+            <button class="nav-item" id="main-nav-query" onclick="switchMainTab('query')">
+                <i class="fa-solid fa-terminal"></i> Query Console
+            </button>
+            <button class="nav-item" id="main-nav-beautifier" onclick="switchMainTab('beautifier')">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Beautifier
+            </button>
+            <button class="nav-item" id="main-nav-whiteboard" onclick="switchMainTab('whiteboard')">
+                <i class="fa-solid fa-pen-ruler"></i> Whiteboard
+            </button>
+        </nav>
+        <button class="top-nav-toggle" id="top-nav-toggle-btn" onclick="toggleTopNav()" title="Sembunyikan Menu">
+            <i class="fa-solid fa-chevron-up"></i>
         </button>
-        <button class="nav-item" id="main-nav-query" onclick="switchMainTab('query')">
-            <i class="fa-solid fa-terminal"></i> Query Console
-        </button>
-        <button class="nav-item" id="main-nav-beautifier" onclick="switchMainTab('beautifier')">
-            <i class="fa-solid fa-wand-magic-sparkles"></i> Beautifier
-        </button>
-        <button class="nav-item" id="main-nav-whiteboard" onclick="switchMainTab('whiteboard')">
-            <i class="fa-solid fa-pen-ruler"></i> Whiteboard
-        </button>
-    </nav>
+    </div>
 
     <div id="app-screens-root"></div>
 </div>
