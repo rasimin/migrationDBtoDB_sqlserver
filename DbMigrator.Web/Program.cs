@@ -3059,6 +3059,39 @@ app.MapPost("/api/ssrs/download-folder", async ([FromBody] SsrsBrowseRequestDto 
     }
 });
 
+app.MapPost("/api/ssrs/create-folder", async ([FromBody] SsrsCreateFolderRequestDto req) =>
+{
+    if (string.IsNullOrWhiteSpace(req.FolderName))
+    {
+        return Results.BadRequest("Nama folder tidak boleh kosong.");
+    }
+
+    try
+    {
+        var parentPath = req.ParentPath;
+        var folderName = req.FolderName.Trim();
+        
+        if (parentPath != "/" && parentPath.EndsWith("/"))
+        {
+            parentPath = parentPath.TrimEnd('/');
+        }
+
+        var xml = await SendSsrsSoapRequestAsync(req.Url, req.Username, req.Password, req.Domain, "CreateFolder", $@"
+            <CreateFolder xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
+              <Folder>{System.Security.SecurityElement.Escape(folderName)}</Folder>
+              <Parent>{System.Security.SecurityElement.Escape(parentPath)}</Parent>
+              <Properties />
+            </CreateFolder>
+        ");
+        
+        return Results.Ok(new { Success = true, Message = $"Folder '{folderName}' berhasil dibuat." });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
 // OBJ-RUN. RUN OBJECT MIGRATION JOB (pakai MigrationJob connection)
 app.MapPost("/api/jobs/{id:int}/obj-run", async (int id, [FromQuery] int? itemId, IConfiguration config) =>
 {
@@ -4400,6 +4433,12 @@ public class SsrsCredentialsDto
 public class SsrsBrowseRequestDto : SsrsCredentialsDto
 {
     public string Path { get; set; } = "/";
+}
+
+public class SsrsCreateFolderRequestDto : SsrsCredentialsDto
+{
+    public string ParentPath { get; set; } = "/";
+    public string FolderName { get; set; } = "";
 }
 
 public class SsrsDownloadRequestDto : SsrsCredentialsDto

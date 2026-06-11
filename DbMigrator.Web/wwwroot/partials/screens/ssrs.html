@@ -87,6 +87,9 @@
                 <button class="btn btn-secondary" onclick="downloadCurrentFolderZip()" style="width: auto; height: 34px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Unduh seluruh isi folder ini sebagai ZIP">
                     <i class="fa-solid fa-file-zipper"></i> ZIP Folder Ini
                 </button>
+                <button class="btn btn-primary" onclick="openCreateSsrsFolderModal()" style="width: auto; height: 34px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.35rem; background: var(--accent-indigo);" title="Buat Folder Baru">
+                    <i class="fa-solid fa-folder-plus"></i> Buat Folder
+                </button>
                 <button class="btn btn-secondary" onclick="browseSsrs(currentSsrsPath)" style="width: auto; height: 34px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Muat Ulang">
                     <i class="fa-solid fa-arrows-rotate"></i>
                 </button>
@@ -105,6 +108,91 @@
 
             <div id="ssrs-grid-container" class="ssrs-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem;">
                 <!-- Dynamically rendered folder and file items -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: SSRS VIEW DEFINITION -->
+    <div class="modal-overlay" id="ssrs-viewer-modal">
+        <div class="modal-content" style="max-width: 950px; border-color: var(--accent-indigo);">
+            <div class="modal-header">
+                <div>
+                    <h3 id="ssrs-viewer-title">Tampilan Laporan SSRS</h3>
+                    <p id="ssrs-viewer-subtitle" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Jelajahi pratinjau laporan interaktif atau periksa definisi skema XML.</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.65rem;">
+                    <button onclick="toggleSsrsViewerMaximize()" title="Maximize / Restore" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; transition: color 0.15s ease;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='var(--text-muted)'">
+                        <i class="fa-solid fa-expand" id="ssrs-viewer-maximize-icon"></i>
+                    </button>
+                    <button class="close-btn" onclick="closeSsrsViewerModal()" style="margin: 0;">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem 1.75rem;">
+                <div style="margin-bottom: 0.85rem; display: flex; gap: 0.5rem; justify-content: space-between; align-items: center;">
+                    <!-- Tab Toggle Buttons -->
+                    <div id="ssrs-viewer-tabs" style="display: flex; gap: 0.25rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); padding: 2px; border-radius: 8px;">
+                        <button class="btn" id="ssrs-btn-tab-preview" onclick="switchSsrsViewerTab('preview')" style="width: auto; height: 32px; font-size: 0.8rem; padding: 0 0.85rem; border: none; background: transparent; color: var(--text-muted); font-weight: 600; display: inline-flex; align-items: center; gap: 0.35rem;">
+                            <i class="fa-solid fa-chart-column"></i> Preview Laporan
+                        </button>
+                        <button class="btn" id="ssrs-btn-tab-source" onclick="switchSsrsViewerTab('source')" style="width: auto; height: 32px; font-size: 0.8rem; padding: 0 0.85rem; border: none; background: transparent; color: var(--text-muted); font-weight: 600; display: inline-flex; align-items: center; gap: 0.35rem;">
+                            <i class="fa-solid fa-code"></i> Source XML
+                        </button>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-secondary" id="ssrs-btn-copy-code" onclick="copySsrsToClipboard()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(79, 70, 229, 0.06);">
+                            <i class="fa-solid fa-copy"></i> Salin ke Clipboard
+                        </button>
+                        <button class="btn btn-primary" onclick="downloadSsrsActiveItem()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem; background: var(--accent-indigo);">
+                            <i class="fa-solid fa-download"></i> Unduh Berkas
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Content Area -->
+                <div style="background: #ffffff; border-radius: 8px; border: 1px solid var(--border-flat); overflow: hidden; position: relative;">
+                    <!-- Preview Iframe Container -->
+                    <div id="ssrs-viewer-preview-container" style="height: 550px; width: 100%; background: #ffffff;">
+                        <!-- Iframe will be injected dynamically -->
+                    </div>
+                    <!-- Monaco Editor Wrapper -->
+                    <div id="ssrs-viewer-monaco-wrapper" style="height: 550px; width: 100%; background: #07090d; display: none;">
+                        <div id="ssrs-viewer-monaco-container" style="height: 100%; width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSsrsViewerModal()" style="width: auto;">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: SSRS CREATE FOLDER -->
+    <div class="modal-overlay" id="ssrs-create-folder-modal">
+        <div class="modal-content" style="max-width: 450px; border-color: var(--accent-indigo);">
+            <div class="modal-header">
+                <div>
+                    <h3>Buat Folder Baru</h3>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Tambahkan direktori folder baru di bawah path aktif saat ini.</p>
+                </div>
+                <button class="close-btn" onclick="closeCreateSsrsFolderModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem 1.75rem;">
+                <div class="form-group" style="margin-bottom: 1.25rem;">
+                    <label style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Path Aktif:</label>
+                    <input type="text" id="ssrs-new-folder-parent-path" class="form-control" readonly style="font-family: Consolas, monospace; font-size: 0.85rem; background: rgba(255,255,255,0.03); cursor: not-allowed; border: 1px solid var(--border-flat); width: 100%;">
+                </div>
+                <div class="form-group" style="margin-bottom: 1.25rem;">
+                    <label for="ssrs-new-folder-name" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Nama Folder Baru:</label>
+                    <input type="text" id="ssrs-new-folder-name" class="form-control" placeholder="Contoh: Laporan Keuangan" required style="font-size: 0.85rem; height: 38px; border-radius: 8px; width: 100%;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeCreateSsrsFolderModal()" style="width: auto;">Batal</button>
+                <button class="btn btn-primary" onclick="submitCreateSsrsFolder()" style="width: auto; background: var(--accent-indigo);">
+                    <i class="fa-solid fa-folder-plus"></i> Buat Folder
+                </button>
             </div>
         </div>
     </div>

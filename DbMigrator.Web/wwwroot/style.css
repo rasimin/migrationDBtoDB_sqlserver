@@ -2264,7 +2264,8 @@ textarea.form-control {
     height: calc(95vh - 180px) !important;
 }
 
-.modal-content.maximized #schema-viewer-monaco-container {
+.modal-content.maximized #schema-viewer-monaco-container,
+.modal-content.maximized #ssrs-viewer-monaco-container {
     height: calc(95vh - 220px) !important;
 }
 
@@ -3304,9 +3305,9 @@ textarea.form-control {
     font-size: 0.88rem;
     font-weight: 600;
     color: #ffffff;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    word-break: break-all;
+    word-wrap: break-word;
+    white-space: normal;
 }
 
 .ssrs-card-subtitle {
@@ -3343,5 +3344,19 @@ textarea.form-control {
     transform: scale(1.05);
 }
 
+/* SSRS Viewer Modal Tabs and Preview Frame */
+#ssrs-viewer-tabs button {
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+#ssrs-viewer-tabs button.active {
+    background: var(--accent-indigo) !important;
+    color: #ffffff !important;
+    border-radius: 6px;
+}
+.modal-content.maximized #ssrs-viewer-preview-container,
+.modal-content.maximized #ssrs-viewer-monaco-wrapper {
+    height: calc(95vh - 220px) !important;
+}
 
 

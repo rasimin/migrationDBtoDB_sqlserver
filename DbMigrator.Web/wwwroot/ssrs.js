@@ -249,7 +249,7 @@ function renderSsrsItems(items) {
             }
 
             return `
-                <div class="ssrs-card file-card">
+                <div class="ssrs-card file-card" onclick="viewSsrsReportDefinition('${itemPath.replace(/'/g, "\\'")}', '${type}')" style="cursor: pointer;">
                     <div class="ssrs-card-icon" style="color: ${colorVar};">
                         <i class="fa-solid ${iconClass}"></i>
                     </div>
@@ -476,5 +476,290 @@ async function deleteSavedSsrsConnection() {
     } catch (err) {
         console.error(err);
         await uiAlert("Kesalahan saat menghapus history: " + err.message, { variant: 'error' });
+    }
+}
+
+/* ============================================================================
+   SSRS DEFINITION VIEWER POPUP CONTROLLERS (Monaco Editor & Iframe Preview)
+   ============================================================================ */
+
+let ssrsViewerEditor = null;
+let ssrsViewerActiveCode = "";
+let ssrsViewerActivePath = "";
+let ssrsViewerActiveType = "";
+
+function getSsrsBaseReportUrl(url) {
+    let base = url.trim();
+    base = base.replace(/\/+$/, "");
+    if (base.toLowerCase().endsWith("/reportservice2010.asmx")) {
+        base = base.substring(0, base.length - "/reportservice2010.asmx".length);
+    }
+    return base;
+}
+
+async function viewSsrsReportDefinition(path, type) {
+    ssrsViewerActivePath = path;
+    ssrsViewerActiveType = type;
+    ssrsViewerActiveCode = ""; // Reset code cache
+    
+    const modal = document.getElementById('ssrs-viewer-modal');
+    if (!modal) return;
+    modal.classList.add('active');
+    
+    const titleEl = document.getElementById('ssrs-viewer-title');
+    const filename = path.split('/').pop() || 'report';
+    if (titleEl) {
+        titleEl.innerHTML = `<i class="fa-solid fa-chart-column" style="color: var(--accent-indigo);"></i> Laporan: <span style="color: var(--accent-indigo);">${escapeHtml(filename)}</span>`;
+    }
+    
+    // Clear preview iframe container
+    const previewContainer = document.getElementById('ssrs-viewer-preview-container');
+    if (previewContainer) {
+        previewContainer.innerHTML = '';
+    }
+    
+    // Setup tab buttons display based on type
+    const isReport = type === 'Report' || type === 'report';
+    const btnPreview = document.getElementById('ssrs-btn-tab-preview');
+    const btnSource = document.getElementById('ssrs-btn-tab-source');
+    
+    if (isReport) {
+        if (btnPreview) btnPreview.style.display = 'inline-flex';
+        // Open Preview by default
+        switchSsrsViewerTab('preview');
+    } else {
+        // RSD or RDS - no preview possible, hide preview tab
+        if (btnPreview) btnPreview.style.display = 'none';
+        switchSsrsViewerTab('source');
+    }
+}
+
+async function switchSsrsViewerTab(tab) {
+    const btnPreview = document.getElementById('ssrs-btn-tab-preview');
+    const btnSource = document.getElementById('ssrs-btn-tab-source');
+    const previewWrapper = document.getElementById('ssrs-viewer-preview-container');
+    const monacoWrapper = document.getElementById('ssrs-viewer-monaco-wrapper');
+    const btnCopy = document.getElementById('ssrs-btn-copy-code');
+    
+    if (tab === 'preview') {
+        if (btnPreview) btnPreview.classList.add('active');
+        if (btnSource) btnSource.classList.remove('active');
+        if (previewWrapper) previewWrapper.style.display = 'block';
+        if (monacoWrapper) monacoWrapper.style.display = 'none';
+        if (btnCopy) btnCopy.style.display = 'none';
+        
+        // Load Iframe if not loaded yet
+        if (previewWrapper && previewWrapper.innerHTML.trim() === '') {
+            const baseUrl = getSsrsBaseReportUrl(ssrsConnection.Url);
+            const reportPath = encodeURIComponent(ssrsViewerActivePath);
+            const renderUrl = `${baseUrl}?${reportPath}&rs:Command=Render`;
+            
+            previewWrapper.innerHTML = `
+                <iframe src="${renderUrl}" style="width: 100%; height: 100%; border: none; background: #ffffff;"></iframe>
+            `;
+        }
+    } else if (tab === 'source') {
+        if (btnPreview) btnPreview.classList.remove('active');
+        if (btnSource) btnSource.classList.add('active');
+        if (previewWrapper) previewWrapper.style.display = 'none';
+        if (monacoWrapper) monacoWrapper.style.display = 'block';
+        if (btnCopy) btnCopy.style.display = 'inline-flex';
+        
+        // Load Monaco code definition if not fetched yet
+        if (!ssrsViewerActiveCode) {
+            initSsrsViewerEditor("<!-- Memuat definisi laporan... -->");
+            try {
+                const res = await fetch(`${API_BASE}/ssrs/download`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        Url: ssrsConnection.Url,
+                        Username: ssrsConnection.Username,
+                        Password: ssrsConnection.Password,
+                        Domain: ssrsConnection.Domain,
+                        Path: ssrsViewerActivePath,
+                        TypeName: ssrsViewerActiveType
+                    })
+                });
+                
+                if (!res.ok) throw new Error(await res.text());
+                
+                const codeText = await res.text();
+                ssrsViewerActiveCode = codeText;
+                initSsrsViewerEditor(codeText);
+            } catch (err) {
+                console.error(err);
+                ssrsViewerActiveCode = `<!-- Gagal memuat definisi: ${err.message} -->`;
+                initSsrsViewerEditor(ssrsViewerActiveCode);
+            }
+        } else {
+            // Already cached, just refresh/init Monaco
+            initSsrsViewerEditor(ssrsViewerActiveCode);
+        }
+    }
+}
+
+function initSsrsViewerEditor(codeText) {
+    const container = document.getElementById('ssrs-viewer-monaco-container');
+    if (!container) return;
+    
+    if (ssrsViewerEditor) {
+        ssrsViewerEditor.setValue(codeText);
+        return;
+    }
+    
+    if (typeof require === 'undefined') {
+        console.error("Monaco loader is not loaded yet.");
+        return;
+    }
+    
+    require.config({ paths: { vs: 'lib/monaco-editor/min/vs' } });
+    require(['vs/editor/editor.main'], function() {
+        if (ssrsViewerEditor) return;
+        ssrsViewerEditor = monaco.editor.create(container, {
+            value: codeText,
+            language: 'xml',
+            theme: 'vs-dark',
+            automaticLayout: true,
+            minimap: { enabled: false },
+            fontSize: 13,
+            fontFamily: 'Consolas, Monaco, monospace',
+            lineHeight: 18,
+            readOnly: true,
+            scrollbar: {
+                vertical: 'auto',
+                horizontal: 'auto'
+            }
+        });
+    });
+}
+
+function closeSsrsViewerModal() {
+    const modal = document.getElementById('ssrs-viewer-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        const content = modal.querySelector('.modal-content');
+        if (content) {
+            content.classList.remove('maximized');
+        }
+        const icon = document.getElementById('ssrs-viewer-maximize-icon');
+        if (icon) {
+            icon.className = 'fa-solid fa-expand';
+        }
+    }
+    // Clear preview iframe to release memory
+    const previewWrapper = document.getElementById('ssrs-viewer-preview-container');
+    if (previewWrapper) {
+        previewWrapper.innerHTML = '';
+    }
+}
+
+function toggleSsrsViewerMaximize() {
+    const modal = document.getElementById('ssrs-viewer-modal');
+    if (!modal) return;
+    const content = modal.querySelector('.modal-content');
+    const icon = document.getElementById('ssrs-viewer-maximize-icon');
+    
+    if (content) {
+        const isMaximized = content.classList.toggle('maximized');
+        if (icon) {
+            icon.className = isMaximized ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+        }
+    }
+}
+
+async function copySsrsToClipboard() {
+    if (!ssrsViewerActiveCode) return;
+    try {
+        await navigator.clipboard.writeText(ssrsViewerActiveCode);
+        await uiAlert("Definisi laporan berhasil disalin ke clipboard!");
+    } catch (err) {
+        console.error(err);
+        await uiAlert("Gagal menyalin: " + err.message, { variant: 'error' });
+    }
+}
+
+async function downloadSsrsActiveItem() {
+    if (!ssrsViewerActivePath) return;
+    await downloadSsrsItem(null, ssrsViewerActivePath, ssrsViewerActiveType);
+}
+
+/* ============================================================================
+   SSRS CREATE FOLDER CONTROLLERS
+   ============================================================================ */
+
+function openCreateSsrsFolderModal() {
+    if (!ssrsConnection) return;
+    const modal = document.getElementById('ssrs-create-folder-modal');
+    if (!modal) return;
+    
+    document.getElementById('ssrs-new-folder-parent-path').value = currentSsrsPath;
+    document.getElementById('ssrs-new-folder-name').value = '';
+    
+    modal.classList.add('active');
+    setTimeout(() => {
+        document.getElementById('ssrs-new-folder-name').focus();
+    }, 100);
+}
+
+function closeCreateSsrsFolderModal() {
+    const modal = document.getElementById('ssrs-create-folder-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+async function submitCreateSsrsFolder() {
+    if (!ssrsConnection) return;
+    
+    const folderName = document.getElementById('ssrs-new-folder-name').value.trim();
+    if (!folderName) {
+        await uiAlert("Nama folder tidak boleh kosong.", { variant: 'warning' });
+        return;
+    }
+    
+    const parentPath = currentSsrsPath;
+    const body = {
+        Url: ssrsConnection.Url,
+        Username: ssrsConnection.Username,
+        Password: ssrsConnection.Password,
+        Domain: ssrsConnection.Domain,
+        ParentPath: parentPath,
+        FolderName: folderName
+    };
+    
+    const modal = document.getElementById('ssrs-create-folder-modal');
+    const submitBtn = modal.querySelector('.modal-footer .btn-primary');
+    const originalHtml = submitBtn.innerHTML;
+    
+    submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...`;
+    submitBtn.disabled = true;
+    
+    try {
+        const res = await fetch(`${API_BASE}/ssrs/create-folder`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+        
+        const data = await res.json();
+        if (data.Success || data.success) {
+            await uiAlert(`Folder '${folderName}' berhasil dibuat.`);
+            closeCreateSsrsFolderModal();
+            // Refresh folder list
+            await browseSsrs(currentSsrsPath);
+        } else {
+            throw new Error(data.Message || "Gagal membuat folder");
+        }
+    } catch (err) {
+        console.error(err);
+        await uiAlert("Gagal membuat folder: " + err.message, { variant: 'error' });
+    } finally {
+        submitBtn.innerHTML = originalHtml;
+        submitBtn.disabled = false;
     }
 }
