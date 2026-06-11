@@ -87,6 +87,10 @@
                 <button class="btn btn-secondary" onclick="downloadCurrentFolderZip()" style="width: auto; height: 34px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Unduh seluruh isi folder ini sebagai ZIP">
                     <i class="fa-solid fa-file-zipper"></i> ZIP Folder Ini
                 </button>
+                <button class="btn btn-secondary" onclick="triggerSsrsUpload()" style="width: auto; height: 34px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Unggah Berkas .rdl, .rsd, .rds atau .zip ke folder aktif">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Unggah Berkas
+                </button>
+                <input type="file" id="ssrs-file-upload-input" onchange="handleSsrsFileSelected(event)" accept=".rdl,.rsd,.rds,.zip" style="display: none;">
                 <button class="btn btn-primary" onclick="openCreateSsrsFolderModal()" style="width: auto; height: 34px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.35rem; background: var(--accent-indigo);" title="Buat Folder Baru">
                     <i class="fa-solid fa-folder-plus"></i> Buat Folder
                 </button>

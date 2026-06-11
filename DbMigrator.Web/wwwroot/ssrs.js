@@ -229,9 +229,12 @@ function renderSsrsItems(items) {
                         <span class="ssrs-card-title" title="${itemName}">${itemName}</span>
                         <span class="ssrs-card-subtitle">Folder</span>
                     </div>
-                    <div class="ssrs-card-actions">
+                    <div class="ssrs-card-actions" style="display: flex; gap: 0.25rem;">
                         <button class="btn-icon" onclick="downloadSsrsFolder(event, '${itemPath.replace(/'/g, "\\'")}')" title="Unduh Folder (ZIP)" style="color: var(--accent-indigo);">
                             <i class="fa-solid fa-file-zipper"></i>
+                        </button>
+                        <button class="btn-icon" onclick="deleteSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')" title="Hapus Folder" style="color: var(--color-error); border-color: rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.05);">
+                            <i class="fa-solid fa-trash-can"></i>
                         </button>
                     </div>
                 </div>
@@ -257,9 +260,12 @@ function renderSsrsItems(items) {
                         <span class="ssrs-card-title" title="${itemName}">${itemName}</span>
                         <span class="ssrs-card-subtitle">${type}</span>
                     </div>
-                    <div class="ssrs-card-actions">
+                    <div class="ssrs-card-actions" style="display: flex; gap: 0.25rem;">
                         <button class="btn-icon" onclick="downloadSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')" title="Unduh Definisi" style="color: var(--accent-teal);">
                             <i class="fa-solid fa-download"></i>
+                        </button>
+                        <button class="btn-icon" onclick="deleteSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')" title="Hapus Berkas" style="color: var(--color-error); border-color: rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.05);">
+                            <i class="fa-solid fa-trash-can"></i>
                         </button>
                     </div>
                 </div>
@@ -761,5 +767,115 @@ async function submitCreateSsrsFolder() {
     } finally {
         submitBtn.innerHTML = originalHtml;
         submitBtn.disabled = false;
+    }
+}
+
+/* ============================================================================
+   SSRS UPLOAD & DELETE CONTROLLERS
+   ============================================================================ */
+
+async function deleteSsrsItem(event, path, name) {
+    if (event) event.stopPropagation();
+    if (!ssrsConnection) return;
+    
+    if (!(await uiConfirm(`Apakah Anda yakin ingin menghapus "${name}"? Tindakan ini tidak dapat dibatalkan.`))) {
+        return;
+    }
+    
+    const loadingOverlay = document.getElementById('ssrs-loading-overlay');
+    if (loadingOverlay) {
+        loadingOverlay.querySelector('span').textContent = 'Menghapus item dari server...';
+        loadingOverlay.style.display = 'flex';
+    }
+    
+    try {
+        const res = await fetch(`${API_BASE}/ssrs/delete-item`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                Url: ssrsConnection.Url,
+                Username: ssrsConnection.Username,
+                Password: ssrsConnection.Password,
+                Domain: ssrsConnection.Domain,
+                Path: path
+            })
+        });
+        
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+        
+        const data = await res.json();
+        if (data.Success || data.success) {
+            await uiAlert(`"${name}" berhasil dihapus.`);
+            await browseSsrs(currentSsrsPath);
+        } else {
+            throw new Error(data.Message || "Gagal menghapus item.");
+        }
+    } catch (err) {
+        console.error(err);
+        await uiAlert("Gagal menghapus item: " + err.message, { variant: 'error' });
+    } finally {
+        if (loadingOverlay) {
+            loadingOverlay.querySelector('span').textContent = 'Mengambil data dari server...';
+            loadingOverlay.style.display = 'none';
+        }
+    }
+}
+
+function triggerSsrsUpload() {
+    const fileInput = document.getElementById('ssrs-file-upload-input');
+    if (fileInput) fileInput.click();
+}
+
+async function handleSsrsFileSelected(event) {
+    const fileInput = event.target;
+    if (!fileInput || fileInput.files.length === 0) return;
+    
+    const file = fileInput.files[0];
+    if (!ssrsConnection) return;
+    
+    const loadingOverlay = document.getElementById('ssrs-loading-overlay');
+    if (loadingOverlay) {
+        loadingOverlay.querySelector('span').textContent = `Mengunggah berkas "${file.name}"...`;
+        loadingOverlay.style.display = 'flex';
+    }
+    
+    const formData = new FormData();
+    formData.append("url", ssrsConnection.Url);
+    formData.append("username", ssrsConnection.Username);
+    formData.append("password", ssrsConnection.Password);
+    formData.append("domain", ssrsConnection.Domain);
+    formData.append("parentPath", currentSsrsPath);
+    formData.append("file", file);
+    
+    try {
+        const res = await fetch(`${API_BASE}/ssrs/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+        
+        const data = await res.json();
+        if (data.Success || data.success) {
+            await uiAlert(data.Message || "Berkas berhasil diunggah.");
+            await browseSsrs(currentSsrsPath);
+        } else {
+            throw new Error(data.Message || "Gagal mengunggah berkas.");
+        }
+    } catch (err) {
+        console.error(err);
+        await uiAlert("Gagal mengunggah: " + err.message, { variant: 'error' });
+    } finally {
+        // Reset file input so same file can be selected again
+        fileInput.value = '';
+        
+        if (loadingOverlay) {
+            loadingOverlay.querySelector('span').textContent = 'Mengambil data dari server...';
+            loadingOverlay.style.display = 'none';
+        }
     }
 }

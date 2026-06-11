@@ -3092,6 +3092,155 @@ app.MapPost("/api/ssrs/create-folder", async ([FromBody] SsrsCreateFolderRequest
     }
 });
 
+app.MapPost("/api/ssrs/delete-item", async ([FromBody] SsrsDeleteItemRequestDto req) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Path) || req.Path == "/")
+    {
+        return Results.BadRequest("Path tidak valid atau tidak diizinkan untuk dihapus.");
+    }
+
+    try
+    {
+        var xml = await SendSsrsSoapRequestAsync(req.Url, req.Username, req.Password, req.Domain, "DeleteItem", $@"
+            <DeleteItem xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
+              <ItemPath>{System.Security.SecurityElement.Escape(req.Path)}</ItemPath>
+            </DeleteItem>
+        ");
+        
+        return Results.Ok(new { Success = true, Message = "Item berhasil dihapus." });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapPost("/api/ssrs/upload", async (HttpRequest request) =>
+{
+    try
+    {
+        if (!request.HasFormContentType)
+        {
+            return Results.BadRequest("Request harus berupa Form Data.");
+        }
+
+        var form = await request.ReadFormAsync();
+        var url = form["url"].ToString();
+        var username = form["username"].ToString();
+        var password = form["password"].ToString();
+        var domain = form["domain"].ToString();
+        var parentPath = form["parentPath"].ToString();
+
+        if (string.IsNullOrEmpty(url))
+        {
+            return Results.BadRequest("URL Server SSRS tidak boleh kosong.");
+        }
+
+        var file = form.Files.FirstOrDefault();
+        if (file == null || file.Length == 0)
+        {
+            return Results.BadRequest("Tidak ada file yang diunggah.");
+        }
+
+        var filename = file.FileName;
+        var ext = Path.GetExtension(filename).ToLowerInvariant();
+
+        var successCount = 0;
+        var failedCount = 0;
+        var messages = new List<string>();
+
+        if (ext == ".zip")
+        {
+            using var stream = file.OpenReadStream();
+            using var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Read);
+            
+            foreach (var entry in archive.Entries)
+            {
+                if (entry.FullName.EndsWith("/") || string.IsNullOrEmpty(entry.Name)) continue;
+
+                try
+                {
+                    var (itemName, itemType) = MapFileToSsrsItem(entry.Name);
+                    
+                    var entryRelativeDir = Path.GetDirectoryName(entry.FullName)?.Replace('\\', '/') ?? "";
+                    var targetFolder = parentPath;
+                    if (!string.IsNullOrEmpty(entryRelativeDir))
+                    {
+                        targetFolder = parentPath == "/" 
+                            ? "/" + entryRelativeDir 
+                            : parentPath.TrimEnd('/') + "/" + entryRelativeDir;
+                    }
+                    
+                    await EnsureSsrsFolderRecursiveAsync(url, username, password, domain, targetFolder);
+                    
+                    using var entryStream = entry.Open();
+                    using var ms = new MemoryStream();
+                    await entryStream.CopyToAsync(ms);
+                    var bytes = ms.ToArray();
+                    var base64Def = Convert.ToBase64String(bytes);
+                    
+                    await SendSsrsSoapRequestAsync(url, username, password, domain, "CreateCatalogItem", $@"
+                        <CreateCatalogItem xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
+                          <ItemType>{itemType}</ItemType>
+                          <Name>{System.Security.SecurityElement.Escape(itemName)}</Name>
+                          <Parent>{System.Security.SecurityElement.Escape(targetFolder)}</Parent>
+                          <Overwrite>true</Overwrite>
+                          <Definition>{base64Def}</Definition>
+                          <Properties />
+                        </CreateCatalogItem>
+                    ");
+                    
+                    successCount++;
+                }
+                catch (Exception entryEx)
+                {
+                    failedCount++;
+                    messages.Add($"Gagal mengunggah '{entry.FullName}': {entryEx.Message}");
+                }
+            }
+            
+            return Results.Ok(new { 
+                Success = true, 
+                Message = $"Proses ZIP selesai: {successCount} berkas berhasil diunggah, {failedCount} berkas gagal.", 
+                Errors = messages 
+            });
+        }
+        else
+        {
+            var (itemName, itemType) = MapFileToSsrsItem(filename);
+            
+            using var stream = file.OpenReadStream();
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            var base64Def = Convert.ToBase64String(bytes);
+
+            var targetFolder = parentPath;
+            if (targetFolder != "/" && targetFolder.EndsWith("/"))
+            {
+                targetFolder = targetFolder.TrimEnd('/');
+            }
+
+            await SendSsrsSoapRequestAsync(url, username, password, domain, "CreateCatalogItem", $@"
+                <CreateCatalogItem xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
+                  <ItemType>{itemType}</ItemType>
+                  <Name>{System.Security.SecurityElement.Escape(itemName)}</Name>
+                  <Parent>{System.Security.SecurityElement.Escape(targetFolder)}</Parent>
+                  <Overwrite>true</Overwrite>
+                  <Definition>{base64Def}</Definition>
+                  <Properties />
+                </CreateCatalogItem>
+            ");
+
+            return Results.Ok(new { Success = true, Message = $"Berkas '{filename}' berhasil diunggah sebagai {itemType}." });
+        }
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Gagal mengunggah berkas: {ex.Message}");
+    }
+});
+
 // OBJ-RUN. RUN OBJECT MIGRATION JOB (pakai MigrationJob connection)
 app.MapPost("/api/jobs/{id:int}/obj-run", async (int id, [FromQuery] int? itemId, IConfiguration config) =>
 {
@@ -4441,6 +4590,11 @@ public class SsrsCreateFolderRequestDto : SsrsCredentialsDto
     public string FolderName { get; set; } = "";
 }
 
+public class SsrsDeleteItemRequestDto : SsrsCredentialsDto
+{
+    public string Path { get; set; } = "";
+}
+
 public class SsrsDownloadRequestDto : SsrsCredentialsDto
 {
     public string Path { get; set; } = "";
@@ -4541,5 +4695,51 @@ public partial class Program
         }
         
         return await response.Content.ReadAsStringAsync();
+    }
+
+    private static (string Name, string Type) MapFileToSsrsItem(string filename)
+    {
+        var ext = Path.GetExtension(filename).ToLowerInvariant();
+        var nameWithoutExt = Path.GetFileNameWithoutExtension(filename);
+        
+        if (ext == ".rdl") return (nameWithoutExt, "Report");
+        if (ext == ".rsd") return (nameWithoutExt, "DataSet");
+        if (ext == ".rds") return (nameWithoutExt, "DataSource");
+        
+        return (filename, "Resource");
+    }
+
+    private static async Task EnsureSsrsFolderRecursiveAsync(string url, string username, string password, string domain, string targetFolderPath)
+    {
+        if (string.IsNullOrEmpty(targetFolderPath) || targetFolderPath == "/") return;
+        
+        var segments = targetFolderPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var currentPath = "";
+        
+        for (int i = 0; i < segments.Length; i++)
+        {
+            var parent = i == 0 ? "/" : currentPath;
+            var folderName = segments[i];
+            
+            try
+            {
+                await SendSsrsSoapRequestAsync(url, username, password, domain, "CreateFolder", $@"
+                    <CreateFolder xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
+                      <Folder>{System.Security.SecurityElement.Escape(folderName)}</Folder>
+                      <Parent>{System.Security.SecurityElement.Escape(parent)}</Parent>
+                      <Properties />
+                    </CreateFolder>
+                ");
+            }
+            catch (Exception ex)
+            {
+                if (!ex.Message.Contains("AlreadyExists") && !ex.Message.Contains("already exists"))
+                {
+                    throw;
+                }
+            }
+            
+            currentPath = parent == "/" ? "/" + folderName : parent + "/" + folderName;
+        }
     }
 }
