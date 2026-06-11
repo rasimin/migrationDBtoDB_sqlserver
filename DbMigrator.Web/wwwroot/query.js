@@ -649,6 +649,69 @@ function initMonacoQueryEditor() {
 function registerMonacoSqlAutocomplete() {
     if (monacoSqlCompletionProvider) return; // Prevent double registration
 
+    function cleanTableName(name) {
+        if (!name) return "";
+        let clean = name.replace(/[\[\]]/g, ""); // Remove brackets
+        if (clean.includes('.')) {
+            const parts = clean.split('.');
+            return parts[parts.length - 1]; // Return the last part
+        }
+        return clean;
+    }
+
+    function getReferencedTables(queryText) {
+        const tables = [];
+        const fromJoinRegex = /(?:from|join)\s+([a-zA-Z0-9_\[\]\.]+)(?:\s+(?:as\s+)?([a-zA-Z0-9_]+))?/gi;
+        let match;
+        while ((match = fromJoinRegex.exec(queryText)) !== null) {
+            const tableName = match[1];
+            const alias = match[2];
+            const isDuplicate = tables.some(t => 
+                cleanTableName(t.tableName).toLowerCase() === cleanTableName(tableName).toLowerCase() && 
+                (t.alias || '').toLowerCase() === (alias || '').toLowerCase()
+            );
+            if (!isDuplicate) {
+                tables.push({
+                    tableName: tableName,
+                    alias: alias || null
+                });
+            }
+        }
+        return tables;
+    }
+
+    function getCurrentStatement(model, position) {
+        const lines = model.getLinesContent();
+        const lineCount = model.getLineCount();
+        const cursorLine = position.lineNumber;
+        
+        let startLine = cursorLine;
+        while (startLine > 1) {
+            const line = lines[startLine - 2];
+            if (line.toLowerCase().includes('select') && !line.trim().startsWith('--')) {
+                break;
+            }
+            if (line.includes(';')) {
+                break;
+            }
+            startLine--;
+        }
+        
+        let endLine = cursorLine;
+        while (endLine < lineCount) {
+            const line = lines[endLine];
+            if (line.includes(';')) {
+                break;
+            }
+            if (line.toLowerCase().includes('select') && !line.trim().startsWith('--')) {
+                break;
+            }
+            endLine++;
+        }
+        
+        return lines.slice(startLine - 1, endLine).join('\n');
+    }
+
     const sqlKeywordsList = [
         "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "JOIN", "ON",
         "ORDER BY", "GROUP BY", "IN", "AND", "OR", "AS", "INTO", "VALUES", "SET",
@@ -657,7 +720,7 @@ function registerMonacoSqlAutocomplete() {
     ];
 
     monacoSqlCompletionProvider = monaco.languages.registerCompletionItemProvider('sql', {
-        triggerCharacters: ['.'],
+        triggerCharacters: ['.', '*'],
         provideCompletionItems: function(model, position) {
             const textUntilPosition = model.getValueInRange({
                 startLineNumber: position.lineNumber,
@@ -665,6 +728,57 @@ function registerMonacoSqlAutocomplete() {
                 endLineNumber: position.lineNumber,
                 endColumn: position.column
             });
+            // Check if cursor is right after '*' (wildcard)
+            const matchAsterisk = textUntilPosition.match(/\*\s*$/);
+            if (matchAsterisk) {
+                const fullQuery = model.getValue();
+                const currentQuery = getCurrentStatement(model, position);
+                const tables = getReferencedTables(currentQuery);
+                if (tables.length > 0 && queryConsoleSchema && queryConsoleSchema.Columns) {
+                    const expandedColumns = [];
+                    tables.forEach(t => {
+                        const cleanTName = cleanTableName(t.tableName);
+                        const columns = queryConsoleSchema.Columns.filter(c => {
+                            const cTable = cleanTableName(c.TableName || c.tableName);
+                            return cTable.toLowerCase() === cleanTName.toLowerCase();
+                        });
+
+                        columns.forEach(c => {
+                            const colName = c.ColumnName || c.columnName;
+                            if (t.alias) {
+                                expandedColumns.push(`${t.alias}.[${colName}]`);
+                            } else {
+                                if (tables.length > 1) {
+                                    expandedColumns.push(`${cleanTName}.[${colName}]`);
+                                } else {
+                                    expandedColumns.push(`[${colName}]`);
+                                }
+                            }
+                        });
+                    });
+
+                    if (expandedColumns.length > 0) {
+                        const insertText = expandedColumns.join(', ');
+                        const tablesList = tables.map(t => t.tableName + (t.alias ? ' ' + t.alias : '')).join(', ');
+                        
+                        return {
+                            suggestions: [{
+                                label: `* (Expand to columns of ${tablesList})`,
+                                kind: monaco.languages.CompletionItemKind.Snippet,
+                                detail: `Expand asterisk wildcard`,
+                                documentation: `Replaces * with:\n${insertText}`,
+                                insertText: insertText,
+                                range: new monaco.Range(
+                                    position.lineNumber,
+                                    position.column - 1,
+                                    position.lineNumber,
+                                    position.column
+                                )
+                            }]
+                        };
+                    }
+                }
+            }
 
             // Check if user is typing table.column notation (e.g. Customers. or Customers.Name)
             const matchDot = textUntilPosition.match(/([\w\[\]\.]+)\.$/);
