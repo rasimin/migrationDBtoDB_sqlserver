@@ -257,8 +257,12 @@ function renderSsrsItems(items) {
                 colorVar = '#fb923c';
             }
 
+            const clickAction = type === 'DataSource'
+                ? `openSsrsDataSourceModal('${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')`
+                : `viewSsrsReportDefinition('${itemPath.replace(/'/g, "\\'")}', '${type}')`;
+
             return `
-                <div class="ssrs-card file-card" onclick="viewSsrsReportDefinition('${itemPath.replace(/'/g, "\\'")}', '${type}')" style="cursor: pointer;">
+                <div class="ssrs-card file-card" onclick="${clickAction}" style="cursor: pointer;">
                     <div class="ssrs-card-icon" style="color: ${colorVar};">
                         <i class="fa-solid ${iconClass}"></i>
                     </div>
@@ -896,5 +900,249 @@ async function handleSsrsFileSelected(event) {
             loadingOverlay.querySelector('span').textContent = 'Mengambil data dari server...';
             loadingOverlay.style.display = 'none';
         }
+    }
+}
+
+/* ============================================================================
+   SSRS EDIT DATASOURCE CONTROLLERS [NEW]
+   ============================================================================ */
+
+function toggleSsrsDsCredentialsFields() {
+    const credSelect = document.getElementById('ssrs-ds-credretrieval');
+    const storeFields = document.getElementById('ssrs-ds-store-fields');
+    if (credSelect && storeFields) {
+        storeFields.style.display = credSelect.value === 'Store' ? 'flex' : 'none';
+    }
+}
+
+function updateSsrsDsConnectionString() {
+    const serverInput = document.getElementById('ssrs-ds-server');
+    const databaseInput = document.getElementById('ssrs-ds-database');
+    const connstringInput = document.getElementById('ssrs-ds-connstring');
+
+    if (serverInput && databaseInput && connstringInput) {
+        const server = serverInput.value.trim();
+        const db = databaseInput.value.trim();
+        
+        // Build basic connection string
+        if (server && db) {
+            connstringInput.value = `data source=${server};initial catalog=${db}`;
+        }
+    }
+}
+
+function parseSsrsDsConnectionString(connString) {
+    let server = '';
+    let db = '';
+    
+    if (connString) {
+        const parts = connString.split(';');
+        parts.forEach(part => {
+            if (!part) return;
+            const kv = part.split('=');
+            if (kv.length === 2) {
+                const key = kv[0].trim().toLowerCase();
+                const val = kv[1].trim();
+                if (key === 'data source' || key === 'server' || key === 'addr' || key === 'address') {
+                    server = val;
+                } else if (key === 'initial catalog' || key === 'database' || key === 'db') {
+                    db = val;
+                }
+            }
+        });
+    }
+    return { server, db };
+}
+
+async function openSsrsDataSourceModal(path, name) {
+    if (!ssrsConnection) return;
+    
+    const modal = document.getElementById('ssrs-datasource-modal');
+    if (!modal) return;
+    
+    document.getElementById('ssrs-ds-modal-title').textContent = `Edit Shared Data Source: ${name}`;
+    document.getElementById('ssrs-ds-path').value = path;
+    
+    // Reset fields to empty first
+    document.getElementById('ssrs-ds-server').value = '';
+    document.getElementById('ssrs-ds-database').value = '';
+    document.getElementById('ssrs-ds-connstring').value = '';
+    document.getElementById('ssrs-ds-credretrieval').value = 'Store';
+    document.getElementById('ssrs-ds-username').value = '';
+    document.getElementById('ssrs-ds-password').value = '';
+    document.getElementById('ssrs-ds-wincreds').checked = false;
+    
+    toggleSsrsDsCredentialsFields();
+    
+    // Show modal loading or modal active first
+    modal.classList.add('active');
+    
+    const originalSaveBtn = document.getElementById('ssrs-ds-btn-save');
+    if (originalSaveBtn) originalSaveBtn.disabled = true;
+    
+    try {
+        const res = await fetch(`${API_BASE}/ssrs/get-datasource`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                Url: ssrsConnection.Url,
+                Username: ssrsConnection.Username,
+                Password: ssrsConnection.Password,
+                Domain: ssrsConnection.Domain,
+                Path: path,
+                TypeName: 'DataSource'
+            })
+        });
+        
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+        
+        const data = await res.json();
+        if (data.Success || data.success) {
+            document.getElementById('ssrs-ds-connstring').value = data.ConnectString || '';
+            document.getElementById('ssrs-ds-credretrieval').value = data.CredentialRetrieval || 'Store';
+            document.getElementById('ssrs-ds-wincreds').checked = !!data.WindowsCredentials;
+            document.getElementById('ssrs-ds-username').value = data.UserName || '';
+            
+            // Try to parse server and db
+            const parsed = parseSsrsDsConnectionString(data.ConnectString);
+            document.getElementById('ssrs-ds-server').value = parsed.server;
+            document.getElementById('ssrs-ds-database').value = parsed.db;
+            
+            toggleSsrsDsCredentialsFields();
+        } else {
+            throw new Error(data.Message || "Gagal mengambil properti Data Source");
+        }
+    } catch (err) {
+        console.error(err);
+        await uiAlert("Gagal memuat properti Data Source: " + err.message, { variant: 'error' });
+        closeSsrsDataSourceModal();
+    } finally {
+        if (originalSaveBtn) originalSaveBtn.disabled = false;
+    }
+}
+
+function closeSsrsDataSourceModal() {
+    const modal = document.getElementById('ssrs-datasource-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+async function testSsrsDsConnection() {
+    const connString = document.getElementById('ssrs-ds-connstring').value.trim();
+    const retrieval = document.getElementById('ssrs-ds-credretrieval').value;
+    const username = document.getElementById('ssrs-ds-username').value.trim();
+    const password = document.getElementById('ssrs-ds-password').value;
+    const winCreds = document.getElementById('ssrs-ds-wincreds').checked;
+    
+    if (!connString) {
+        await uiAlert("Mohon isi Server Name / Connection String terlebih dahulu.", { variant: 'warning' });
+        return;
+    }
+
+    const testBtn = document.getElementById('ssrs-ds-btn-test');
+    const originalText = testBtn.innerHTML;
+    testBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Testing...`;
+    testBtn.disabled = true;
+
+    try {
+        const res = await fetch(`${API_BASE}/ssrs/test-datasource-connection`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ConnectString: connString,
+                CredentialRetrieval: retrieval,
+                WindowsCredentials: winCreds,
+                UserName: username,
+                Password: password
+            })
+        });
+
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+
+        const data = await res.json();
+        if (data.Success || data.success) {
+            await uiAlert("Koneksi berhasil terhubung!", { variant: 'success' });
+        } else {
+            await uiAlert("Koneksi gagal: " + (data.Message || "Kesalahan tidak diketahui"), { variant: 'error' });
+        }
+    } catch (err) {
+        console.error(err);
+        await uiAlert("Gagal menguji koneksi: " + err.message, { variant: 'error' });
+    } finally {
+        testBtn.innerHTML = originalText;
+        testBtn.disabled = false;
+    }
+}
+
+async function submitSsrsDataSourceChanges() {
+    if (!ssrsConnection) return;
+    
+    const path = document.getElementById('ssrs-ds-path').value;
+    const connString = document.getElementById('ssrs-ds-connstring').value.trim();
+    const retrieval = document.getElementById('ssrs-ds-credretrieval').value;
+    const username = document.getElementById('ssrs-ds-username').value.trim();
+    const password = document.getElementById('ssrs-ds-password').value;
+    const winCreds = document.getElementById('ssrs-ds-wincreds').checked;
+
+    if (!connString) {
+        await uiAlert("Connection String tidak boleh kosong.", { variant: 'warning' });
+        return;
+    }
+
+    if (retrieval === 'Store' && !username) {
+        await uiAlert("Mohon isi Username Database untuk jenis autentikasi Store.", { variant: 'warning' });
+        return;
+    }
+
+    const saveBtn = document.getElementById('ssrs-ds-btn-save');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...`;
+    saveBtn.disabled = true;
+
+    try {
+        const res = await fetch(`${API_BASE}/ssrs/set-datasource`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                Url: ssrsConnection.Url,
+                Username: ssrsConnection.Username,
+                Password: ssrsConnection.Password,
+                Domain: ssrsConnection.Domain,
+                Path: path,
+                Definition: {
+                    Extension: "SQL",
+                    ConnectString: connString,
+                    CredentialRetrieval: retrieval,
+                    WindowsCredentials: winCreds,
+                    UserName: username,
+                    Password: password
+                }
+            })
+        });
+
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+
+        const data = await res.json();
+        if (data.Success || data.success) {
+            await uiAlert("Properti Data Source berhasil diperbarui.");
+            closeSsrsDataSourceModal();
+            // Refresh folder
+            await browseSsrs(currentSsrsPath);
+        } else {
+            throw new Error(data.Message || "Gagal menyimpan perubahan");
+        }
+    } catch (err) {
+        console.error(err);
+        await uiAlert("Gagal menyimpan perubahan Data Source: " + err.message, { variant: 'error' });
+    } finally {
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
     }
 }

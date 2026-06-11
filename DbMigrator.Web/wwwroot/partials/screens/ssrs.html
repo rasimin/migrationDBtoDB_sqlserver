@@ -207,4 +207,72 @@
             </div>
         </div>
     </div>
+
+    <!-- MODAL: SSRS EDIT DATASOURCE -->
+    <div class="modal-overlay" id="ssrs-datasource-modal">
+        <div class="modal-content" style="max-width: 550px; border-color: var(--accent-indigo);">
+            <div class="modal-header">
+                <div>
+                    <h3 id="ssrs-ds-modal-title">Edit Shared Data Source</h3>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Konfigurasikan detail koneksi dan kredensial untuk data source SSRS.</p>
+                </div>
+                <button class="close-btn" onclick="closeSsrsDataSourceModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem 1.75rem; display: flex; flex-direction: column; gap: 1rem;">
+                <input type="hidden" id="ssrs-ds-path">
+                
+                <div class="form-group">
+                    <label for="ssrs-ds-server" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">SQL Server / Host:</label>
+                    <input type="text" id="ssrs-ds-server" class="form-control" placeholder="Contoh: localhost atau 192.168.26.21" oninput="updateSsrsDsConnectionString()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; width: 100%;">
+                </div>
+
+                <div class="form-group">
+                    <label for="ssrs-ds-database" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Nama Database:</label>
+                    <input type="text" id="ssrs-ds-database" class="form-control" placeholder="Contoh: SSO_DB" oninput="updateSsrsDsConnectionString()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; width: 100%;">
+                </div>
+
+                <div class="form-group">
+                    <label for="ssrs-ds-connstring" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Connection String (SSRS Format):</label>
+                    <input type="text" id="ssrs-ds-connstring" class="form-control" placeholder="data source=SERVER;initial catalog=DATABASE" style="font-family: Consolas, monospace; font-size: 0.85rem; height: 38px; border-radius: 8px; width: 100%;">
+                    <small style="color: var(--text-muted); font-size: 0.72rem; display: block; margin-top: 0.25rem;">
+                        Format bawaan: <code>data source=[server];initial catalog=[database]</code>
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="ssrs-ds-credretrieval" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Jenis Autentikasi (Credential Retrieval):</label>
+                    <select id="ssrs-ds-credretrieval" class="form-control" onchange="toggleSsrsDsCredentialsFields()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; width: 100%;">
+                        <option value="Store">Store (Simpan username & password di server)</option>
+                        <option value="Integrated">Integrated (Autentikasi Windows Terintegrasi)</option>
+                    </select>
+                </div>
+
+                <div id="ssrs-ds-store-fields" style="display: flex; flex-direction: column; gap: 1rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border-flat); padding: 1rem; border-radius: 8px;">
+                    <div class="form-group" style="margin: 0;">
+                        <label for="ssrs-ds-username" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Username Database:</label>
+                        <input type="text" id="ssrs-ds-username" class="form-control" placeholder="sa" style="font-size: 0.85rem; height: 38px; border-radius: 8px; width: 100%;">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label for="ssrs-ds-password" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Password Database:</label>
+                        <input type="password" id="ssrs-ds-password" class="form-control" placeholder="••••••••" style="font-size: 0.85rem; height: 38px; border-radius: 8px; width: 100%;">
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin: 0;">
+                        <input type="checkbox" id="ssrs-ds-wincreds" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--accent-indigo);">
+                        <label for="ssrs-wincreds" style="font-size: 0.82rem; color: #ffffff; cursor: pointer; user-select: none; margin: 0;">Gunakan sebagai kredensial Windows saat menghubungkan ke database</label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; gap: 0.5rem; padding: 1.25rem 1.75rem;">
+                <button class="btn btn-secondary" onclick="testSsrsDsConnection()" id="ssrs-ds-btn-test" style="width: auto; border-color: var(--accent-indigo); color: var(--accent-indigo); background: rgba(79, 70, 229, 0.05); font-weight: 600;">
+                    <i class="fa-solid fa-vial"></i> Test Connection
+                </button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary" onclick="closeSsrsDataSourceModal()" style="width: auto;">Batal</button>
+                    <button class="btn btn-primary" onclick="submitSsrsDataSourceChanges()" id="ssrs-ds-btn-save" style="width: auto; background: var(--accent-indigo);">
+                        <i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>

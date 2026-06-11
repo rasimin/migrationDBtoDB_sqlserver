@@ -3115,6 +3115,147 @@ app.MapPost("/api/ssrs/delete-item", async ([FromBody] SsrsDeleteItemRequestDto 
     }
 });
 
+app.MapPost("/api/ssrs/get-datasource", async ([FromBody] SsrsDownloadRequestDto req) =>
+{
+    try
+    {
+        var xml = await SendSsrsSoapRequestAsync(req.Url, req.Username, req.Password, req.Domain, "GetDataSourceContents", $@"
+            <GetDataSourceContents xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
+              <DataSource>{System.Security.SecurityElement.Escape(req.Path)}</DataSource>
+            </GetDataSourceContents>
+        ");
+
+        var doc = XDocument.Parse(xml);
+        XNamespace ns = "http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer";
+        var def = doc.Descendants(ns + "Definition").FirstOrDefault();
+        if (def == null)
+        {
+            return Results.BadRequest("Definisi Data Source tidak ditemukan.");
+        }
+
+        var result = new
+        {
+            Success = true,
+            Extension = def.Element(ns + "Extension")?.Value ?? "SQL",
+            ConnectString = def.Element(ns + "ConnectString")?.Value ?? "",
+            CredentialRetrieval = def.Element(ns + "CredentialRetrieval")?.Value ?? "Store",
+            WindowsCredentials = string.Equals(def.Element(ns + "WindowsCredentials")?.Value, "true", StringComparison.OrdinalIgnoreCase),
+            UserName = def.Element(ns + "UserName")?.Value ?? ""
+        };
+
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapPost("/api/ssrs/set-datasource", async ([FromBody] SsrsSetDataSourceRequestDto req) =>
+{
+    try
+    {
+        var xml = await SendSsrsSoapRequestAsync(req.Url, req.Username, req.Password, req.Domain, "SetDataSourceContents", $@"
+            <SetDataSourceContents xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
+              <DataSource>{System.Security.SecurityElement.Escape(req.Path)}</DataSource>
+              <Definition>
+                <Extension>{System.Security.SecurityElement.Escape(req.Definition.Extension)}</Extension>
+                <ConnectString>{System.Security.SecurityElement.Escape(req.Definition.ConnectString)}</ConnectString>
+                <CredentialRetrieval>{System.Security.SecurityElement.Escape(req.Definition.CredentialRetrieval)}</CredentialRetrieval>
+                <WindowsCredentials>{(req.Definition.WindowsCredentials ? "true" : "false")}</WindowsCredentials>
+                <UserName>{System.Security.SecurityElement.Escape(req.Definition.UserName ?? "")}</UserName>
+                <Password>{System.Security.SecurityElement.Escape(req.Definition.Password ?? "")}</Password>
+              </Definition>
+            </SetDataSourceContents>
+        ");
+
+        return Results.Ok(new { Success = true, Message = "Koneksi Data Source berhasil disimpan." });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapPost("/api/ssrs/test-datasource-connection", async ([FromBody] SsrsTestDataSourceConnectionRequestDto req) =>
+{
+    try
+    {
+        string connStr = req.ConnectString;
+        if (string.IsNullOrWhiteSpace(connStr))
+        {
+            return Results.Ok(new { Success = false, Message = "Connection string kosong." });
+        }
+
+        var builder = new SqlConnectionStringBuilder();
+        
+        try
+        {
+            var parts = connStr.Split(';');
+            foreach (var part in parts)
+            {
+                if (string.IsNullOrWhiteSpace(part)) continue;
+                var kv = part.Split('=');
+                if (kv.Length == 2)
+                {
+                    var key = kv[0].Trim().ToLowerInvariant();
+                    var val = kv[1].Trim();
+                    if (key == "data source" || key == "server" || key == "addr" || key == "address")
+                    {
+                        builder.DataSource = val;
+                    }
+                    else if (key == "initial catalog" || key == "database" || key == "db")
+                    {
+                        builder.InitialCatalog = val;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            builder.ConnectionString = connStr;
+        }
+
+        if (string.IsNullOrEmpty(builder.DataSource))
+        {
+            return Results.Ok(new { Success = false, Message = "Server Name (Data Source) tidak terdeteksi dalam Connection String." });
+        }
+
+        builder.TrustServerCertificate = true;
+        builder.ConnectTimeout = 10;
+
+        if (string.Equals(req.CredentialRetrieval, "Store", StringComparison.OrdinalIgnoreCase))
+        {
+            if (req.WindowsCredentials)
+            {
+                builder.IntegratedSecurity = true;
+            }
+            else
+            {
+                builder.IntegratedSecurity = false;
+                builder.UserID = req.UserName;
+                builder.Password = req.Password;
+            }
+        }
+        else if (string.Equals(req.CredentialRetrieval, "Integrated", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.IntegratedSecurity = true;
+        }
+        else
+        {
+            return Results.Ok(new { Success = false, Message = $"Mode Credentials '{req.CredentialRetrieval}' tidak didukung untuk tes langsung dari aplikasi." });
+        }
+
+        using var conn = new SqlConnection(builder.ConnectionString);
+        await conn.OpenAsync();
+        return Results.Ok(new { Success = true, Message = "Koneksi berhasil terhubung!" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = $"Gagal terhubung: {ex.Message}" });
+    }
+});
+
 app.MapPost("/api/ssrs/upload", async (HttpRequest request) =>
 {
     try
@@ -4622,6 +4763,31 @@ public class SsrsDownloadRequestDto : SsrsCredentialsDto
 {
     public string Path { get; set; } = "";
     public string TypeName { get; set; } = "";
+}
+
+public class DataSourceDefinitionDto
+{
+    public string Extension { get; set; } = "SQL";
+    public string ConnectString { get; set; } = "";
+    public string CredentialRetrieval { get; set; } = "Store";
+    public bool WindowsCredentials { get; set; } = false;
+    public string UserName { get; set; } = "";
+    public string Password { get; set; } = "";
+}
+
+public class SsrsSetDataSourceRequestDto : SsrsCredentialsDto
+{
+    public string Path { get; set; } = "";
+    public DataSourceDefinitionDto Definition { get; set; } = new();
+}
+
+public class SsrsTestDataSourceConnectionRequestDto
+{
+    public string ConnectString { get; set; } = "";
+    public string CredentialRetrieval { get; set; } = "Store";
+    public bool WindowsCredentials { get; set; } = false;
+    public string UserName { get; set; } = "";
+    public string Password { get; set; } = "";
 }
 
 public class CatalogItemDto
