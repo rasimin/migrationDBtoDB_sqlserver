@@ -15,12 +15,6 @@
 
                 <div style="display: flex; gap: 0.75rem; margin-bottom: 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 1.25rem;">
                     <div class="form-group" style="flex: 1; margin-bottom: 0;">
-                        <label for="query-conn-job-select" style="font-size: 0.82rem; font-weight: 600; color: var(--accent-teal); display: block; margin-bottom: 0.4rem;">Pre-fill from Job</label>
-                        <select id="query-conn-job-select" class="form-control" onchange="prefillQueryConnection()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff;">
-                            <option value="">-- Pilih Job --</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
                         <label for="query-saved-conn-select" style="font-size: 0.82rem; font-weight: 600; color: var(--accent-teal); display: block; margin-bottom: 0.4rem;">Pilih dari Histori Koneksi</label>
                         <div style="display: flex; gap: 0.25rem;">
                             <select id="query-saved-conn-select" class="form-control" onchange="prefillSavedConnection()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; flex: 1;">

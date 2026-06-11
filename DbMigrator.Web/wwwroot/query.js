@@ -33,59 +33,6 @@ function parseConnectionString(connStr) {
     return result;
 }
 
-async function prefillQueryConnection() {
-    const jobSelect = document.getElementById('query-conn-job-select');
-    if (!jobSelect) return;
-    const jobId = jobSelect.value;
-    
-    // Clear saved connection selection
-    const savedSelect = document.getElementById('query-saved-conn-select');
-    if (savedSelect) savedSelect.value = '';
-    
-    const serverInput = document.getElementById('query-server-name');
-    const authSelect = document.getElementById('query-auth-type');
-    const loginInput = document.getElementById('query-login');
-    const passwordInput = document.getElementById('query-password');
-    
-    if (!jobId) {
-        serverInput.value = '';
-        authSelect.value = 'SQL';
-        loginInput.value = '';
-        passwordInput.value = '';
-        toggleQueryAuthFields();
-        return;
-    }
-    
-    try {
-        const res = await fetch(`${API_BASE}/jobs/${jobId}`);
-        if (!res.ok) throw new Error("Gagal memuat detail job");
-        const job = await res.json();
-        
-        // Default to Target connection string first
-        const connStr = job.TargetConnectionString || job.targetConnectionString || job.SourceConnectionString || job.sourceConnectionString;
-        const connObj = parseConnectionString(connStr);
-        
-        const server = connObj['server'] || connObj['data source'] || connObj['datasource'] || '';
-        const userId = connObj['user id'] || connObj['uid'] || '';
-        const pwd = connObj['password'] || connObj['pwd'] || '';
-        const integratedSec = connObj['integrated security'] || '';
-        
-        serverInput.value = server;
-        if (integratedSec.toLowerCase() === 'true' || integratedSec.toLowerCase() === 'sspi') {
-            authSelect.value = 'Windows';
-        } else {
-            authSelect.value = 'SQL';
-        }
-        
-        loginInput.value = userId;
-        passwordInput.value = pwd;
-        
-        toggleQueryAuthFields();
-    } catch (err) {
-        console.error("Error prefilling connection:", err);
-    }
-}
-
 function toggleQueryAuthFields() {
     const authType = document.getElementById('query-auth-type').value;
     const credsSection = document.getElementById('query-auth-credentials-section');
@@ -93,30 +40,6 @@ function toggleQueryAuthFields() {
         credsSection.style.display = 'none';
     } else {
         credsSection.style.display = 'block';
-    }
-}
-
-async function populateQueryConnJobs() {
-    const select = document.getElementById('query-conn-job-select');
-    if (!select) return;
-    
-    select.innerHTML = '<option value="">-- Memuat Migration Job... --</option>';
-    
-    try {
-        const res = await fetch(`${API_BASE}/jobs`);
-        if (!res.ok) throw new Error("Gagal mengambil data");
-        const jobs = await res.json();
-        
-        if (jobs.length === 0) {
-            select.innerHTML = '<option value="">-- Belum ada Migration Job --</option>';
-            return;
-        }
-        
-        select.innerHTML = '<option value="">-- Pilih Job untuk isi otomatis --</option>' + 
-            jobs.map(job => `<option value="${job.Id || job.id}">${escapeHtml(job.JobName || job.jobName)}</option>`).join('');
-    } catch (err) {
-        console.error(err);
-        select.innerHTML = '<option value="">-- Error memuat Migration Job --</option>';
     }
 }
 
@@ -458,7 +381,6 @@ function filterDatabaseList(searchQuery) {
         return `
             <div class="db-item ${isSelected ? 'selected' : ''}" 
                  onclick="selectDatabase('${escapeHtml(db)}')" 
-                 style="color: ${isSelected ? '#0d1117' : '#cbd5e1'}; background: ${isSelected ? 'var(--accent-teal)' : 'transparent'}; font-weight: ${isSelected ? '600' : 'normal'};"
                  title="${escapeHtml(db)}">
                 ${escapeHtml(db)}
             </div>
@@ -2604,7 +2526,6 @@ function filterTableList(searchQuery) {
         return `
             <div class="table-select-item ${isSelected ? 'selected' : ''}" 
                  onclick="selectTableForInsert('${escapeHtml(t)}')" 
-                 style="color: ${isSelected ? '#0d1117' : '#cbd5e1'}; background: ${isSelected ? 'var(--accent-teal)' : 'transparent'}; font-weight: ${isSelected ? '600' : 'normal'};"
                  title="${escapeHtml(t)}">
                 ${escapeHtml(t)}
             </div>

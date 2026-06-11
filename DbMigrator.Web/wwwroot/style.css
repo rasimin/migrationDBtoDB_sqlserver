@@ -501,12 +501,13 @@ select option:disabled {
     color: var(--text-primary);
     font-size: 0.84rem;
     cursor: pointer;
+    transition: all 0.15s ease;
 }
 
 .table-autocomplete-option:hover,
 .table-autocomplete-option.active {
-    background: var(--bg-card-hover);
-    color: var(--accent-teal);
+    background: rgba(0, 173, 181, 0.15);
+    color: #ffffff;
 }
 
 .table-autocomplete-empty {

@@ -332,7 +332,6 @@ function switchMainTab(tabId) {
 
     // 5. Populate jobs in Query Console connection panel
     if (tabId === 'query') {
-        populateQueryConnJobs();
         loadSavedConnections();
         // Refresh Monaco Editor layout if already connected and initialized
         if (localStorage.getItem('queryConsoleConnected') === 'true') {
