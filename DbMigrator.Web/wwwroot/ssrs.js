@@ -101,6 +101,12 @@ async function connectSsrs() {
             document.getElementById('ssrs-connect-panel').style.display = 'none';
             document.getElementById('ssrs-explorer-panel').style.display = 'flex';
             
+            const connInfoEl = document.getElementById('ssrs-active-conn-info');
+            if (connInfoEl) {
+                const cleanUrl = getSsrsBaseReportUrl(url).replace("http://", "").replace("https://", "");
+                connInfoEl.textContent = domain ? `${domain}\\${username} @ ${cleanUrl}` : `${username} @ ${cleanUrl}`;
+            }
+            
             await browseSsrs('/');
         } else {
             await uiAlert("Koneksi gagal: " + (data.Message || "Pastikan kredensial dan URL sudah benar."), { variant: 'error' });

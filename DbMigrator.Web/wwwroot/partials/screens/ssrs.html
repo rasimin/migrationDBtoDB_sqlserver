@@ -69,10 +69,14 @@
     <div id="ssrs-explorer-panel" style="display: none; display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1rem;">
         <!-- TOP TOOLBAR & NAV -->
         <div style="background: var(--bg-card); border: 1px solid var(--border-flat); border-radius: 12px; padding: 1rem 1.5rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; box-shadow: var(--shadow-flat);">
-            <!-- Breadcrumbs -->
-            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 280px; overflow-x: auto; white-space: nowrap; padding-bottom: 0.25rem;">
+            <!-- Breadcrumbs & Connection Badge -->
+            <div style="display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 280px; overflow-x: auto; white-space: nowrap; padding-bottom: 0.25rem;">
                 <div id="ssrs-breadcrumbs" class="ssrs-breadcrumbs-container" style="display: flex; align-items: center; gap: 0.55rem; font-size: 0.9rem;">
                     <!-- Dynamically generated breadcrumbs -->
+                </div>
+                <div id="ssrs-active-conn-badge" style="display: inline-flex; align-items: center; gap: 0.4rem; background: rgba(79, 70, 229, 0.1); border: 1px solid rgba(79, 70, 229, 0.25); color: #c7d2fe; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.78rem; font-weight: 500; font-family: Consolas, monospace;">
+                    <i class="fa-solid fa-server" style="color: var(--accent-indigo); font-size: 0.8rem;"></i>
+                    <span id="ssrs-active-conn-info">Not Connected</span>
                 </div>
             </div>
 
