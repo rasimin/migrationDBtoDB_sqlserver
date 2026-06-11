@@ -16,6 +16,11 @@ using DbMigrator.Core;
 using DbMigrator.Web;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.IO;
+using System.IO.Compression;
+using System.Net;
+using System.Net.Http;
+using System.Xml.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -325,6 +330,20 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
                 Authentication NVARCHAR(50) NOT NULL,
                 Login NVARCHAR(255) NULL,
                 Password NVARCHAR(255) NULL,
+                CreatedAt DATETIME NOT NULL DEFAULT GETDATE()
+            );
+        END
+
+        -- Ensure SavedSsrsConnections table exists
+        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID('dbo.SavedSsrsConnections') AND type in ('U'))
+        BEGIN
+            CREATE TABLE dbo.SavedSsrsConnections (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                ConnectionName NVARCHAR(255) NOT NULL,
+                Url NVARCHAR(500) NOT NULL,
+                Username NVARCHAR(255) NOT NULL,
+                Password NVARCHAR(255) NULL,
+                Domain NVARCHAR(255) NULL,
                 CreatedAt DATETIME NOT NULL DEFAULT GETDATE()
             );
         END
@@ -2787,6 +2806,259 @@ app.MapGet("/api/jobs/{id:int}/obj-logs", async (int id, IConfiguration config) 
     return Results.Ok(logs);
 });
 
+// ============================================================================
+// SSRS EXPLORER ENDPOINTS
+// ============================================================================
+
+app.MapGet("/api/ssrs/connections", async (IConfiguration config) =>
+{
+    try
+    {
+        using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+        var connections = await conn.QueryAsync<SavedSsrsConnection>(
+            "SELECT Id, ConnectionName, Url, Username, Password, Domain, CreatedAt FROM dbo.SavedSsrsConnections ORDER BY ConnectionName ASC");
+        return Results.Ok(connections);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { Success = false, Message = $"Gagal mengambil daftar koneksi SSRS: {ex.Message}" });
+    }
+});
+
+app.MapPost("/api/ssrs/connections", async ([FromBody] SavedSsrsConnection request, IConfiguration config) =>
+{
+    if (string.IsNullOrEmpty(request?.ConnectionName) || string.IsNullOrEmpty(request?.Url))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Nama Koneksi dan URL tidak boleh kosong" });
+    }
+
+    try
+    {
+        using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+        var existing = await conn.QueryFirstOrDefaultAsync<int?>(
+            "SELECT Id FROM dbo.SavedSsrsConnections WHERE ConnectionName = @ConnectionName", new { request.ConnectionName });
+
+        if (existing.HasValue)
+        {
+            await conn.ExecuteAsync(@"
+                UPDATE dbo.SavedSsrsConnections 
+                SET Url = @Url, 
+                    Username = @Username, 
+                    Password = @Password,
+                    Domain = @Domain 
+                WHERE Id = @Id", 
+                new { 
+                    Id = existing.Value,
+                    request.Url, 
+                    request.Username, 
+                    request.Password, 
+                    request.Domain
+                });
+            return Results.Ok(new { Success = true, Message = "Koneksi SSRS berhasil diperbarui", Id = existing.Value });
+        }
+        else
+        {
+            var id = await conn.QuerySingleAsync<int>(@"
+                INSERT INTO dbo.SavedSsrsConnections (ConnectionName, Url, Username, Password, Domain, CreatedAt)
+                VALUES (@ConnectionName, @Url, @Username, @Password, @Domain, GETDATE());
+                SELECT CAST(SCOPE_IDENTITY() as int);", 
+                request);
+            return Results.Ok(new { Success = true, Message = "Koneksi SSRS berhasil disimpan", Id = id });
+        }
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { Success = false, Message = $"Gagal menyimpan koneksi SSRS: {ex.Message}" });
+    }
+});
+
+app.MapDelete("/api/ssrs/connections/{id:int}", async (int id, IConfiguration config) =>
+{
+    try
+    {
+        using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+        var deleted = await conn.ExecuteAsync("DELETE FROM dbo.SavedSsrsConnections WHERE Id = @id", new { id });
+        if (deleted > 0)
+        {
+            return Results.Ok(new { Success = true, Message = "Koneksi SSRS berhasil dihapus" });
+        }
+        return Results.NotFound(new { Success = false, Message = "Koneksi SSRS tidak ditemukan" });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { Success = false, Message = $"Gagal menghapus koneksi SSRS: {ex.Message}" });
+    }
+});
+
+app.MapPost("/api/ssrs/connect", async ([FromBody] SsrsBrowseRequestDto req) =>
+{
+    try
+    {
+        var xml = await SendSsrsSoapRequestAsync(req.Url, req.Username, req.Password, req.Domain, "ListChildren", $@"
+            <ListChildren xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
+              <ItemPath>/</ItemPath>
+              <Recursive>false</Recursive>
+            </ListChildren>
+        ");
+        return Results.Ok(new { Success = true, Message = "Koneksi ke SSRS berhasil." });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { Success = false, Message = ex.Message });
+    }
+});
+
+app.MapPost("/api/ssrs/browse", async ([FromBody] SsrsBrowseRequestDto req) =>
+{
+    try
+    {
+        var xml = await SendSsrsSoapRequestAsync(req.Url, req.Username, req.Password, req.Domain, "ListChildren", $@"
+            <ListChildren xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
+              <ItemPath>{System.Security.SecurityElement.Escape(req.Path)}</ItemPath>
+              <Recursive>false</Recursive>
+            </ListChildren>
+        ");
+
+        var doc = XDocument.Parse(xml);
+        XNamespace ns = "http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer";
+        var items = doc.Descendants(ns + "CatalogItem")
+            .Select(el => new CatalogItemDto
+            {
+                Name = el.Element(ns + "Name")?.Value ?? "",
+                Path = el.Element(ns + "Path")?.Value ?? "",
+                TypeName = el.Element(ns + "TypeName")?.Value ?? ""
+            })
+            .OrderBy(i => i.TypeName != "Folder") // Folders first
+            .ThenBy(i => i.Name)
+            .ToList();
+
+        return Results.Ok(new { Success = true, Items = items });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapPost("/api/ssrs/download", async ([FromBody] SsrsDownloadRequestDto req) =>
+{
+    try
+    {
+        var xml = await SendSsrsSoapRequestAsync(req.Url, req.Username, req.Password, req.Domain, "GetItemDefinition", $@"
+            <GetItemDefinition xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
+              <ItemPath>{System.Security.SecurityElement.Escape(req.Path)}</ItemPath>
+            </GetItemDefinition>
+        ");
+
+        var doc = XDocument.Parse(xml);
+        XNamespace ns = "http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer";
+        var base64Def = doc.Descendants(ns + "Definition").FirstOrDefault()?.Value ?? "";
+        if (string.IsNullOrEmpty(base64Def))
+        {
+            return Results.BadRequest("Definisi laporan tidak ditemukan atau kosong.");
+        }
+
+        byte[] bytes = Convert.FromBase64String(base64Def);
+        var filename = req.Path.Split('/').LastOrDefault() ?? "report";
+        
+        string extension = ".rdl";
+        if (string.Equals(req.TypeName, "DataSet", StringComparison.OrdinalIgnoreCase)) extension = ".rsd";
+        else if (string.Equals(req.TypeName, "DataSource", StringComparison.OrdinalIgnoreCase)) extension = ".rds";
+
+        return Results.File(bytes, "application/xml", filename + extension);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapPost("/api/ssrs/download-folder", async ([FromBody] SsrsBrowseRequestDto req) =>
+{
+    try
+    {
+        var xml = await SendSsrsSoapRequestAsync(req.Url, req.Username, req.Password, req.Domain, "ListChildren", $@"
+            <ListChildren xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
+              <ItemPath>{System.Security.SecurityElement.Escape(req.Path)}</ItemPath>
+              <Recursive>true</Recursive>
+            </ListChildren>
+        ");
+
+        var doc = XDocument.Parse(xml);
+        XNamespace ns = "http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer";
+        var allItems = doc.Descendants(ns + "CatalogItem")
+            .Select(el => new CatalogItemDto
+            {
+                Name = el.Element(ns + "Name")?.Value ?? "",
+                Path = el.Element(ns + "Path")?.Value ?? "",
+                TypeName = el.Element(ns + "TypeName")?.Value ?? ""
+            })
+            .ToList();
+
+        var downloadableTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Report", "DataSet", "DataSource" };
+        var filesToDownload = allItems.Where(i => downloadableTypes.Contains(i.TypeName)).ToList();
+
+        if (filesToDownload.Count == 0)
+        {
+            return Results.BadRequest("Tidak ada item laporan untuk diunduh di folder ini.");
+        }
+
+        using var memoryStream = new MemoryStream();
+        using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
+        {
+            foreach (var file in filesToDownload)
+            {
+                try
+                {
+                    var fileXml = await SendSsrsSoapRequestAsync(req.Url, req.Username, req.Password, req.Domain, "GetItemDefinition", $@"
+                        <GetItemDefinition xmlns=""http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer"">
+                          <ItemPath>{System.Security.SecurityElement.Escape(file.Path)}</ItemPath>
+                        </GetItemDefinition>
+                    ");
+
+                    var fileDoc = XDocument.Parse(fileXml);
+                    var base64Def = fileDoc.Descendants(ns + "Definition").FirstOrDefault()?.Value ?? "";
+                    if (string.IsNullOrEmpty(base64Def)) continue;
+
+                    byte[] fileBytes = Convert.FromBase64String(base64Def);
+
+                    string relativePath = file.Path;
+                    if (req.Path != "/")
+                    {
+                        if (relativePath.StartsWith(req.Path, StringComparison.OrdinalIgnoreCase))
+                        {
+                            relativePath = relativePath.Substring(req.Path.Length);
+                        }
+                    }
+                    relativePath = relativePath.TrimStart('/');
+
+                    string extension = ".rdl";
+                    if (string.Equals(file.TypeName, "DataSet", StringComparison.OrdinalIgnoreCase)) extension = ".rsd";
+                    else if (string.Equals(file.TypeName, "DataSource", StringComparison.OrdinalIgnoreCase)) extension = ".rds";
+
+                    var zipEntry = archive.CreateEntry(relativePath + extension);
+                    using var entryStream = zipEntry.Open();
+                    await entryStream.WriteAsync(fileBytes, 0, fileBytes.Length);
+                }
+                catch
+                {
+                    // Skip failures
+                }
+            }
+        }
+
+        memoryStream.Position = 0;
+        var folderName = req.Path.Trim('/').Split('/').LastOrDefault() ?? "Root";
+        if (string.IsNullOrEmpty(folderName)) folderName = "Root";
+
+        return Results.File(memoryStream.ToArray(), "application/zip", $"{folderName}_SSRS_Backup.zip");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Gagal mengunduh folder: {ex.Message}");
+    }
+});
+
 // OBJ-RUN. RUN OBJECT MIGRATION JOB (pakai MigrationJob connection)
 app.MapPost("/api/jobs/{id:int}/obj-run", async (int id, [FromQuery] int? itemId, IConfiguration config) =>
 {
@@ -4117,6 +4389,43 @@ public class QuerySchemaDefinitionRequest
     public string ObjectType { get; set; } // TABLE, VIEW, PROCEDURE, FUNCTION
 }
 
+public class SsrsCredentialsDto
+{
+    public string Url { get; set; } = "";
+    public string Username { get; set; } = "";
+    public string Password { get; set; } = "";
+    public string Domain { get; set; } = "";
+}
+
+public class SsrsBrowseRequestDto : SsrsCredentialsDto
+{
+    public string Path { get; set; } = "/";
+}
+
+public class SsrsDownloadRequestDto : SsrsCredentialsDto
+{
+    public string Path { get; set; } = "";
+    public string TypeName { get; set; } = "";
+}
+
+public class CatalogItemDto
+{
+    public string Name { get; set; } = "";
+    public string Path { get; set; } = "";
+    public string TypeName { get; set; } = "";
+}
+
+public class SavedSsrsConnection
+{
+    public int Id { get; set; }
+    public string ConnectionName { get; set; } = "";
+    public string Url { get; set; } = "";
+    public string Username { get; set; } = "";
+    public string Password { get; set; } = "";
+    public string Domain { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+}
+
 public partial class Program
 {
     private static string GetMasterConnectionString(string connStr)
@@ -4147,5 +4456,51 @@ public partial class Program
             return "0x" + BitConverter.ToString(bytes).Replace("-", "");
 
         return Convert.ToString(val, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static string NormalizeSsrsUrl(string url)
+    {
+        var normalized = url.Trim();
+        if (!normalized.EndsWith("ReportService2010.asmx", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!normalized.EndsWith("/", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized += "/";
+            }
+            normalized += "ReportService2010.asmx";
+        }
+        return normalized;
+    }
+
+    private static async Task<string> SendSsrsSoapRequestAsync(string url, string username, string password, string domain, string soapAction, string soapBodyXml)
+    {
+        var normalizedUrl = NormalizeSsrsUrl(url);
+        var handler = new HttpClientHandler();
+        if (!string.IsNullOrEmpty(username))
+        {
+            handler.Credentials = string.IsNullOrEmpty(domain)
+                ? new NetworkCredential(username, password)
+                : new NetworkCredential(username, password, domain);
+        }
+        
+        using var client = new HttpClient(handler);
+        
+        var soapEnvelope = $@"<soap:Envelope xmlns:xsi=""http://www.w3.org/2001/XMLSchema-instance"" xmlns:xsd=""http://www.w3.org/2001/XMLSchema"" xmlns:soap=""http://schemas.xmlsoap.org/soap/envelope/"">
+  <soap:Body>
+    {soapBodyXml}
+  </soap:Body>
+</soap:Envelope>";
+
+        var content = new StringContent(soapEnvelope, System.Text.Encoding.UTF8, "text/xml");
+        content.Headers.Add("SOAPAction", $"\"http://schemas.microsoft.com/sqlserver/reporting/2010/03/01/ReportServer/{soapAction}\"");
+        
+        var response = await client.PostAsync(normalizedUrl, content);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errContent = await response.Content.ReadAsStringAsync();
+            throw new Exception($"SSRS Server returned status {response.StatusCode}: {errContent}");
+        }
+        
+        return await response.Content.ReadAsStringAsync();
     }
 }

@@ -6,7 +6,8 @@ const SCREEN_PARTIALS = [
     'partials/screens/migration.html',
     'partials/screens/query.html',
     'partials/screens/beautifier.html',
-    'partials/screens/whiteboard.html'
+    'partials/screens/whiteboard.html',
+    'partials/screens/ssrs.html'
 ];
 
 const MODAL_PARTIALS = [

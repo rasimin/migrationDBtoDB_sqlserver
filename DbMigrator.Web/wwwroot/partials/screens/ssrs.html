@@ -1,0 +1,111 @@
+<!-- ============================================================================
+     SCREEN: SSRS EXPLORER
+     ============================================================================ -->
+<div id="main-screen-ssrs" class="main-screen" style="display: none;">
+    <!-- CONNECT PANEL -->
+    <div id="ssrs-connect-panel" style="max-width: 550px; margin: 2rem auto; background: var(--bg-card); border: 1px solid var(--border-flat); border-radius: 12px; box-shadow: var(--shadow-flat); overflow: hidden; padding: 2rem;">
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <div style="width: 60px; height: 60px; border-radius: 50%; background: rgba(79, 70, 229, 0.1); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1rem; border: 1px solid rgba(79, 70, 229, 0.2);">
+                <i class="fa-solid fa-folder-open" style="font-size: 1.8rem; color: var(--accent-indigo);"></i>
+            </div>
+            <h2 style="font-family: var(--font-heading); font-size: 1.5rem; color: #ffffff;">SSRS Explorer</h2>
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.4rem;">Masukkan kredensial untuk menjelajah dan mencadangkan objek SSRS Report Server</p>
+        </div>
+
+        <form id="ssrs-connect-form" onsubmit="event.preventDefault(); connectSsrs();">
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label for="ssrs-saved-select" style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 0.4rem;">Pilih dari Histori Koneksi</label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <select id="ssrs-saved-select" class="form-control" onchange="loadSavedSsrsConnection()" style="flex: 1;">
+                        <option value="">-- Pilih Histori --</option>
+                    </select>
+                    <button type="button" class="btn btn-secondary" onclick="deleteSavedSsrsConnection()" title="Hapus koneksi terpilih" style="width: auto; padding: 0.5rem 0.85rem; display: flex; align-items: center; justify-content: center; height: 38px;">
+                        <i class="fa-solid fa-trash-can" style="color: var(--color-error);"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label for="ssrs-url" style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 0.4rem;">SSRS Report Server SOAP API URL</label>
+                <input type="text" id="ssrs-url" class="form-control" placeholder="http://192.168.26.14/ReportServer_SQL2016" required style="font-family: Consolas, monospace; font-size: 0.88rem;">
+                <small style="color: var(--text-muted); font-size: 0.72rem; display: block; margin-top: 0.35rem; line-height: 1.4;">
+                    Harap masukkan URL <strong>ReportServer SOAP API</strong> (yang diakhiri dengan <code>ReportService2010.asmx</code>, atau base url instansinya).
+                </small>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label for="ssrs-username" style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 0.4rem;">Username</label>
+                <input type="text" id="ssrs-username" class="form-control" placeholder="Administrator" required autocomplete="username">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label for="ssrs-password" style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 0.4rem;">Password</label>
+                <input type="password" id="ssrs-password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label for="ssrs-domain" style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 0.4rem;">Domain (Opsional)</label>
+                <input type="text" id="ssrs-domain" class="form-control" placeholder="Contoh: WORKGROUP atau HIBANK">
+            </div>
+
+            <!-- Save Connection Option -->
+            <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.25rem;">
+                <input type="checkbox" id="ssrs-save-connection" onchange="toggleSsrsSaveConnectionNameField()" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--accent-indigo);">
+                <label for="ssrs-save-connection" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; cursor: pointer; user-select: none; margin: 0;">Simpan koneksi ini untuk orang lain</label>
+            </div>
+
+            <div class="form-group" id="ssrs-save-conn-name-container" style="display: none; margin-bottom: 1.5rem;">
+                <label for="ssrs-conn-name" style="font-weight: 500; font-size: 0.85rem; display: block; margin-bottom: 0.4rem;">Nama Koneksi:</label>
+                <input type="text" id="ssrs-conn-name" class="form-control" placeholder="Contoh: DB Produksi Hlbank">
+            </div>
+
+            <button type="submit" id="ssrs-btn-connect" class="btn btn-primary" style="width: 100%; height: 42px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.5rem; background: var(--accent-indigo);">
+                <i class="fa-solid fa-plug"></i> Hubungkan ke SSRS
+            </button>
+        </form>
+    </div>
+
+    <!-- EXPLORER PANEL -->
+    <div id="ssrs-explorer-panel" style="display: none; display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1rem;">
+        <!-- TOP TOOLBAR & NAV -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-flat); border-radius: 12px; padding: 1rem 1.5rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; box-shadow: var(--shadow-flat);">
+            <!-- Breadcrumbs -->
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 280px; overflow-x: auto; white-space: nowrap; padding-bottom: 0.25rem;">
+                <div id="ssrs-breadcrumbs" class="ssrs-breadcrumbs-container" style="display: flex; align-items: center; gap: 0.55rem; font-size: 0.9rem;">
+                    <!-- Dynamically generated breadcrumbs -->
+                </div>
+            </div>
+
+            <!-- Toolbar Actions -->
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <!-- Search -->
+                <div class="search-container" style="position: relative; width: 200px;">
+                    <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.8rem;"></i>
+                    <input type="text" id="ssrs-search-input" oninput="filterSsrsGrid()" placeholder="Cari item di folder ini..." class="form-control" style="padding-left: 2rem; font-size: 0.82rem; height: 34px; border-radius: 8px;">
+                </div>
+
+                <button class="btn btn-secondary" onclick="downloadCurrentFolderZip()" style="width: auto; height: 34px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Unduh seluruh isi folder ini sebagai ZIP">
+                    <i class="fa-solid fa-file-zipper"></i> ZIP Folder Ini
+                </button>
+                <button class="btn btn-secondary" onclick="browseSsrs(currentSsrsPath)" style="width: auto; height: 34px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Muat Ulang">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                </button>
+                <button class="btn btn-danger" onclick="disconnectSsrs()" style="width: auto; height: 34px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.35rem; background: #dc2626; border-color: #dc2626;">
+                    <i class="fa-solid fa-power-off"></i> Disconnect
+                </button>
+            </div>
+        </div>
+
+        <!-- FOLDERS & FILES GRID -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-flat); border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow-flat); min-height: 450px; position: relative;">
+            <div id="ssrs-loading-overlay" style="display: none; position: absolute; inset: 0; background: rgba(13, 15, 20, 0.75); backdrop-filter: blur(2px); z-index: 10; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem;">
+                <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2.2rem; color: var(--accent-indigo);"></i>
+                <span style="font-size: 0.9rem; color: var(--text-primary);">Mengambil data dari server...</span>
+            </div>
+
+            <div id="ssrs-grid-container" class="ssrs-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem;">
+                <!-- Dynamically rendered folder and file items -->
+            </div>
+        </div>
+    </div>
+</div>
