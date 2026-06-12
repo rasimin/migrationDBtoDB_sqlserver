@@ -17,6 +17,9 @@ let schemaDiffEditor = null;
 let schemaDiffEditorInitializing = false;
 let queryConsoleSchema = { Objects: [], Columns: [] };
 let queryConsoleActiveTables = [];
+let queryConsoleTabs = [];
+let queryConsoleActiveTabId = null;
+let queryConsoleTabCounter = 0;
 
 function parseConnectionString(connStr) {
     if (!connStr) return {};
@@ -271,6 +274,41 @@ async function connectQueryConsole(isSilent = false, targetDatabase = null) {
         // Initialize Monaco Editor
         initMonacoQueryEditor();
         
+        // Re-initialize tabs if they were cleared after a disconnect
+        if (queryConsoleTabs.length === 0 && queryConsoleEditor) {
+            const savedQuery = localStorage.getItem('queryConsoleLastQuery');
+            const initialValue = savedQuery !== null ? savedQuery : "SELECT TOP 10 * FROM dbo.Customers ORDER BY Id DESC;";
+            
+            const model = monaco.editor.createModel(initialValue, 'sql');
+            queryConsoleEditor.setModel(model);
+            
+            queryConsoleTabs = [];
+            queryConsoleTabCounter = 1;
+            const defaultTab = {
+                id: 'query_tab_1',
+                name: 'Query 1',
+                value: initialValue,
+                model: model,
+                database: queryConsoleActiveDatabase || "master",
+                results: [],
+                lastQueryResults: null,
+                statusTextHtml: '',
+                statusTextColor: '',
+                rowsCountText: '',
+                resultsContainerHtml: '',
+                messagesHtml: '',
+                messagesBadgeText: '',
+                messagesBadgeDisplay: 'none',
+                activeConsoleTab: 'results',
+                activeSubResultTabIdx: 0,
+                isResultsBoxVisible: false
+            };
+            queryConsoleTabs.push(defaultTab);
+            queryConsoleActiveTabId = 'query_tab_1';
+            
+            renderQueryTabs();
+        }
+        
         // Load initial autocomplete schema
         await loadQueryConsoleSchema();
     } catch (err) {
@@ -391,6 +429,12 @@ function filterDatabaseList(searchQuery) {
 async function selectDatabase(dbName) {
     queryConsoleActiveDatabase = dbName;
     
+    // Save to active tab
+    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+    if (activeTab) {
+        activeTab.database = dbName;
+    }
+    
     // Update trigger text
     const triggerText = document.getElementById('query-db-trigger-text');
     if (triggerText) {
@@ -424,6 +468,26 @@ function disconnectQueryConsole() {
     queryConsoleActiveDatabase = "";
     queryConsoleDatabases = [];
     queryConsoleSchema = { Objects: [], Columns: [] };
+    
+    // Clear all tab models to avoid memory leaks
+    if (queryConsoleTabs && queryConsoleTabs.length > 0) {
+        queryConsoleTabs.forEach(tab => {
+            if (tab.model) {
+                try {
+                    tab.model.dispose();
+                } catch (e) {
+                    console.error("Error disposing model on disconnect:", e);
+                }
+            }
+        });
+    }
+    queryConsoleTabs = [];
+    queryConsoleActiveTabId = null;
+    queryConsoleTabCounter = 0;
+
+    // Clear UI tabs list
+    const listContainer = document.getElementById('query-tabs-list');
+    if (listContainer) listContainer.innerHTML = '';
     
     // Clear LocalStorage connection values
     localStorage.removeItem('queryConsoleConnected');
@@ -475,6 +539,325 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// ── Query Console Tab Management Functions ──────────────────────────────────
+function addNewQueryTab(initialValue = '', tabName = '') {
+    if (!queryConsoleEditor) {
+        console.warn("Monaco editor is not initialized yet.");
+        return;
+    }
+
+    queryConsoleTabCounter++;
+    const tabId = 'query_tab_' + queryConsoleTabCounter;
+    
+    // Fallback to default template query if no initialValue is provided
+    let queryValue = initialValue;
+    if (!queryValue) {
+        // If it's the very first tab, try loading from localStorage
+        if (queryConsoleTabs.length === 0) {
+            const savedQuery = localStorage.getItem('queryConsoleLastQuery');
+            queryValue = savedQuery !== null ? savedQuery : "SELECT TOP 10 * FROM dbo.Customers ORDER BY Id DESC;";
+        } else {
+            queryValue = "SELECT TOP 10 * FROM dbo.Customers ORDER BY Id DESC;";
+        }
+    }
+
+    // Create a new Monaco model for this tab
+    const model = monaco.editor.createModel(queryValue, 'sql');
+
+    const newTab = {
+        id: tabId,
+        name: tabName || `Query ${queryConsoleTabCounter}`,
+        value: queryValue,
+        model: model,
+        database: queryConsoleActiveDatabase || "master",
+        results: [],
+        lastQueryResults: null,
+        statusTextHtml: '',
+        statusTextColor: '',
+        rowsCountText: '',
+        resultsContainerHtml: '',
+        messagesHtml: '',
+        messagesBadgeText: '',
+        messagesBadgeDisplay: 'none',
+        activeConsoleTab: 'results',
+        activeSubResultTabIdx: 0,
+        isResultsBoxVisible: false
+    };
+
+    queryConsoleTabs.push(newTab);
+    switchQueryTabActive(tabId);
+}
+
+function switchQueryTabActive(tabId) {
+    if (!queryConsoleEditor) return;
+
+    const currentActiveTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+    if (currentActiveTab) {
+        // Save current UI state
+        currentActiveTab.value = queryConsoleEditor.getValue();
+        const resultsBox = document.getElementById('query-results-box');
+        const resultsContainer = document.getElementById('query-results-container');
+        const statusText = document.getElementById('query-status-text');
+        const rowsCount = document.getElementById('query-rows-count');
+        const msgContent = document.getElementById('query-messages-content');
+        const badge = document.getElementById('query-tab-messages-badge');
+
+        currentActiveTab.isResultsBoxVisible = resultsBox && resultsBox.style.display !== 'none';
+        if (statusText) {
+            currentActiveTab.statusTextHtml = statusText.innerHTML;
+            currentActiveTab.statusTextColor = statusText.style.color || '';
+        }
+        if (rowsCount) currentActiveTab.rowsCountText = rowsCount.innerHTML;
+        if (resultsContainer) currentActiveTab.resultsContainerHtml = resultsContainer.innerHTML;
+        if (msgContent) currentActiveTab.messagesHtml = msgContent.innerHTML;
+        
+        if (badge) {
+            currentActiveTab.messagesBadgeText = badge.textContent || '';
+            currentActiveTab.messagesBadgeDisplay = badge.style.display || 'none';
+        }
+    }
+
+    const nextActiveTab = queryConsoleTabs.find(t => t.id === tabId);
+    if (!nextActiveTab) return;
+
+    queryConsoleActiveTabId = tabId;
+
+    // Restore database selection for this tab
+    if (nextActiveTab.database) {
+        queryConsoleActiveDatabase = nextActiveTab.database;
+        
+        // Update trigger text in dropdown UI
+        const triggerText = document.getElementById('query-db-trigger-text');
+        if (triggerText) {
+            triggerText.textContent = queryConsoleActiveDatabase;
+        }
+        // Update hidden select input
+        const dbSelect = document.getElementById('query-db-select');
+        if (dbSelect) {
+            dbSelect.value = queryConsoleActiveDatabase;
+        }
+        localStorage.setItem('queryConsoleActiveDatabase', queryConsoleActiveDatabase);
+        
+        // Reload schema for Monaco autocomplete asynchronously
+        loadQueryConsoleSchema();
+    }
+
+    // Swap model in Monaco Editor
+    queryConsoleEditor.setModel(nextActiveTab.model);
+
+    // Restore UI elements from tab state
+    const resultsBox = document.getElementById('query-results-box');
+    const resultsContainer = document.getElementById('query-results-container');
+    const statusText = document.getElementById('query-status-text');
+    const rowsCount = document.getElementById('query-rows-count');
+    const msgContent = document.getElementById('query-messages-content');
+    const badge = document.getElementById('query-tab-messages-badge');
+
+    if (resultsBox) {
+        resultsBox.style.display = nextActiveTab.isResultsBoxVisible ? 'block' : 'none';
+    }
+    if (statusText) {
+        statusText.innerHTML = nextActiveTab.statusTextHtml || 'Tekan Jalankan SQL untuk mengeksekusi';
+        statusText.style.color = nextActiveTab.statusTextColor || 'var(--text-muted)';
+    }
+    if (rowsCount) {
+        rowsCount.innerHTML = nextActiveTab.rowsCountText || '';
+    }
+    if (resultsContainer) {
+        resultsContainer.innerHTML = nextActiveTab.resultsContainerHtml || '';
+    }
+    if (msgContent) {
+        msgContent.innerHTML = nextActiveTab.messagesHtml || '';
+    }
+    if (badge) {
+        badge.textContent = nextActiveTab.messagesBadgeText || '';
+        badge.style.display = nextActiveTab.messagesBadgeDisplay || 'none';
+    }
+
+    // Sync global cache variables
+    window.queryConsoleAllResults = nextActiveTab.results || [];
+    window.lastQueryResults = nextActiveTab.lastQueryResults || null;
+
+    // Restore results vs messages tab active selection
+    switchQueryResultsTab(nextActiveTab.activeConsoleTab || 'results');
+
+    // Restore active sub-tab for multi-result sets
+    if (nextActiveTab.results && nextActiveTab.results.length > 1) {
+        const subIdx = nextActiveTab.activeSubResultTabIdx || 0;
+        // Apply active class to sub tab button
+        document.querySelectorAll('.query-tab-btn').forEach(btn => {
+            if (parseInt(btn.getAttribute('data-tab-idx')) === subIdx) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+        // Show active grid, hide others
+        document.querySelectorAll('.query-grid-wrapper').forEach(wrapper => {
+            const idStr = `query-grid-wrapper-${subIdx}`;
+            if (wrapper.id === idStr) {
+                wrapper.style.display = 'block';
+            } else {
+                wrapper.style.display = 'none';
+            }
+        });
+    }
+
+    // Refresh layout and focus
+    setTimeout(() => {
+        queryConsoleEditor.layout();
+        queryConsoleEditor.focus();
+    }, 50);
+
+    renderQueryTabs();
+}
+
+function closeQueryTab(tabId, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    if (queryConsoleTabs.length <= 1) {
+        uiAlert("Tidak dapat menutup tab terakhir! Silakan buat tab baru terlebih dahulu.");
+        return;
+    }
+
+    const targetIdx = queryConsoleTabs.findIndex(t => t.id === tabId);
+    if (targetIdx === -1) return;
+
+    const tabToClose = queryConsoleTabs[targetIdx];
+
+    // Dispose model
+    if (tabToClose.model) {
+        try {
+            tabToClose.model.dispose();
+        } catch(e) {
+            console.error("Error disposing model:", e);
+        }
+    }
+
+    // Remove from array
+    queryConsoleTabs.splice(targetIdx, 1);
+
+    // If closing active tab, switch to another
+    if (queryConsoleActiveTabId === tabId) {
+        const nextActiveIdx = Math.max(0, targetIdx - 1);
+        const nextActiveTab = queryConsoleTabs[nextActiveIdx];
+        switchQueryTabActive(nextActiveTab.id);
+    } else {
+        renderQueryTabs();
+    }
+}
+
+function renderQueryTabs() {
+    const listContainer = document.getElementById('query-tabs-list');
+    if (!listContainer) return;
+
+    listContainer.innerHTML = queryConsoleTabs.map(tab => {
+        const isActive = tab.id === queryConsoleActiveTabId;
+        return `
+            <div class="query-console-tab ${isActive ? 'active' : ''}" onclick="switchQueryTabActive('${tab.id}')" ondblclick="renameQueryTab('${tab.id}')" title="Klik dua kali untuk mengubah nama tab">
+                <i class="fa-solid fa-code" style="font-size: 0.75rem; opacity: 0.8;"></i>
+                <span>${escapeHtml(tab.name)}</span>
+                <span class="query-console-tab-close" onclick="closeQueryTab('${tab.id}', event)" title="Tutup Tab">
+                    <i class="fa-solid fa-xmark"></i>
+                </span>
+            </div>
+        `;
+    }).join('');
+}
+
+async function renameQueryTab(tabId) {
+    const tab = queryConsoleTabs.find(t => t.id === tabId);
+    if (!tab) return;
+
+    const newName = await uiPrompt(`Ubah nama tab kueri:`, {
+        title: "Ubah Nama Tab",
+        defaultValue: tab.name,
+        placeholder: "Contoh: Cari Transaksi"
+    });
+
+    if (newName && newName.trim()) {
+        tab.name = newName.trim();
+        renderQueryTabs();
+    }
+}
+
+function saveQueryRunResult(tabId, data) {
+    const tab = queryConsoleTabs.find(t => t.id === tabId);
+    if (!tab) return;
+
+    tab.results = data.results;
+    tab.lastQueryResults = data.lastQueryResults;
+    tab.isResultsBoxVisible = data.isResultsBoxVisible;
+    tab.statusTextHtml = data.statusTextHtml;
+    tab.statusTextColor = data.statusTextColor;
+    tab.rowsCountText = data.rowsCountText;
+    tab.resultsContainerHtml = data.resultsContainerHtml;
+    tab.messagesHtml = data.messagesHtml;
+    tab.messagesBadgeText = data.messagesBadgeText;
+    tab.messagesBadgeDisplay = data.messagesBadgeDisplay;
+    tab.activeConsoleTab = data.activeConsoleTab || 'results';
+    tab.activeSubResultTabIdx = 0;
+}
+
+function getQueryMessagesHtml(messages, executionTimeMs, isError) {
+    const timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    let html = '';
+    if (messages && messages.length > 0) {
+        messages.forEach(msg => {
+            const color = isError ? '#f87171' : '#e2e8f0';
+            const icon = isError 
+                ? '<span style="color:#f87171;">⊗</span> ' 
+                : '<span style="color:#6ee7b7;">ℹ</span> ';
+            html += `<div style="color: ${color}; padding: 1px 0;">${icon}${escapeHtml(msg)}</div>`;
+        });
+    }
+    if (executionTimeMs !== undefined && executionTimeMs !== null) {
+        html += `<div style="color: var(--text-muted); margin-top: 0.5rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.4rem; font-size: 0.78rem;">── Selesai pada ${timestamp} (${executionTimeMs}ms) ──</div>`;
+    }
+    return html || `<span style="color: var(--text-muted); font-style: italic;">Tidak ada pesan.</span>`;
+}
+
+// Global keyboard shortcuts listener for Tab Management
+document.addEventListener('keydown', (e) => {
+    // Only handle shortcuts when connected
+    if (!queryConsoleActiveServer) return;
+    const queryTab = document.getElementById('main-screen-query');
+    if (queryTab && queryTab.style.display === 'none') return;
+
+    // Ctrl + Alt + T: New Query Tab
+    if (e.ctrlKey && e.altKey && (e.code === 'KeyT' || e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        addNewQueryTab();
+    }
+    // Ctrl + Alt + W: Close Active Query Tab
+    if (e.ctrlKey && e.altKey && (e.code === 'KeyW' || e.key === 'w' || e.key === 'W')) {
+        e.preventDefault();
+        closeQueryTab(queryConsoleActiveTabId);
+    }
+    // Ctrl + PageUp: Switch to previous tab
+    if (e.ctrlKey && e.key === 'PageUp') {
+        e.preventDefault();
+        const idx = queryConsoleTabs.findIndex(t => t.id === queryConsoleActiveTabId);
+        if (idx > 0) {
+            switchQueryTabActive(queryConsoleTabs[idx - 1].id);
+        }
+    }
+    // Ctrl + PageDown: Switch to next tab
+    if (e.ctrlKey && e.key === 'PageDown') {
+        e.preventDefault();
+        const idx = queryConsoleTabs.findIndex(t => t.id === queryConsoleActiveTabId);
+        if (idx >= 0 && idx < queryConsoleTabs.length - 1) {
+            switchQueryTabActive(queryConsoleTabs[idx + 1].id);
+        }
+    }
+});
+
+
+
+
 function initMonacoQueryEditor() {
     if (queryConsoleEditor) {
         // Refresh layout if editor already exists
@@ -515,9 +898,10 @@ function initMonacoQueryEditor() {
         const savedQuery = localStorage.getItem('queryConsoleLastQuery');
         const initialValue = savedQuery !== null ? savedQuery : "SELECT TOP 10 * FROM dbo.Customers ORDER BY Id DESC;";
 
+        const initialModel = monaco.editor.createModel(initialValue, 'sql');
+
         queryConsoleEditor = monaco.editor.create(container, {
-            value: initialValue,
-            language: 'sql',
+            model: initialModel,
             theme: 'vs-dark',
             automaticLayout: true,
             minimap: { enabled: false },
@@ -526,6 +910,34 @@ function initMonacoQueryEditor() {
             lineHeight: 18,
             padding: { top: 8, bottom: 8 }
         });
+
+        // Initialize tabs state
+        queryConsoleTabs = [];
+        queryConsoleTabCounter = 1;
+        const defaultTab = {
+            id: 'query_tab_1',
+            name: 'Query 1',
+            value: initialValue,
+            model: initialModel,
+            database: queryConsoleActiveDatabase || "master",
+            results: [],
+            lastQueryResults: null,
+            statusTextHtml: '',
+            statusTextColor: '',
+            rowsCountText: '',
+            resultsContainerHtml: '',
+            messagesHtml: '',
+            messagesBadgeText: '',
+            messagesBadgeDisplay: 'none',
+            activeConsoleTab: 'results',
+            activeSubResultTabIdx: 0,
+            isResultsBoxVisible: false
+        };
+        queryConsoleTabs.push(defaultTab);
+        queryConsoleActiveTabId = 'query_tab_1';
+
+        // Render tab headers
+        renderQueryTabs();
 
         // Setup vertical resizer for query editor
         const resizer = document.getElementById('query-editor-resizer');
@@ -553,9 +965,13 @@ function initMonacoQueryEditor() {
             });
         }
 
-        // Listen for content changes to auto-save to localStorage
+        // Listen for content changes to auto-save to active tab and localStorage
         queryConsoleEditor.onDidChangeModelContent(() => {
-            localStorage.setItem('queryConsoleLastQuery', queryConsoleEditor.getValue());
+            const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+            if (activeTab) {
+                activeTab.value = queryConsoleEditor.getValue();
+                localStorage.setItem('queryConsoleLastQuery', activeTab.value);
+            }
         });
 
         // Register custom SQL autocomplete provider
@@ -564,6 +980,26 @@ function initMonacoQueryEditor() {
         // Add shortcut key (Ctrl+Enter) to run query console
         queryConsoleEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function() {
             runQueryConsole();
+        });
+
+        // Add tab management command shortcuts inside Monaco Editor
+        queryConsoleEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.US_T, function() {
+            addNewQueryTab();
+        });
+        queryConsoleEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.US_W, function() {
+            closeQueryTab(queryConsoleActiveTabId);
+        });
+        queryConsoleEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.PageUp, function() {
+            const idx = queryConsoleTabs.findIndex(t => t.id === queryConsoleActiveTabId);
+            if (idx > 0) {
+                switchQueryTabActive(queryConsoleTabs[idx - 1].id);
+            }
+        });
+        queryConsoleEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.PageDown, function() {
+            const idx = queryConsoleTabs.findIndex(t => t.id === queryConsoleActiveTabId);
+            if (idx >= 0 && idx < queryConsoleTabs.length - 1) {
+                switchQueryTabActive(queryConsoleTabs[idx + 1].id);
+            }
         });
     });
 }
@@ -2013,6 +2449,7 @@ const queryConsoleDummyResults = {
 };
 
 async function runQueryConsole() {
+    const runningTabId = queryConsoleActiveTabId;
     let queryText = '';
     if (queryConsoleEditor) {
         const selection = queryConsoleEditor.getSelection();
@@ -2034,8 +2471,7 @@ async function runQueryConsole() {
     const rowsCount = document.getElementById('query-rows-count');
     const executeBtn = document.getElementById('btn-execute-query');
 
-    // Set up Cancel button inside status line
-    statusText.innerHTML = `
+    const loadingHtml = `
         <span style="display: inline-flex; align-items: center; gap: 0.5rem;">
             <i class="fa-solid fa-spinner fa-spin"></i> Mengeksekusi kueri...
             <button class="btn" onclick="cancelQueryConsole()" style="background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); color: #f43f5e; height: 22px; padding: 0 0.5rem; font-size: 0.72rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; transition: all 0.15s ease;" onmouseover="this.style.background='rgba(244,63,94,0.3)'" onmouseout="this.style.background='rgba(244,63,94,0.15)'" title="Batalkan eksekusi kueri yang sedang berjalan">
@@ -2043,12 +2479,26 @@ async function runQueryConsole() {
             </button>
         </span>
     `;
-    statusText.style.color = 'var(--accent-teal)';
-    rowsCount.textContent = "";
-    resultsBox.style.display = 'block';
 
-    if (resultsContainer) {
-        resultsContainer.innerHTML = "";
+    // Set loading state on active UI if it's the running tab
+    if (queryConsoleActiveTabId === runningTabId) {
+        if (statusText) {
+            statusText.innerHTML = loadingHtml;
+            statusText.style.color = 'var(--accent-teal)';
+        }
+        if (rowsCount) rowsCount.textContent = "";
+        if (resultsBox) resultsBox.style.display = 'block';
+        if (resultsContainer) resultsContainer.innerHTML = "";
+    }
+
+    // Save executing state to running tab
+    const runningTab = queryConsoleTabs.find(t => t.id === runningTabId);
+    if (runningTab) {
+        runningTab.isResultsBoxVisible = true;
+        runningTab.statusTextHtml = loadingHtml;
+        runningTab.statusTextColor = 'var(--accent-teal)';
+        runningTab.rowsCountText = '';
+        runningTab.resultsContainerHtml = '';
     }
 
     if (executeBtn) {
@@ -2084,12 +2534,36 @@ async function runQueryConsole() {
 
         if (!data.Success) {
             const errMsg = data.Message || 'Kesalahan eksekusi SQL';
-            statusText.textContent = 'Error: ' + errMsg;
-            statusText.style.color = '#f43f5e';
-            rowsCount.textContent = 'Gagal';
-            // Show error in Messages tab
-            renderQueryMessages([`Msg 0, Level 16, State 1\n${errMsg}`], data.ExecutionTimeMs || 0, true);
-            switchQueryResultsTab('messages');
+            const msgs = [`Msg 0, Level 16, State 1\n${errMsg}`];
+            const execTime = data.ExecutionTimeMs || 0;
+            const msgHtml = getQueryMessagesHtml(msgs, execTime, true);
+
+            const tabData = {
+                results: [],
+                lastQueryResults: null,
+                isResultsBoxVisible: true,
+                statusTextHtml: 'Error: ' + errMsg,
+                statusTextColor: '#f43f5e',
+                rowsCountText: 'Gagal',
+                resultsContainerHtml: '',
+                messagesHtml: msgHtml,
+                messagesBadgeText: '1',
+                messagesBadgeDisplay: 'inline',
+                activeConsoleTab: 'messages'
+            };
+
+            saveQueryRunResult(runningTabId, tabData);
+
+            if (queryConsoleActiveTabId === runningTabId) {
+                if (statusText) {
+                    statusText.textContent = tabData.statusTextHtml;
+                    statusText.style.color = tabData.statusTextColor;
+                }
+                if (rowsCount) rowsCount.textContent = tabData.rowsCountText;
+                if (resultsContainer) resultsContainer.innerHTML = '';
+                renderQueryMessages(msgs, execTime, true);
+                switchQueryResultsTab('messages');
+            }
             return;
         }
 
@@ -2100,12 +2574,9 @@ async function runQueryConsole() {
 
         // ── Handle PRINT messages ──────────────────────────────────────────
         const printMessages = data.PrintMessages || [];
-        renderQueryMessages(printMessages, data.ExecutionTimeMs, false);
-
-        window.queryConsoleAllResults = tables;
+        const msgHtml = getQueryMessagesHtml(printMessages, data.ExecutionTimeMs, false);
 
         let containerHtml = '';
-        
         if (tables.length > 1) {
             containerHtml += `<div class="query-results-tabs">`;
             tables.forEach((table, index) => {
@@ -2147,65 +2618,104 @@ async function runQueryConsole() {
             `;
         });
 
-        if (resultsContainer) {
-            resultsContainer.innerHTML = containerHtml;
-        }
-
-        // Initialize drag-resize columns on all rendered tables
-        document.querySelectorAll('.query-results-table').forEach(tbl => {
-            initTableResizers(tbl);
-        });
-
         const isTruncated = tables.some(t => t.IsTruncated || t.isTruncated);
-
+        let statusTextHtml = '';
+        let statusTextColor = '';
         if (isTruncated) {
-            statusText.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-orange, #fb923c);"></i> Kueri dijalankan (Hasil dibatasi)`;
-            statusText.style.color = 'var(--accent-orange, #fb923c)';
+            statusTextHtml = `<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-orange, #fb923c);"></i> Kueri dijalankan (Hasil dibatasi)`;
+            statusTextColor = 'var(--accent-orange, #fb923c)';
         } else {
-            statusText.textContent = 'Kueri berhasil dijalankan.';
-            statusText.style.color = 'var(--accent-teal)';
+            statusTextHtml = 'Kueri berhasil dijalankan.';
+            statusTextColor = 'var(--accent-teal)';
         }
 
+        let rowsCountText = '';
         if (tables.length > 1) {
             const totalRows = tables.reduce((acc, t) => acc + t.Rows.length, 0);
-            rowsCount.textContent = `${tables.length} tabel dikembalikan (total ${totalRows} baris) dalam ${data.ExecutionTimeMs}ms`;
+            rowsCountText = `${tables.length} tabel dikembalikan (total ${totalRows} baris) dalam ${data.ExecutionTimeMs}ms`;
         } else if (tables.length === 1) {
             const rowCount = tables[0]?.Rows.length ?? 0;
-            rowsCount.textContent = `${rowCount} baris (${data.ExecutionTimeMs}ms)`;
+            rowsCountText = `${rowCount} baris (${data.ExecutionTimeMs}ms)`;
         } else {
-            // PRINT-only or message-only query
-            rowsCount.textContent = `${data.ExecutionTimeMs}ms`;
+            rowsCountText = `${data.ExecutionTimeMs}ms`;
         }
 
         if (isTruncated) {
-            rowsCount.innerHTML += ` <span class="query-warning-badge" style="background: rgba(251, 146, 60, 0.15); color: #fb923c; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-left: 8px; font-weight: bold; border: 1px solid rgba(251, 146, 60, 0.3);" title="Hasil dibatasi untuk mencegah browser hang. Silakan tambahkan TOP atau filter WHERE pada kueri Anda."><i class="fa-solid fa-triangle-exclamation"></i> Hasil Dibatasi</span>`;
+            rowsCountText += ` <span class="query-warning-badge" style="background: rgba(251, 146, 60, 0.15); color: #fb923c; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-left: 8px; font-weight: bold; border: 1px solid rgba(251, 146, 60, 0.3);" title="Hasil dibatasi untuk mencegah browser hang. Silakan tambahkan TOP atau filter WHERE pada kueri Anda."><i class="fa-solid fa-triangle-exclamation"></i> Hasil Dibatasi</span>`;
         }
 
-        // If tables have data - show Results tab, otherwise show Messages
-        if (tables.length > 0) {
-            switchQueryResultsTab('results');
-            window.lastQueryResults = {
-                Headers: tables[0].Headers,
-                Rows: tables[0].Rows
-            };
-        } else {
-            window.lastQueryResults = null;
-            if (printMessages.length > 0) {
-                switchQueryResultsTab('messages');
+        const activeConsoleTab = tables.length > 0 ? 'results' : (printMessages.length > 0 ? 'messages' : 'results');
+
+        const tabData = {
+            results: tables,
+            lastQueryResults: tables[0] ? { Headers: tables[0].Headers, Rows: tables[0].Rows } : null,
+            isResultsBoxVisible: true,
+            statusTextHtml: statusTextHtml,
+            statusTextColor: statusTextColor,
+            rowsCountText: rowsCountText,
+            resultsContainerHtml: containerHtml,
+            messagesHtml: msgHtml,
+            messagesBadgeText: printMessages.length > 0 ? printMessages.length : '',
+            messagesBadgeDisplay: printMessages.length > 0 ? 'inline' : 'none',
+            activeConsoleTab: activeConsoleTab
+        };
+
+        saveQueryRunResult(runningTabId, tabData);
+
+        if (queryConsoleActiveTabId === runningTabId) {
+            if (statusText) {
+                statusText.innerHTML = tabData.statusTextHtml;
+                statusText.style.color = tabData.statusTextColor;
             }
+            if (rowsCount) rowsCount.innerHTML = tabData.rowsCountText;
+            if (resultsContainer) resultsContainer.innerHTML = tabData.resultsContainerHtml;
+
+            // Initialize drag-resize columns on all rendered tables
+            document.querySelectorAll('.query-results-table').forEach(tbl => {
+                initTableResizers(tbl);
+            });
+
+            // Sync global cache variables
+            window.queryConsoleAllResults = tables;
+            window.lastQueryResults = tabData.lastQueryResults;
+
+            // Render messages
+            renderQueryMessages(printMessages, data.ExecutionTimeMs, false);
+
+            switchQueryResultsTab(activeConsoleTab);
         }
     } catch (err) {
-        if (err.name === 'AbortError') {
-            statusText.textContent = 'Eksekusi kueri dibatalkan oleh pengguna.';
-            statusText.style.color = 'var(--text-muted, #5d7290)';
-            rowsCount.textContent = 'Dibatalkan';
-            renderQueryMessages(['Query dibatalkan oleh pengguna.'], 0, false);
-        } else {
-            console.error(err);
-            statusText.textContent = 'Error: ' + err.message;
-            statusText.style.color = '#f43f5e';
-            rowsCount.textContent = 'Gagal';
-            renderQueryMessages([err.message], 0, true);
+        const isAbort = err.name === 'AbortError';
+        const statusTextStr = isAbort ? 'Eksekusi kueri dibatalkan oleh pengguna.' : 'Error: ' + err.message;
+        const statusColorStr = isAbort ? 'var(--text-muted, #5d7290)' : '#f43f5e';
+        const rowsCountStr = isAbort ? 'Dibatalkan' : 'Gagal';
+        const msgs = [isAbort ? 'Query dibatalkan oleh pengguna.' : err.message];
+        const msgHtml = getQueryMessagesHtml(msgs, 0, !isAbort);
+
+        const tabData = {
+            results: [],
+            lastQueryResults: null,
+            isResultsBoxVisible: true,
+            statusTextHtml: statusTextStr,
+            statusTextColor: statusColorStr,
+            rowsCountText: rowsCountStr,
+            resultsContainerHtml: '',
+            messagesHtml: msgHtml,
+            messagesBadgeText: '1',
+            messagesBadgeDisplay: 'inline',
+            activeConsoleTab: 'messages'
+        };
+
+        saveQueryRunResult(runningTabId, tabData);
+
+        if (queryConsoleActiveTabId === runningTabId) {
+            if (statusText) {
+                statusText.textContent = statusTextStr;
+                statusText.style.color = statusColorStr;
+            }
+            if (rowsCount) rowsCount.textContent = rowsCountStr;
+            if (resultsContainer) resultsContainer.innerHTML = '';
+            renderQueryMessages(msgs, 0, !isAbort);
             switchQueryResultsTab('messages');
         }
     } finally {
@@ -2258,6 +2768,16 @@ function switchQueryTab(index) {
                 rowsCount.innerHTML += ` <span class="query-warning-badge" style="background: rgba(251, 146, 60, 0.15); color: #fb923c; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-left: 8px; font-weight: bold; border: 1px solid rgba(251, 146, 60, 0.3);" title="Hasil dibatasi untuk mencegah browser hang. Silakan tambahkan TOP atau filter WHERE pada kueri Anda."><i class="fa-solid fa-triangle-exclamation"></i> Hasil Dibatasi</span>`;
             }
         }
+
+        // Sync to active tab state
+        const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+        if (activeTab) {
+            activeTab.activeSubResultTabIdx = index;
+            activeTab.lastQueryResults = window.lastQueryResults;
+            if (rowsCount) {
+                activeTab.rowsCountText = rowsCount.innerHTML;
+            }
+        }
     }
 }
 
@@ -2274,6 +2794,24 @@ function clearQueryConsole() {
     if (badge) badge.style.display = 'none';
     window.lastQueryResults = null;
     window.queryConsoleAllResults = [];
+
+    // Clear active tab's preserved results
+    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+    if (activeTab) {
+        activeTab.value = '';
+        activeTab.results = [];
+        activeTab.lastQueryResults = null;
+        activeTab.statusTextHtml = '';
+        activeTab.statusTextColor = '';
+        activeTab.rowsCountText = '';
+        activeTab.resultsContainerHtml = '';
+        activeTab.messagesHtml = '';
+        activeTab.messagesBadgeText = '';
+        activeTab.messagesBadgeDisplay = 'none';
+        activeTab.activeConsoleTab = 'results';
+        activeTab.activeSubResultTabIdx = 0;
+        activeTab.isResultsBoxVisible = false;
+    }
 }
 
 // ── Results / Messages tab switcher (SSMS-style) ──────────────────────────
@@ -2308,6 +2846,12 @@ function switchQueryResultsTab(tabName) {
         tabResults.style.color = 'var(--text-muted)';
         tabResults.style.borderTop = '2px solid transparent';
     }
+
+    // Sync to active tab state
+    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+    if (activeTab) {
+        activeTab.activeConsoleTab = tabName;
+    }
 }
 
 // ── Render PRINT messages to Messages tab ─────────────────────────────────
@@ -2316,26 +2860,8 @@ function renderQueryMessages(messages, executionTimeMs, isError) {
     const badge = document.getElementById('query-tab-messages-badge');
     if (!msgContent) return;
 
-    const timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    
-    let html = '';
-    
-    if (messages && messages.length > 0) {
-        messages.forEach(msg => {
-            const color = isError ? '#f87171' : '#e2e8f0';
-            const icon = isError 
-                ? '<span style="color:#f87171;">⊗</span> ' 
-                : '<span style="color:#6ee7b7;">ℹ</span> ';
-            html += `<div style="color: ${color}; padding: 1px 0;">${icon}${escapeHtml(msg)}</div>`;
-        });
-    }
-    
-    // Always add execution time info line
-    if (executionTimeMs !== undefined && executionTimeMs !== null) {
-        html += `<div style="color: var(--text-muted); margin-top: 0.5rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.4rem; font-size: 0.78rem;">── Selesai pada ${timestamp} (${executionTimeMs}ms) ──</div>`;
-    }
-    
-    msgContent.innerHTML = html || `<span style="color: var(--text-muted); font-style: italic;">Tidak ada pesan.</span>`;
+    const html = getQueryMessagesHtml(messages, executionTimeMs, isError);
+    msgContent.innerHTML = html;
     
     // Show badge with count if there are print messages
     if (badge) {
@@ -2733,6 +3259,7 @@ function expandCollapseAllSchemaFolders(expand) {
 // ── Schema Explorer Logic ──
 
 let schemaViewerActiveCode = "";
+let schemaViewerActiveObjName = "";
 
 async function searchSchemaObjects() {
     if (!queryConsoleActiveServer) {
@@ -2893,6 +3420,12 @@ async function showSchemaDefinition(objName, objType, createDate, modifyDate) {
     const modal = document.getElementById('schema-viewer-modal');
     if (!modal) return;
 
+    // Reset checkbox
+    const chk = document.getElementById('schema-insert-active-tab');
+    if (chk) chk.checked = false;
+
+    schemaViewerActiveObjName = objName;
+
     // Show loading state
     const titleEl = document.getElementById('schema-viewer-title');
     if (titleEl) {
@@ -2996,6 +3529,11 @@ function closeSchemaViewerModal() {
         if (icon) {
             icon.className = 'fa-solid fa-expand';
         }
+        // Reset checkbox
+        const chk = document.getElementById('schema-insert-active-tab');
+        if (chk) {
+            chk.checked = false;
+        }
     }
 }
 
@@ -3046,18 +3584,28 @@ async function insertSchemaToEditor() {
         return;
     }
 
-    if (queryConsoleEditor) {
-        const position = queryConsoleEditor.getPosition();
-        const range = new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column);
-        const id = { major: 1, minor: 1 };
-        const textEdit = { identifier: id, range: range, text: schemaViewerActiveCode + "\n", forceMoveMarkers: true };
-        queryConsoleEditor.executeEdits("insert-schema", [textEdit]);
-        queryConsoleEditor.focus();
-        
-        await uiAlert("Skema SQL berhasil dimasukkan ke SQL Editor!");
-        closeSchemaViewerModal();
+    const insertToActive = document.getElementById('schema-insert-active-tab')?.checked || false;
+
+    if (insertToActive) {
+        if (queryConsoleEditor) {
+            const position = queryConsoleEditor.getPosition();
+            const range = new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column);
+            const id = { major: 1, minor: 1 };
+            const textEdit = { identifier: id, range: range, text: schemaViewerActiveCode + "\n", forceMoveMarkers: true };
+            queryConsoleEditor.executeEdits("insert-schema", [textEdit]);
+            queryConsoleEditor.focus();
+            
+            await uiAlert("Skema SQL berhasil dimasukkan ke SQL Editor!");
+            closeSchemaViewerModal();
+        } else {
+            await uiAlert("SQL Editor tidak ditemukan!");
+        }
     } else {
-        await uiAlert("SQL Editor tidak ditemukan!");
+        // Default: Open in a new query tab
+        const tabName = schemaViewerActiveObjName || "Skema Query";
+        addNewQueryTab(schemaViewerActiveCode + "\n", tabName);
+        await uiAlert(`Skema SQL berhasil dibuka di tab baru "${tabName}"!`);
+        closeSchemaViewerModal();
     }
 }
 

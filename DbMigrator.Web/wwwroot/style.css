@@ -3444,5 +3444,76 @@ textarea.form-control {
     color: #ffffff;
 }
 
+/* ─── Query Console Multiple Tabs (Premium Look) ───────────────────────── */
+.query-tabs-container {
+    user-select: none;
+    border-bottom: 1px solid var(--border-flat) !important;
+}
+
+.query-console-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.85rem;
+    background: rgba(255, 255, 255, 0.01);
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-right: 1px solid rgba(255, 255, 255, 0.03);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-weight: 500;
+    font-family: var(--font-heading), sans-serif;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+    user-select: none;
+}
+
+.query-console-tab:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.query-console-tab.active {
+    color: var(--accent-teal);
+    background: #07090d !important; /* matches Monaco background */
+    border-left: 1px solid var(--border-flat);
+    border-right: 1px solid var(--border-flat);
+    font-weight: 600;
+    z-index: 2;
+}
+
+.query-console-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: #07090d; /* overlap border-bottom */
+    z-index: 3;
+}
+
+.query-console-tab-close {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    opacity: 0.5;
+    border-radius: 50%;
+    width: 15px;
+    height: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+    margin-left: 0.2rem;
+}
+
+.query-console-tab-close:hover {
+    background: rgba(244, 63, 94, 0.2);
+    color: #f43f5e !important;
+    opacity: 1;
+}
+
+
 
 

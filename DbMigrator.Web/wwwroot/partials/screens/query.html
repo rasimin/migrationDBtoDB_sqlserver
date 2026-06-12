@@ -196,14 +196,20 @@
                     <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
                         <!-- Editor Wrapper -->
                         <div class="query-editor-wrapper" style="position: relative; margin-bottom: 0;">
-                            <div class="query-editor-header">
-                                <div class="query-editor-title"><i class="fa-solid fa-code" style="color: var(--accent-teal);"></i> Tulis Query T-SQL</div>
-                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <!-- Query Console Tabs Strip -->
+                            <div class="query-tabs-container" id="query-tabs-container" style="display: flex; align-items: center; background: #0b0d19; padding: 0 0.5rem; gap: 0.25rem; overflow-x: auto; border-bottom: 1px solid var(--border-flat); justify-content: space-between;">
+                                <div style="display: flex; align-items: center; gap: 0.25rem;">
+                                    <div id="query-tabs-list" style="display: flex; align-items: center; gap: 0.15rem;"></div>
+                                    <button class="btn-add-tab" onclick="addNewQueryTab()" title="Buka Tab Baru (Ctrl+Alt+T)" style="background: transparent; border: none; color: var(--text-muted); padding: 0.35rem 0.55rem; cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.82rem; transition: all 0.15s ease;" onmouseover="this.style.color='#fff'; this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.color='var(--text-muted)'; this.style.background='transparent'">
+                                        <i class="fa-solid fa-plus"></i>
+                                    </button>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.75rem; padding-right: 0.5rem; margin-left: auto;">
                                     <span id="query-schema-loader" style="font-size: 0.75rem; color: var(--accent-teal); display: none;"><i class="fa-solid fa-spinner fa-spin"></i> Memuat Skema Autocomplete...</span>
                                     <span style="font-size: 0.72rem; color: var(--text-muted);">Tekan Jalankan SQL untuk mengeksekusi</span>
                                 </div>
                             </div>
-                            <div id="query-editor" style="height: 300px; border: 1px solid var(--border-flat); border-bottom: none; border-radius: 8px 8px 0 0; overflow: hidden; background: #07090d;"></div>
+                            <div id="query-editor" style="height: 300px; overflow: hidden; background: #07090d;"></div>
                             <div id="query-editor-resizer" style="height: 9px; background: #111520; border: 1px solid var(--border-flat); border-top: 1px solid rgba(255, 255, 255, 0.05); border-radius: 0 0 8px 8px; cursor: ns-resize; display: flex; justify-content: center; align-items: center; user-select: none; transition: background 0.2s;" title="Tarik ke bawah atau ke atas untuk mengubah tinggi editor">
                                 <div style="width: 36px; height: 3px; border-top: 1px solid rgba(255, 255, 255, 0.2); border-bottom: 1px solid rgba(255, 255, 255, 0.2);"></div>
                             </div>

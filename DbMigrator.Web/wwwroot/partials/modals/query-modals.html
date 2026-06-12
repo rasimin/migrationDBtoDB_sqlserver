@@ -69,7 +69,11 @@
             </div>
         </div>
         <div class="modal-body" style="padding: 1.25rem 1.75rem;">
-            <div style="margin-bottom: 0.85rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
+            <div style="margin-bottom: 0.85rem; display: flex; gap: 0.5rem; justify-content: flex-end; align-items: center;">
+                <div style="margin-right: auto; display: flex; align-items: center; gap: 0.4rem; user-select: none;">
+                    <input type="checkbox" id="schema-insert-active-tab" style="width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent-teal);">
+                    <label for="schema-insert-active-tab" style="font-size: 0.8rem; color: #ffffff; cursor: pointer; margin: 0;">Masukkan ke tab aktif saat ini</label>
+                </div>
                 <button class="btn btn-secondary" onclick="copySchemaToClipboard()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);">
                     <i class="fa-solid fa-copy"></i> Salin ke Clipboard
                 </button>
