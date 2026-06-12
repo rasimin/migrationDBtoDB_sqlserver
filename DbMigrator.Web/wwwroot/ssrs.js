@@ -101,6 +101,9 @@ async function connectSsrs() {
             document.getElementById('ssrs-connect-panel').style.display = 'none';
             document.getElementById('ssrs-explorer-panel').style.display = 'flex';
             
+            const showCredsBtn = document.getElementById('ssrs-credentials-show-btn');
+            if (showCredsBtn) showCredsBtn.style.display = 'inline-flex';
+            
             const connInfoEl = document.getElementById('ssrs-active-conn-info');
             if (connInfoEl) {
                 const cleanUrl = getSsrsBaseReportUrl(url).replace("http://", "").replace("https://", "");
@@ -161,6 +164,19 @@ async function browseSsrs(path) {
 }
 
 function renderSsrsBreadcrumbs(path) {
+    const backBtn = document.getElementById('ssrs-btn-back');
+    if (backBtn) {
+        if (path === '/' || !path) {
+            backBtn.style.opacity = '0.3';
+            backBtn.style.pointerEvents = 'none';
+            backBtn.style.cursor = 'default';
+        } else {
+            backBtn.style.opacity = '1';
+            backBtn.style.pointerEvents = 'auto';
+            backBtn.style.cursor = 'pointer';
+        }
+    }
+
     const container = document.getElementById('ssrs-breadcrumbs');
     if (!container) return;
 
@@ -257,29 +273,56 @@ function renderSsrsItems(items) {
                 colorVar = '#fb923c';
             }
 
-            const clickAction = type === 'DataSource'
-                ? `openSsrsDataSourceModal('${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')`
-                : `viewSsrsReportDefinition('${itemPath.replace(/'/g, "\\'")}', '${type}')`;
+            if (type === 'Report' || type === 'report') {
+                return `
+                    <div class="ssrs-card file-card" onclick="openSsrsReportDirectly('${itemPath.replace(/'/g, "\\'")}')" style="cursor: pointer;">
+                        <div class="ssrs-card-icon" style="color: ${colorVar};">
+                            <i class="fa-solid ${iconClass}"></i>
+                        </div>
+                        <div class="ssrs-card-content">
+                            <span class="ssrs-card-title" title="${itemName}">${itemName}</span>
+                            <span class="ssrs-card-subtitle">${type}</span>
+                        </div>
+                        <div class="ssrs-card-actions" style="display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-end;">
+                            <div style="display: flex; gap: 0.25rem;">
+                                <button class="btn-icon" onclick="downloadSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')" title="Unduh Definisi" style="color: var(--accent-teal);">
+                                    <i class="fa-solid fa-download"></i>
+                                </button>
+                                <button class="btn-icon" onclick="deleteSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')" title="Hapus Berkas" style="color: var(--color-error); border-color: rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.05);">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                            <button class="btn-icon" onclick="viewSsrsReportDefinition(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')" title="Lihat Source XML" style="color: var(--accent-indigo); border-color: rgba(99, 102, 241, 0.25); background: rgba(99, 102, 241, 0.08); width: 100%; display: flex; align-items: center; justify-content: center; height: 26px;">
+                                <i class="fa-solid fa-code" style="font-size: 0.8rem;"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                const clickAction = type === 'DataSource'
+                    ? `openSsrsDataSourceModal('${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')`
+                    : `viewSsrsReportDefinition(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')`;
 
-            return `
-                <div class="ssrs-card file-card" onclick="${clickAction}" style="cursor: pointer;">
-                    <div class="ssrs-card-icon" style="color: ${colorVar};">
-                        <i class="fa-solid ${iconClass}"></i>
+                return `
+                    <div class="ssrs-card file-card" onclick="${clickAction}" style="cursor: pointer;">
+                        <div class="ssrs-card-icon" style="color: ${colorVar};">
+                            <i class="fa-solid ${iconClass}"></i>
+                        </div>
+                        <div class="ssrs-card-content">
+                            <span class="ssrs-card-title" title="${itemName}">${itemName}</span>
+                            <span class="ssrs-card-subtitle">${type}</span>
+                        </div>
+                        <div class="ssrs-card-actions" style="display: flex; gap: 0.25rem;">
+                            <button class="btn-icon" onclick="downloadSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')" title="Unduh Definisi" style="color: var(--accent-teal);">
+                                <i class="fa-solid fa-download"></i>
+                            </button>
+                            <button class="btn-icon" onclick="deleteSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')" title="Hapus Berkas" style="color: var(--color-error); border-color: rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.05);">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
                     </div>
-                    <div class="ssrs-card-content">
-                        <span class="ssrs-card-title" title="${itemName}">${itemName}</span>
-                        <span class="ssrs-card-subtitle">${type}</span>
-                    </div>
-                    <div class="ssrs-card-actions" style="display: flex; gap: 0.25rem;">
-                        <button class="btn-icon" onclick="downloadSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')" title="Unduh Definisi" style="color: var(--accent-teal);">
-                            <i class="fa-solid fa-download"></i>
-                        </button>
-                        <button class="btn-icon" onclick="deleteSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')" title="Hapus Berkas" style="color: var(--color-error); border-color: rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.05);">
-                            <i class="fa-solid fa-trash-can"></i>
-                        </button>
-                    </div>
-                </div>
-            `;
+                `;
+            }
         }
     }).join('');
 }
@@ -355,6 +398,9 @@ function disconnectSsrs() {
     ssrsItemsCache = [];
     document.getElementById('ssrs-connect-panel').style.display = 'block';
     document.getElementById('ssrs-explorer-panel').style.display = 'none';
+    
+    const showCredsBtn = document.getElementById('ssrs-credentials-show-btn');
+    if (showCredsBtn) showCredsBtn.style.display = 'none';
 }
 
 async function downloadFileFromApi(endpoint, bodyData, defaultFilename) {
@@ -519,13 +565,16 @@ function getSsrsReportViewerUrl(url, path) {
     return `${baseUrl}/Pages/ReportViewer.aspx?${reportPath}&rs:Command=Render`;
 }
 
-function openSsrsReportInNewTab() {
-    if (!ssrsConnection || !ssrsViewerActivePath) return;
-    const renderUrl = getSsrsReportViewerUrl(ssrsConnection.Url, ssrsViewerActivePath);
+function openSsrsReportDirectly(path) {
+    if (!ssrsConnection) return;
+    const renderUrl = getSsrsReportViewerUrl(ssrsConnection.Url, path);
     window.open(renderUrl, '_blank');
 }
 
-async function viewSsrsReportDefinition(path, type) {
+async function viewSsrsReportDefinition(event, path, type) {
+    if (event && event.stopPropagation) {
+        event.stopPropagation();
+    }
     ssrsViewerActivePath = path;
     ssrsViewerActiveType = type;
     ssrsViewerActiveCode = ""; // Reset code cache
@@ -537,94 +586,34 @@ async function viewSsrsReportDefinition(path, type) {
     const titleEl = document.getElementById('ssrs-viewer-title');
     const filename = path.split('/').pop() || 'report';
     if (titleEl) {
-        titleEl.innerHTML = `<i class="fa-solid fa-chart-column" style="color: var(--accent-indigo);"></i> Laporan: <span style="color: var(--accent-indigo);">${escapeHtml(filename)}</span>`;
+        titleEl.innerHTML = `<i class="fa-solid fa-code" style="color: var(--accent-indigo);"></i> Source XML: <span style="color: var(--accent-indigo);">${escapeHtml(filename)}</span>`;
     }
     
-    // Clear preview iframe container
-    const previewContainer = document.getElementById('ssrs-viewer-preview-container');
-    if (previewContainer) {
-        previewContainer.innerHTML = '';
-    }
-    
-    // Setup tab buttons and open new tab button display based on type
-    const isReport = type === 'Report' || type === 'report';
-    const btnPreview = document.getElementById('ssrs-btn-tab-preview');
-    const btnSource = document.getElementById('ssrs-btn-tab-source');
-    const btnNewTab = document.getElementById('ssrs-btn-open-new-tab');
-    
-    if (isReport) {
-        if (btnPreview) btnPreview.style.display = 'inline-flex';
-        if (btnNewTab) btnNewTab.style.display = 'inline-flex';
-        // Open Preview by default
-        switchSsrsViewerTab('preview');
-    } else {
-        // RSD or RDS - no preview possible, hide preview & new tab buttons
-        if (btnPreview) btnPreview.style.display = 'none';
-        if (btnNewTab) btnNewTab.style.display = 'none';
-        switchSsrsViewerTab('source');
-    }
-}
-
-async function switchSsrsViewerTab(tab) {
-    const btnPreview = document.getElementById('ssrs-btn-tab-preview');
-    const btnSource = document.getElementById('ssrs-btn-tab-source');
-    const previewWrapper = document.getElementById('ssrs-viewer-preview-container');
-    const monacoWrapper = document.getElementById('ssrs-viewer-monaco-wrapper');
-    const btnCopy = document.getElementById('ssrs-btn-copy-code');
-    
-    if (tab === 'preview') {
-        if (btnPreview) btnPreview.classList.add('active');
-        if (btnSource) btnSource.classList.remove('active');
-        if (previewWrapper) previewWrapper.style.display = 'block';
-        if (monacoWrapper) monacoWrapper.style.display = 'none';
-        if (btnCopy) btnCopy.style.display = 'none';
+    // Load Monaco code definition
+    initSsrsViewerEditor("<!-- Memuat definisi berkas... -->");
+    try {
+        const res = await fetch(`${API_BASE}/ssrs/download`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                Url: ssrsConnection.Url,
+                Username: ssrsConnection.Username,
+                Password: ssrsConnection.Password,
+                Domain: ssrsConnection.Domain,
+                Path: ssrsViewerActivePath,
+                TypeName: ssrsViewerActiveType
+            })
+        });
         
-        // Load Iframe if not loaded yet
-        if (previewWrapper && previewWrapper.innerHTML.trim() === '') {
-            const renderUrl = getSsrsReportViewerUrl(ssrsConnection.Url, ssrsViewerActivePath);
-            
-            previewWrapper.innerHTML = `
-                <iframe src="${renderUrl}" style="width: 100%; height: 100%; border: none; background: #ffffff;"></iframe>
-            `;
-        }
-    } else if (tab === 'source') {
-        if (btnPreview) btnPreview.classList.remove('active');
-        if (btnSource) btnSource.classList.add('active');
-        if (previewWrapper) previewWrapper.style.display = 'none';
-        if (monacoWrapper) monacoWrapper.style.display = 'block';
-        if (btnCopy) btnCopy.style.display = 'inline-flex';
+        if (!res.ok) throw new Error(await res.text());
         
-        // Load Monaco code definition if not fetched yet
-        if (!ssrsViewerActiveCode) {
-            initSsrsViewerEditor("<!-- Memuat definisi laporan... -->");
-            try {
-                const res = await fetch(`${API_BASE}/ssrs/download`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        Url: ssrsConnection.Url,
-                        Username: ssrsConnection.Username,
-                        Password: ssrsConnection.Password,
-                        Domain: ssrsConnection.Domain,
-                        Path: ssrsViewerActivePath,
-                        TypeName: ssrsViewerActiveType
-                    })
-                });
-                
-                if (!res.ok) throw new Error(await res.text());
-                
-                const codeText = await res.text();
-                ssrsViewerActiveCode = codeText;
-                initSsrsViewerEditor(codeText);
-            } catch (err) {
-                console.error(err);
-                ssrsViewerActiveCode = `<!-- Gagal memuat definisi: ${err.message} -->`;
-                initSsrsViewerEditor(ssrsViewerActiveCode);
-            }
-        } else {
-            // Already cached, just refresh/init Monaco
-            initSsrsViewerEditor(ssrsViewerActiveCode);
-        }
+        const codeText = await res.text();
+        ssrsViewerActiveCode = codeText;
+        initSsrsViewerEditor(codeText);
+    } catch (err) {
+        console.error(err);
+        ssrsViewerActiveCode = `<!-- Gagal memuat definisi: ${err.message} -->`;
+        initSsrsViewerEditor(ssrsViewerActiveCode);
     }
 }
 
@@ -675,11 +664,6 @@ function closeSsrsViewerModal() {
         if (icon) {
             icon.className = 'fa-solid fa-expand';
         }
-    }
-    // Clear preview iframe to release memory
-    const previewWrapper = document.getElementById('ssrs-viewer-preview-container');
-    if (previewWrapper) {
-        previewWrapper.innerHTML = '';
     }
 }
 
@@ -1144,5 +1128,92 @@ async function submitSsrsDataSourceChanges() {
     } finally {
         saveBtn.innerHTML = originalText;
         saveBtn.disabled = false;
+    }
+}
+
+/* ============================================================================
+   SSRS CONNECTION CREDENTIALS POPUP CONTROLLERS
+   ============================================================================ */
+
+function showSsrsCredentialsPopup() {
+    if (!ssrsConnection) return;
+    
+    const modal = document.getElementById('ssrs-credentials-modal');
+    if (!modal) return;
+    
+    // Set fields
+    document.getElementById('ssrs-show-url').value = ssrsConnection.Url || '';
+    document.getElementById('ssrs-show-username').value = ssrsConnection.Username || '';
+    
+    // Reset password visibility
+    const passwordInput = document.getElementById('ssrs-show-password');
+    if (passwordInput) {
+        passwordInput.value = ssrsConnection.Password || '';
+        passwordInput.type = 'password';
+    }
+    const passIcon = document.getElementById('ssrs-show-pass-icon');
+    if (passIcon) {
+        passIcon.className = 'fa-solid fa-eye';
+    }
+    
+    // Show/hide domain
+    const domainInput = document.getElementById('ssrs-show-domain');
+    const domainGroup = document.getElementById('ssrs-show-domain-group');
+    if (domainInput && domainGroup) {
+        if (ssrsConnection.Domain) {
+            domainInput.value = ssrsConnection.Domain;
+            domainGroup.style.display = 'block';
+        } else {
+            domainInput.value = '';
+            domainGroup.style.display = 'none';
+        }
+    }
+    
+    modal.classList.add('active');
+}
+
+function closeSsrsCredentialsModal() {
+    const modal = document.getElementById('ssrs-credentials-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+function toggleSsrsShowPasswordVisibility() {
+    const input = document.getElementById('ssrs-show-password');
+    const icon = document.getElementById('ssrs-show-pass-icon');
+    if (input && icon) {
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.className = 'fa-solid fa-eye-slash';
+        } else {
+            input.type = 'password';
+            icon.className = 'fa-solid fa-eye';
+        }
+    }
+}
+
+async function copySsrsCredentialText(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    
+    try {
+        await navigator.clipboard.writeText(input.value);
+        await uiAlert("Kredensial berhasil disalin ke clipboard!");
+    } catch (err) {
+        console.error("Gagal menyalin kredensial:", err);
+        await uiAlert("Gagal menyalin: " + err.message, { variant: 'error' });
+    }
+}
+
+function goUpSsrsFolder() {
+    if (currentSsrsPath === '/' || !currentSsrsPath) return;
+    
+    const segments = currentSsrsPath.split('/').filter(s => s);
+    if (segments.length <= 1) {
+        browseSsrs('/');
+    } else {
+        segments.pop();
+        browseSsrs('/' + segments.join('/'));
     }
 }

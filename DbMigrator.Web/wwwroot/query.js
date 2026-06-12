@@ -1906,6 +1906,16 @@ function toggleSchemaDiffMaximize() {
 }
 
 function initMonacoDiffEditor(originalCode, modifiedCode) {
+    const container = document.getElementById('schema-diff-monaco-container');
+    const hasEditorDom = container && container.querySelector('.monaco-editor');
+    
+    if (schemaDiffEditor && !hasEditorDom) {
+        try {
+            schemaDiffEditor.dispose();
+        } catch (e) {}
+        schemaDiffEditor = null;
+    }
+
     if (schemaDiffEditor) {
         // Create new SQL models
         const originalModel = monaco.editor.createModel(originalCode, 'sql');
