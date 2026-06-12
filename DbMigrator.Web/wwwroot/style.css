@@ -161,6 +161,23 @@ body.ui-dialog-open {
     color: var(--text-muted);
     line-height: 1.55;
     word-break: break-word;
+    max-height: min(350px, 50vh);
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.ui-dialog-message::-webkit-scrollbar {
+    width: 6px;
+}
+.ui-dialog-message::-webkit-scrollbar-track {
+    background: transparent;
+}
+.ui-dialog-message::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+.ui-dialog-message::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .ui-dialog-input-wrap {
@@ -3358,5 +3375,74 @@ textarea.form-control {
 .modal-content.maximized #ssrs-viewer-monaco-wrapper {
     height: calc(95vh - 220px) !important;
 }
+
+.ssrs-card.dropdown-active {
+    z-index: 50; /* Bring active card to the front so dropdown overlays next cards */
+}
+
+/* ============================================================================
+   SSRS EXPLORER CARD DROPDOWN ACTIONS
+   ============================================================================ */
+.ssrs-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.ssrs-dropdown-content {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-flat);
+    border-radius: 8px;
+    min-width: 160px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.ssrs-dropdown.active .ssrs-dropdown-content {
+    display: block;
+}
+
+.ssrs-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    width: 100%;
+    padding: 0.6rem 0.85rem;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: var(--font-primary);
+    font-size: 0.8rem;
+    text-align: left;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.ssrs-dropdown-item i {
+    font-size: 0.9rem;
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.ssrs-dropdown-item:hover {
+    background-color: var(--bg-card-hover);
+    color: #ffffff;
+}
+
+.ssrs-dropdown-item.danger {
+    color: var(--color-error);
+}
+
+.ssrs-dropdown-item.danger:hover {
+    background-color: rgba(239, 68, 68, 0.08);
+    color: #ffffff;
+}
+
 
 

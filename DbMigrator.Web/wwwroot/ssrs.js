@@ -251,13 +251,20 @@ function renderSsrsItems(items) {
                         <span class="ssrs-card-title" title="${itemName}">${itemName}</span>
                         <span class="ssrs-card-subtitle">Folder</span>
                     </div>
-                    <div class="ssrs-card-actions" style="display: flex; gap: 0.25rem;">
-                        <button class="btn-icon" onclick="downloadSsrsFolder(event, '${itemPath.replace(/'/g, "\\'")}')" title="Unduh Folder (ZIP)" style="color: var(--accent-indigo);">
-                            <i class="fa-solid fa-file-zipper"></i>
-                        </button>
-                        <button class="btn-icon" onclick="deleteSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')" title="Hapus Folder" style="color: var(--color-error); border-color: rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.05);">
-                            <i class="fa-solid fa-trash-can"></i>
-                        </button>
+                    <div class="ssrs-card-actions">
+                        <div class="ssrs-dropdown">
+                            <button class="btn-icon ssrs-dropdown-btn" onclick="toggleSsrsDropdown(event, this)" title="Pilihan">
+                                <i class="fa-solid fa-ellipsis-vertical"></i>
+                            </button>
+                            <div class="ssrs-dropdown-content">
+                                <button class="ssrs-dropdown-item" onclick="downloadSsrsFolder(event, '${itemPath.replace(/'/g, "\\'")}')">
+                                    <i class="fa-solid fa-file-zipper" style="color: var(--accent-indigo);"></i> Unduh ZIP
+                                </button>
+                                <button class="ssrs-dropdown-item danger" onclick="deleteSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')">
+                                    <i class="fa-solid fa-trash-can"></i> Hapus Folder
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -275,7 +282,7 @@ function renderSsrsItems(items) {
 
             if (type === 'Report' || type === 'report') {
                 return `
-                    <div class="ssrs-card file-card" onclick="openSsrsReportDirectly('${itemPath.replace(/'/g, "\\'")}')" style="cursor: pointer;">
+                    <div class="ssrs-card file-card" onclick="openSsrsReportDirectly(event, '${itemPath.replace(/'/g, "\\'")}')" style="cursor: pointer;">
                         <div class="ssrs-card-icon" style="color: ${colorVar};">
                             <i class="fa-solid ${iconClass}"></i>
                         </div>
@@ -283,25 +290,41 @@ function renderSsrsItems(items) {
                             <span class="ssrs-card-title" title="${itemName}">${itemName}</span>
                             <span class="ssrs-card-subtitle">${type}</span>
                         </div>
-                        <div class="ssrs-card-actions" style="display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-end;">
-                            <div style="display: flex; gap: 0.25rem;">
-                                <button class="btn-icon" onclick="downloadSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')" title="Unduh Definisi" style="color: var(--accent-teal);">
-                                    <i class="fa-solid fa-download"></i>
+                        <div class="ssrs-card-actions">
+                            <div class="ssrs-dropdown">
+                                <button class="btn-icon ssrs-dropdown-btn" onclick="toggleSsrsDropdown(event, this)" title="Pilihan">
+                                    <i class="fa-solid fa-ellipsis-vertical"></i>
                                 </button>
-                                <button class="btn-icon" onclick="deleteSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')" title="Hapus Berkas" style="color: var(--color-error); border-color: rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.05);">
-                                    <i class="fa-solid fa-trash-can"></i>
-                                </button>
+                                <div class="ssrs-dropdown-content">
+                                    <button class="ssrs-dropdown-item" onclick="openSsrsReportDirectly(event, '${itemPath.replace(/'/g, "\\'")}')">
+                                        <i class="fa-solid fa-share-from-square" style="color: var(--accent-teal);"></i> Buka Laporan
+                                    </button>
+                                    <button class="ssrs-dropdown-item" onclick="viewSsrsReportDefinition(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')">
+                                        <i class="fa-solid fa-code" style="color: var(--accent-indigo);"></i> Lihat Source XML
+                                    </button>
+                                    <button class="ssrs-dropdown-item" onclick="downloadSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')">
+                                        <i class="fa-solid fa-download" style="color: var(--accent-teal);"></i> Unduh Definisi
+                                    </button>
+                                    <button class="ssrs-dropdown-item danger" onclick="deleteSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')">
+                                        <i class="fa-solid fa-trash-can"></i> Hapus Berkas
+                                    </button>
+                                </div>
                             </div>
-                            <button class="btn-icon" onclick="viewSsrsReportDefinition(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')" title="Lihat Source XML" style="color: var(--accent-indigo); border-color: rgba(99, 102, 241, 0.25); background: rgba(99, 102, 241, 0.08); width: 100%; display: flex; align-items: center; justify-content: center; height: 26px;">
-                                <i class="fa-solid fa-code" style="font-size: 0.8rem;"></i>
-                            </button>
                         </div>
                     </div>
                 `;
             } else {
                 const clickAction = type === 'DataSource'
-                    ? `openSsrsDataSourceModal('${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')`
+                    ? `openSsrsDataSourceModal(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')`
                     : `viewSsrsReportDefinition(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')`;
+
+                const editOrViewOption = type === 'DataSource'
+                    ? `<button class="ssrs-dropdown-item" onclick="openSsrsDataSourceModal(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')">
+                           <i class="fa-solid fa-pen-to-square" style="color: #fb923c;"></i> Edit Data Source
+                       </button>`
+                    : `<button class="ssrs-dropdown-item" onclick="viewSsrsReportDefinition(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')">
+                           <i class="fa-solid fa-code" style="color: var(--accent-indigo);"></i> Lihat Source XML
+                       </button>`;
 
                 return `
                     <div class="ssrs-card file-card" onclick="${clickAction}" style="cursor: pointer;">
@@ -312,13 +335,21 @@ function renderSsrsItems(items) {
                             <span class="ssrs-card-title" title="${itemName}">${itemName}</span>
                             <span class="ssrs-card-subtitle">${type}</span>
                         </div>
-                        <div class="ssrs-card-actions" style="display: flex; gap: 0.25rem;">
-                            <button class="btn-icon" onclick="downloadSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')" title="Unduh Definisi" style="color: var(--accent-teal);">
-                                <i class="fa-solid fa-download"></i>
-                            </button>
-                            <button class="btn-icon" onclick="deleteSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')" title="Hapus Berkas" style="color: var(--color-error); border-color: rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.05);">
-                                <i class="fa-solid fa-trash-can"></i>
-                            </button>
+                        <div class="ssrs-card-actions">
+                            <div class="ssrs-dropdown">
+                                <button class="btn-icon ssrs-dropdown-btn" onclick="toggleSsrsDropdown(event, this)" title="Pilihan">
+                                    <i class="fa-solid fa-ellipsis-vertical"></i>
+                                </button>
+                                <div class="ssrs-dropdown-content">
+                                    ${editOrViewOption}
+                                    <button class="ssrs-dropdown-item" onclick="downloadSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${type}')">
+                                        <i class="fa-solid fa-download" style="color: var(--accent-teal);"></i> Unduh Definisi
+                                    </button>
+                                    <button class="ssrs-dropdown-item danger" onclick="deleteSsrsItem(event, '${itemPath.replace(/'/g, "\\'")}', '${itemName.replace(/'/g, "\\'")}')">
+                                        <i class="fa-solid fa-trash-can"></i> Hapus Berkas
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -565,7 +596,10 @@ function getSsrsReportViewerUrl(url, path) {
     return `${baseUrl}/Pages/ReportViewer.aspx?${reportPath}&rs:Command=Render`;
 }
 
-function openSsrsReportDirectly(path) {
+function openSsrsReportDirectly(event, path) {
+    if (event && event.stopPropagation) {
+        event.stopPropagation();
+    }
     if (!ssrsConnection) return;
     const renderUrl = getSsrsReportViewerUrl(ssrsConnection.Url, path);
     window.open(renderUrl, '_blank');
@@ -938,7 +972,10 @@ function parseSsrsDsConnectionString(connString) {
     return { server, db };
 }
 
-async function openSsrsDataSourceModal(path, name) {
+async function openSsrsDataSourceModal(event, path, name) {
+    if (event && event.stopPropagation) {
+        event.stopPropagation();
+    }
     if (!ssrsConnection) return;
     
     const modal = document.getElementById('ssrs-datasource-modal');
@@ -1217,3 +1254,44 @@ function goUpSsrsFolder() {
         browseSsrs('/' + segments.join('/'));
     }
 }
+
+/* ============================================================================
+   SSRS EXPLORER CARD DROPDOWN CONTROLLERS
+   ============================================================================ */
+function toggleSsrsDropdown(event, element) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    
+    const dropdown = element.closest('.ssrs-dropdown');
+    if (!dropdown) return;
+    
+    const card = element.closest('.ssrs-card');
+    
+    // Close all other dropdowns and remove dropdown-active class from other cards
+    document.querySelectorAll('.ssrs-dropdown').forEach(dd => {
+        if (dd !== dropdown) {
+            dd.classList.remove('active');
+            const c = dd.closest('.ssrs-card');
+            if (c) c.classList.remove('dropdown-active');
+        }
+    });
+    
+    const isActive = dropdown.classList.toggle('active');
+    if (card) {
+        card.classList.toggle('dropdown-active', isActive);
+    }
+}
+
+// Close dropdowns on clicking outside
+window.addEventListener('click', (e) => {
+    if (!e.target.closest('.ssrs-dropdown')) {
+        document.querySelectorAll('.ssrs-dropdown').forEach(dd => {
+            dd.classList.remove('active');
+            const c = dd.closest('.ssrs-card');
+            if (c) c.classList.remove('dropdown-active');
+        });
+    }
+});
+
