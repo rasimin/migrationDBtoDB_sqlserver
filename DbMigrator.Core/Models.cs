@@ -131,4 +131,13 @@ namespace DbMigrator.Core
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }
+
+    public class SavedQuery
+    {
+        public int Id { get; set; }
+        public string QueryName { get; set; }
+        public string QueryText { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
 }

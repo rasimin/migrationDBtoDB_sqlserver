@@ -108,8 +108,18 @@
                     </button>
                     <button class="btn btn-secondary" onclick="clearQueryConsole()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;">
                         <i class="fa-solid fa-trash-can" style="font-size: 0.75rem;"></i> Clear
+                    </button>
                     <button class="btn btn-secondary" onclick="openGenerateInsertModal()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Generate INSERT script untuk data tabel">
                         <i class="fa-solid fa-code" style="font-size: 0.75rem;"></i> Generate Insert
+                    </button>
+                    <button class="btn btn-secondary" onclick="saveQueryConsole()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Simpan query ke database">
+                        <i class="fa-solid fa-floppy-disk" style="font-size: 0.75rem;"></i> Save
+                    </button>
+                    <button class="btn btn-secondary" onclick="saveAsQueryConsole()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Simpan query sebagai nama baru ke database">
+                        <i class="fa-solid fa-file-signature" style="font-size: 0.75rem;"></i> Save As
+                    </button>
+                    <button class="btn btn-secondary" onclick="openQueryHistoryModal()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Buka riwayat kueri yang disimpan">
+                        <i class="fa-solid fa-clock-rotate-left" style="font-size: 0.75rem;"></i> Query History
                     </button>
                     <button class="btn btn-secondary" id="btn-toggle-schema-explorer" onclick="toggleSchemaExplorer()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Sembunyikan/Tampilkan Schema Explorer">
                         <i class="fa-solid fa-folder-minus"></i> <span id="toggle-schema-exp-text">Hide Explorer</span>

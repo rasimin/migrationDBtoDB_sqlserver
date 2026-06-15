@@ -291,6 +291,8 @@ async function connectQueryConsole(isSilent = false, targetDatabase = null) {
                 value: initialValue,
                 model: model,
                 database: queryConsoleActiveDatabase || "master",
+                savedQueryId: null,
+                savedQueryName: "",
                 results: [],
                 lastQueryResults: null,
                 statusTextHtml: '',
@@ -538,6 +540,12 @@ function disconnectQueryConsole() {
     const listContainer = document.getElementById('query-tabs-list');
     if (listContainer) listContainer.innerHTML = '';
     
+    // Clear all results containers
+    const resultsContainer = document.getElementById('query-results-container');
+    if (resultsContainer) {
+        resultsContainer.innerHTML = '';
+    }
+    
     // Clear LocalStorage connection values
     localStorage.removeItem('queryConsoleConnected');
     localStorage.removeItem('queryConsoleServerName');
@@ -619,6 +627,8 @@ function addNewQueryTab(initialValue = '', tabName = '') {
         value: queryValue,
         model: model,
         database: queryConsoleActiveDatabase || "master",
+        savedQueryId: null,
+        savedQueryName: "",
         results: [],
         lastQueryResults: null,
         statusTextHtml: '',
@@ -645,7 +655,6 @@ function switchQueryTabActive(tabId) {
         // Save current UI state
         currentActiveTab.value = queryConsoleEditor.getValue();
         const resultsBox = document.getElementById('query-results-box');
-        const resultsContainer = document.getElementById('query-results-container');
         const statusText = document.getElementById('query-status-text');
         const rowsCount = document.getElementById('query-rows-count');
         const msgContent = document.getElementById('query-messages-content');
@@ -657,7 +666,13 @@ function switchQueryTabActive(tabId) {
             currentActiveTab.statusTextColor = statusText.style.color || '';
         }
         if (rowsCount) currentActiveTab.rowsCountText = rowsCount.innerHTML;
-        if (resultsContainer) currentActiveTab.resultsContainerHtml = resultsContainer.innerHTML;
+        
+        // Hide the current active tab's container
+        const currentContainer = document.getElementById('query-results-tab-content-' + queryConsoleActiveTabId);
+        if (currentContainer) {
+            currentContainer.style.display = 'none';
+        }
+        
         if (msgContent) currentActiveTab.messagesHtml = msgContent.innerHTML;
         
         if (badge) {
@@ -715,9 +730,24 @@ function switchQueryTabActive(tabId) {
     if (rowsCount) {
         rowsCount.innerHTML = nextActiveTab.rowsCountText || '';
     }
+    
     if (resultsContainer) {
-        resultsContainer.innerHTML = nextActiveTab.resultsContainerHtml || '';
+        // Hide all sibling containers
+        Array.from(resultsContainer.children).forEach(child => {
+            child.style.display = 'none';
+        });
+        
+        // Show/create nextActiveTab's container
+        let nextContainer = document.getElementById('query-results-tab-content-' + tabId);
+        if (!nextContainer) {
+            nextContainer = document.createElement('div');
+            nextContainer.id = 'query-results-tab-content-' + tabId;
+            nextContainer.className = 'query-tab-results-content';
+            resultsContainer.appendChild(nextContainer);
+        }
+        nextContainer.style.display = 'block';
     }
+    
     if (msgContent) {
         msgContent.innerHTML = nextActiveTab.messagesHtml || '';
     }
@@ -736,28 +766,30 @@ function switchQueryTabActive(tabId) {
     // Restore active sub-tab for multi-result sets
     if (nextActiveTab.results && nextActiveTab.results.length > 1) {
         const subIdx = nextActiveTab.activeSubResultTabIdx || 0;
-        // Apply active class to sub tab button
-        document.querySelectorAll('.query-tab-btn').forEach(btn => {
-            if (parseInt(btn.getAttribute('data-tab-idx')) === subIdx) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
-        });
-        // Show active grid, hide others
-        document.querySelectorAll('.query-grid-wrapper').forEach(wrapper => {
-            const idStr = `query-grid-wrapper-${subIdx}`;
-            if (wrapper.id === idStr) {
-                wrapper.style.display = 'block';
-            } else {
-                wrapper.style.display = 'none';
-            }
-        });
+        const nextContainer = document.getElementById('query-results-tab-content-' + tabId);
+        if (nextContainer) {
+            // Apply active class to sub tab button
+            nextContainer.querySelectorAll('.query-tab-btn').forEach(btn => {
+                if (parseInt(btn.getAttribute('data-tab-idx')) === subIdx) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            // Show active grid, hide others
+            nextContainer.querySelectorAll('.query-grid-wrapper').forEach(wrapper => {
+                const idStr = `query-grid-wrapper-${tabId}-${subIdx}`;
+                if (wrapper.id === idStr) {
+                    wrapper.style.display = 'block';
+                } else {
+                    wrapper.style.display = 'none';
+                }
+            });
+        }
     }
 
-    // Refresh layout and focus
+    // Focus editor
     setTimeout(() => {
-        queryConsoleEditor.layout();
         queryConsoleEditor.focus();
     }, 50);
 
@@ -787,6 +819,12 @@ function closeQueryTab(tabId, event) {
         } catch(e) {
             console.error("Error disposing model:", e);
         }
+    }
+
+    // Remove results container DOM element
+    const containerToRemove = document.getElementById('query-results-tab-content-' + tabId);
+    if (containerToRemove) {
+        containerToRemove.remove();
     }
 
     // Remove from array
@@ -972,6 +1010,8 @@ function initMonacoQueryEditor() {
             value: initialValue,
             model: initialModel,
             database: queryConsoleActiveDatabase || "master",
+            savedQueryId: null,
+            savedQueryName: "",
             results: [],
             lastQueryResults: null,
             statusTextHtml: '',
@@ -2500,6 +2540,43 @@ const queryConsoleDummyResults = {
     }
 };
 
+function renderTableRowsChunk(tableId, queryRunId, rows, headersLength, startIndex, chunkSize = 150) {
+    const table = document.getElementById(tableId);
+    if (!table) return;
+    if (table.getAttribute('data-query-run-id') !== queryRunId) return;
+
+    const tbody = table.querySelector('tbody');
+    if (!tbody) return;
+
+    const endIndex = Math.min(startIndex + chunkSize, rows.length);
+    const fragment = document.createDocumentFragment();
+
+    for (let i = startIndex; i < endIndex; i++) {
+        const row = rows[i];
+        const tr = document.createElement('tr');
+        let html = '';
+        for (let j = 0; j < row.length; j++) {
+            const cell = row[j];
+            if (cell === null) {
+                html += `<td title="NULL"><span style="color: rgba(255,255,255,0.15); font-style: italic;">NULL</span></td>`;
+            } else {
+                const strVal = cell.toString();
+                html += `<td title="${escapeHtml(strVal)}">${escapeHtml(strVal)}</td>`;
+            }
+        }
+        tr.innerHTML = html;
+        fragment.appendChild(tr);
+    }
+
+    tbody.appendChild(fragment);
+
+    if (endIndex < rows.length) {
+        requestAnimationFrame(() => {
+            renderTableRowsChunk(tableId, queryRunId, rows, headersLength, endIndex, chunkSize);
+        });
+    }
+}
+
 async function runQueryConsole() {
     const runningTabId = queryConsoleActiveTabId;
     let queryText = '';
@@ -2540,7 +2617,21 @@ async function runQueryConsole() {
         }
         if (rowsCount) rowsCount.textContent = "";
         if (resultsBox) resultsBox.style.display = 'block';
-        if (resultsContainer) resultsContainer.innerHTML = "";
+    }
+
+    // Ensure the tab-specific container is created and cleared
+    if (resultsContainer) {
+        let tabResultsCont = document.getElementById('query-results-tab-content-' + runningTabId);
+        if (!tabResultsCont) {
+            tabResultsCont = document.createElement('div');
+            tabResultsCont.id = 'query-results-tab-content-' + runningTabId;
+            tabResultsCont.className = 'query-tab-results-content';
+            resultsContainer.appendChild(tabResultsCont);
+        }
+        tabResultsCont.innerHTML = "";
+        if (queryConsoleActiveTabId === runningTabId) {
+            tabResultsCont.style.display = 'block';
+        }
     }
 
     // Save executing state to running tab
@@ -2565,6 +2656,7 @@ async function runQueryConsole() {
     queryConsoleAbortController = new AbortController();
 
     try {
+        const queryRunId = Date.now().toString() + Math.random().toString(36).substring(2, 7);
         const payload = {
             ServerName: queryConsoleActiveServer,
             Authentication: queryConsoleActiveAuth,
@@ -2606,13 +2698,16 @@ async function runQueryConsole() {
 
             saveQueryRunResult(runningTabId, tabData);
 
+            if (resultsContainer) {
+                const tabResultsCont = document.getElementById('query-results-tab-content-' + runningTabId);
+                if (tabResultsCont) tabResultsCont.innerHTML = '';
+            }
             if (queryConsoleActiveTabId === runningTabId) {
                 if (statusText) {
                     statusText.textContent = tabData.statusTextHtml;
                     statusText.style.color = tabData.statusTextColor;
                 }
                 if (rowsCount) rowsCount.textContent = tabData.rowsCountText;
-                if (resultsContainer) resultsContainer.innerHTML = '';
                 renderQueryMessages(msgs, execTime, true);
                 switchQueryResultsTab('messages');
             }
@@ -2635,7 +2730,7 @@ async function runQueryConsole() {
                 const rowCountText = table.Rows.length === 0 ? '0 baris' : `${table.Rows.length} baris`;
                 const isFirst = index === 0 ? 'active' : '';
                 containerHtml += `
-                    <button class="query-tab-btn ${isFirst}" data-tab-idx="${index}" onclick="switchQueryTab(${index})">
+                    <button class="query-tab-btn ${isFirst}" data-tab-idx="${index}" onclick="switchQueryTab('${runningTabId}', ${index})">
                         <i class="fa-solid fa-table"></i> Hasil ${index + 1} (${rowCountText})
                     </button>
                 `;
@@ -2645,16 +2740,20 @@ async function runQueryConsole() {
 
         tables.forEach((table, index) => {
             const isHidden = (tables.length > 1 && index > 0) ? 'style="display: none;"' : '';
+            
+            // Only render first 100 rows initially for performance
+            const initialRows = table.Rows.slice(0, 100);
+            
             containerHtml += `
-                <div class="query-results-grid-wrapper query-grid-wrapper" id="query-grid-wrapper-${index}" ${isHidden}>
-                    <table class="mapper-table query-results-table" id="query-results-table-${index}" style="margin-bottom: 0;">
+                <div class="query-results-grid-wrapper query-grid-wrapper" id="query-grid-wrapper-${runningTabId}-${index}" ${isHidden}>
+                    <table class="mapper-table query-results-table" id="query-results-table-${runningTabId}-${index}" data-query-run-id="${queryRunId}" style="margin-bottom: 0;">
                         <thead>
                             <tr>${table.Headers.map(h => `<th style="position: relative;">${escapeHtml(h)}<div class="resizer"></div></th>`).join('')}</tr>
                         </thead>
                         <tbody>
                             ${table.Rows.length === 0 
                                 ? `<tr><td colspan="${table.Headers.length}" style="text-align: center; color: var(--text-muted);">Tidak ada baris yang dikembalikan.</td></tr>`
-                                : table.Rows.map(row => 
+                                : initialRows.map(row => 
                                     `<tr>${row.map(cell => {
                                         if (cell === null) {
                                             return `<td title="NULL"><span style="color: rgba(255,255,255,0.15); font-style: italic;">NULL</span></td>`;
@@ -2705,7 +2804,7 @@ async function runQueryConsole() {
             statusTextHtml: statusTextHtml,
             statusTextColor: statusTextColor,
             rowsCountText: rowsCountText,
-            resultsContainerHtml: containerHtml,
+            resultsContainerHtml: '',
             messagesHtml: msgHtml,
             messagesBadgeText: printMessages.length > 0 ? printMessages.length : '',
             messagesBadgeDisplay: printMessages.length > 0 ? 'inline' : 'none',
@@ -2714,18 +2813,42 @@ async function runQueryConsole() {
 
         saveQueryRunResult(runningTabId, tabData);
 
+        if (resultsContainer) {
+            let tabResultsCont = document.getElementById('query-results-tab-content-' + runningTabId);
+            if (!tabResultsCont) {
+                tabResultsCont = document.createElement('div');
+                tabResultsCont.id = 'query-results-tab-content-' + runningTabId;
+                tabResultsCont.className = 'query-tab-results-content';
+                resultsContainer.appendChild(tabResultsCont);
+            }
+            tabResultsCont.innerHTML = containerHtml;
+        }
+
+        // Schedule background chunked rendering for rows after the first 100
+        tables.forEach((table, index) => {
+            if (table.Rows.length > 100) {
+                const remainingRows = table.Rows.slice(100);
+                const tableDomId = `query-results-table-${runningTabId}-${index}`;
+                requestAnimationFrame(() => {
+                    renderTableRowsChunk(tableDomId, queryRunId, remainingRows, table.Headers.length, 0, 150);
+                });
+            }
+        });
+
         if (queryConsoleActiveTabId === runningTabId) {
             if (statusText) {
                 statusText.innerHTML = tabData.statusTextHtml;
                 statusText.style.color = tabData.statusTextColor;
             }
             if (rowsCount) rowsCount.innerHTML = tabData.rowsCountText;
-            if (resultsContainer) resultsContainer.innerHTML = tabData.resultsContainerHtml;
 
-            // Initialize drag-resize columns on all rendered tables
-            document.querySelectorAll('.query-results-table').forEach(tbl => {
-                initTableResizers(tbl);
-            });
+            // Initialize drag-resize columns on all rendered tables within this tab's container
+            const tabResultsCont = document.getElementById('query-results-tab-content-' + runningTabId);
+            if (tabResultsCont) {
+                tabResultsCont.querySelectorAll('.query-results-table').forEach(tbl => {
+                    initTableResizers(tbl);
+                });
+            }
 
             // Sync global cache variables
             window.queryConsoleAllResults = tables;
@@ -2760,13 +2883,17 @@ async function runQueryConsole() {
 
         saveQueryRunResult(runningTabId, tabData);
 
+        if (resultsContainer) {
+            const tabResultsCont = document.getElementById('query-results-tab-content-' + runningTabId);
+            if (tabResultsCont) tabResultsCont.innerHTML = '';
+        }
+
         if (queryConsoleActiveTabId === runningTabId) {
             if (statusText) {
                 statusText.textContent = statusTextStr;
                 statusText.style.color = statusColorStr;
             }
             if (rowsCount) rowsCount.textContent = rowsCountStr;
-            if (resultsContainer) resultsContainer.innerHTML = '';
             renderQueryMessages(msgs, 0, !isAbort);
             switchQueryResultsTab('messages');
         }
@@ -2786,8 +2913,11 @@ function cancelQueryConsole() {
     }
 }
 
-function switchQueryTab(index) {
-    document.querySelectorAll('.query-tab-btn').forEach(btn => {
+function switchQueryTab(tabId, index) {
+    const tabContent = document.getElementById('query-results-tab-content-' + tabId);
+    if (!tabContent) return;
+
+    tabContent.querySelectorAll('.query-tab-btn').forEach(btn => {
         if (parseInt(btn.getAttribute('data-tab-idx')) === index) {
             btn.classList.add('active');
         } else {
@@ -2795,8 +2925,8 @@ function switchQueryTab(index) {
         }
     });
 
-    document.querySelectorAll('.query-grid-wrapper').forEach(wrapper => {
-        const idStr = `query-grid-wrapper-${index}`;
+    tabContent.querySelectorAll('.query-grid-wrapper').forEach(wrapper => {
+        const idStr = `query-grid-wrapper-${tabId}-${index}`;
         if (wrapper.id === idStr) {
             wrapper.style.display = 'block';
         } else {
@@ -2863,6 +2993,12 @@ function clearQueryConsole() {
         activeTab.activeConsoleTab = 'results';
         activeTab.activeSubResultTabIdx = 0;
         activeTab.isResultsBoxVisible = false;
+
+        // Clear the specific DOM container for the active tab
+        const currentContainer = document.getElementById('query-results-tab-content-' + queryConsoleActiveTabId);
+        if (currentContainer) {
+            currentContainer.innerHTML = '';
+        }
     }
 }
 
@@ -2986,9 +3122,13 @@ function initTableResizers(table) {
 
     // Cap initial column widths and freeze layout in fixed mode to enable ellipsis text-clipping
     const cols = table.querySelectorAll('th');
-    cols.forEach(c => {
-        const currentWidth = c.offsetWidth;
-        c.style.width = Math.min(250, Math.max(80, currentWidth)) + 'px';
+    
+    // Batch read to prevent Layout Thrashing (forced reflow in a loop)
+    const widths = Array.from(cols).map(c => c.offsetWidth);
+    
+    // Batch write
+    cols.forEach((c, i) => {
+        c.style.width = Math.min(250, Math.max(80, widths[i])) + 'px';
     });
     table.style.tableLayout = 'fixed';
 
@@ -3680,5 +3820,334 @@ function toggleSchemaExplorer() {
         if (btn) {
             btn.innerHTML = '<i class="fa-solid fa-folder-plus"></i> <span id="toggle-schema-exp-text">Show Explorer</span>';
         }
+    }
+}
+
+// ── Save & Save As Query Console Logic ──────────────────────────────────────
+async function saveQueryConsole() {
+    if (!queryConsoleEditor) return;
+    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+    if (!activeTab) return;
+
+    const queryText = queryConsoleEditor.getValue();
+    if (!queryText.trim()) {
+        await uiAlert("Script kueri kosong, tidak ada yang bisa disimpan!");
+        return;
+    }
+
+    if (activeTab.savedQueryId) {
+        // Update existing saved query in DB
+        try {
+            const payload = {
+                Id: activeTab.savedQueryId,
+                QueryName: activeTab.savedQueryName,
+                QueryText: queryText
+            };
+            const res = await fetch(`${API_BASE}/query/saved-queries`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error("Gagal mengupdate query di database.");
+            
+            // Save current value to tab value
+            activeTab.value = queryText;
+            await uiAlert(`Kueri "${activeTab.savedQueryName}" berhasil diperbarui!`, { variant: 'success' });
+        } catch (err) {
+            await uiAlert("Gagal menyimpan kueri: " + err.message, { variant: 'error' });
+        }
+    } else {
+        // Save as new query
+        await saveAsQueryConsole();
+    }
+}
+
+async function saveAsQueryConsole() {
+    if (!queryConsoleEditor) return;
+    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+    if (!activeTab) return;
+
+    const queryText = queryConsoleEditor.getValue();
+    if (!queryText.trim()) {
+        await uiAlert("Script kueri kosong, tidak ada yang bisa disimpan!");
+        return;
+    }
+
+    // Generate auto name using YYYYMMDD_HHMMSS
+    const now = new Date();
+    const YYYY = now.getFullYear();
+    const MM = String(now.getMonth() + 1).padStart(2, '0');
+    const DD = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    const autoName = `Query_${YYYY}${MM}${DD}_${hh}${mm}${ss}`;
+
+    const chosenName = await uiPrompt("Masukkan nama untuk kueri ini:", {
+        title: "Simpan Kueri Baru",
+        defaultValue: activeTab.savedQueryName || autoName,
+        placeholder: "Contoh: SELECT Transaksi Hari Ini"
+    });
+
+    if (chosenName === null) return; // User cancelled
+
+    const queryName = chosenName.trim() || autoName;
+
+    try {
+        const payload = {
+            Id: 0,
+            QueryName: queryName,
+            QueryText: queryText
+        };
+        const res = await fetch(`${API_BASE}/query/saved-queries`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Gagal menyimpan query baru ke database.");
+        const data = await res.json();
+
+        // Update active tab state
+        activeTab.savedQueryId = data.Id;
+        activeTab.savedQueryName = queryName;
+        activeTab.name = queryName;
+        activeTab.value = queryText;
+
+        renderQueryTabs();
+        await uiAlert(`Kueri "${queryName}" berhasil disimpan!`, { variant: 'success' });
+    } catch (err) {
+        await uiAlert("Gagal menyimpan kueri: " + err.message, { variant: 'error' });
+    }
+}
+
+// ── Query History Modal & Functions ──────────────────────────────────────────
+let historyPreviewEditor = null;
+let activeHistoryQuery = null;
+
+function openQueryHistoryModal() {
+    const modal = document.getElementById('query-history-modal');
+    if (!modal) return;
+    
+    // Clear previous state
+    activeHistoryQuery = null;
+    document.getElementById('history-preview-title').textContent = 'Preview: (Pilih query)';
+    document.getElementById('history-preview-placeholder').style.display = 'flex';
+    document.getElementById('history-preview-actions').style.display = 'none';
+    
+    // Reset filters
+    document.getElementById('history-search-term').value = '';
+    document.getElementById('history-start-date').value = '';
+    document.getElementById('history-end-date').value = '';
+
+    modal.classList.add('active');
+
+    // Lazy load Monaco preview editor after modal display transition
+    setTimeout(() => {
+        initHistoryPreviewEditor();
+    }, 100);
+
+    // Initial fetch of query history
+    searchQueryHistory();
+}
+
+function closeQueryHistoryModal() {
+    const modal = document.getElementById('query-history-modal');
+    if (modal) modal.classList.remove('active');
+    
+    // Reset preview editor value to release memory
+    if (historyPreviewEditor) {
+        historyPreviewEditor.setValue('');
+    }
+}
+
+function initHistoryPreviewEditor() {
+    if (historyPreviewEditor) {
+        historyPreviewEditor.layout();
+        return;
+    }
+    const container = document.getElementById('history-preview-monaco-container');
+    if (!container) return;
+
+    if (typeof require === 'undefined') {
+        console.error("Monaco loader is missing in history modal.");
+        return;
+    }
+
+    require(['vs/editor/editor.main'], function() {
+        if (historyPreviewEditor) return;
+        historyPreviewEditor = monaco.editor.create(container, {
+            value: '',
+            language: 'sql',
+            theme: 'vs-dark',
+            readOnly: true,
+            automaticLayout: true,
+            minimap: { enabled: false },
+            fontSize: 12,
+            fontFamily: 'Consolas, Monaco, monospace',
+            lineHeight: 16,
+            padding: { top: 6, bottom: 6 }
+        });
+    });
+}
+
+async function searchQueryHistory() {
+    const searchTerm = document.getElementById('history-search-term').value;
+    const startDate = document.getElementById('history-start-date').value;
+    const endDate = document.getElementById('history-end-date').value;
+
+    let url = `${API_BASE}/query/saved-queries?searchTerm=${encodeURIComponent(searchTerm)}`;
+    if (startDate) url += `&startDate=${startDate}`;
+    if (endDate) url += `&endDate=${endDate}`;
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Gagal mengambil histori query dari server.");
+        const queries = await res.json();
+        renderQueryHistoryList(queries);
+    } catch (err) {
+        console.error("Error fetching query history:", err);
+    }
+}
+
+function resetQueryHistoryFilters() {
+    document.getElementById('history-search-term').value = '';
+    document.getElementById('history-start-date').value = '';
+    document.getElementById('history-end-date').value = '';
+    searchQueryHistory();
+}
+
+function renderQueryHistoryList(queries) {
+    const listBody = document.getElementById('history-queries-list');
+    const emptyDiv = document.getElementById('history-queries-empty');
+    if (!listBody) return;
+
+    listBody.innerHTML = '';
+    
+    if (!queries || queries.length === 0) {
+        if (emptyDiv) emptyDiv.style.display = 'block';
+        return;
+    }
+    if (emptyDiv) emptyDiv.style.display = 'none';
+
+    queries.forEach(q => {
+        const row = document.createElement('tr');
+        row.style.cursor = 'pointer';
+        row.style.borderBottom = '1px solid var(--border-flat)';
+        
+        // Format CreatedAt to localized string
+        const dateObj = new Date(q.CreatedAt || q.createdAt);
+        const dateStr = dateObj.toLocaleDateString('id-ID') + ' ' + dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+        row.innerHTML = `
+            <td style="padding: 0.6rem 0.75rem; color: #ffffff; font-weight: 500; word-break: break-all;">${escapeHtml(q.QueryName || q.queryName)}</td>
+            <td style="padding: 0.6rem 0.75rem; color: var(--text-muted); font-size: 0.75rem;">${dateStr}</td>
+            <td style="padding: 0.6rem 0.75rem; text-align: center;">
+                <button type="button" class="btn btn-secondary" onclick="deleteHistoryQuery(${q.Id || q.id}, event)" title="Hapus Kueri" style="height: 26px; width: 26px; min-width: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; border-radius: 4px;">
+                    <i class="fa-solid fa-trash-can" style="font-size: 0.75rem;"></i>
+                </button>
+            </td>
+        `;
+
+        row.addEventListener('click', (e) => {
+            // Check if user clicked the delete button or inside it
+            if (e.target.closest('button')) return;
+            selectHistoryQuery(q, row);
+        });
+
+        listBody.appendChild(row);
+    });
+}
+
+function selectHistoryQuery(query, rowEl) {
+    activeHistoryQuery = query;
+
+    // Highlight selected row
+    const tbody = document.getElementById('history-queries-list');
+    tbody.querySelectorAll('tr').forEach(r => r.style.background = 'transparent');
+    rowEl.style.background = 'rgba(0, 173, 181, 0.08)';
+
+    // Set preview value
+    if (historyPreviewEditor) {
+        historyPreviewEditor.setValue(query.QueryText || query.queryText || '');
+    }
+
+    // Hide placeholder, show actions
+    document.getElementById('history-preview-placeholder').style.display = 'none';
+    document.getElementById('history-preview-title').textContent = `Preview: ${query.QueryName || query.queryName}`;
+    document.getElementById('history-preview-actions').style.display = 'flex';
+}
+
+async function copyHistoryPreviewToClipboard() {
+    if (!activeHistoryQuery) return;
+    const text = activeHistoryQuery.QueryText || activeHistoryQuery.queryText || '';
+    try {
+        await navigator.clipboard.writeText(text);
+        await uiAlert("Script kueri berhasil disalin ke clipboard!", { variant: 'success' });
+    } catch (err) {
+        await uiAlert("Gagal menyalin script: " + err.message, { variant: 'error' });
+    }
+}
+
+async function openHistoryInNewTab() {
+    if (!activeHistoryQuery) return;
+
+    const queryText = activeHistoryQuery.QueryText || activeHistoryQuery.queryText || '';
+    const queryName = activeHistoryQuery.QueryName || activeHistoryQuery.queryName || 'Query';
+    const queryId = activeHistoryQuery.Id || activeHistoryQuery.id;
+
+    // Create a new tab and focus it
+    addNewQueryTab(queryText, queryName);
+
+    // Link new tab to database record
+    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+    if (activeTab) {
+        activeTab.savedQueryId = queryId;
+        activeTab.savedQueryName = queryName;
+        activeTab.name = queryName;
+    }
+
+    renderQueryTabs();
+    closeQueryHistoryModal();
+}
+
+async function deleteHistoryQuery(id, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    const confirmDel = await uiConfirm("Apakah Anda yakin ingin menghapus kueri ini dari riwayat?", {
+        title: "Hapus Kueri"
+    });
+
+    if (!confirmDel) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/query/saved-queries/${id}`, {
+            method: 'DELETE'
+        });
+        if (!res.ok) throw new Error("Gagal menghapus kueri di database.");
+
+        // If active query was deleted, clear preview
+        if (activeHistoryQuery && (activeHistoryQuery.Id === id || activeHistoryQuery.id === id)) {
+            activeHistoryQuery = null;
+            document.getElementById('history-preview-title').textContent = 'Preview: (Pilih query)';
+            document.getElementById('history-preview-placeholder').style.display = 'flex';
+            document.getElementById('history-preview-actions').style.display = 'none';
+            if (historyPreviewEditor) historyPreviewEditor.setValue('');
+        }
+
+        // Also check if any open tabs are referencing this saved query, if so, detach them
+        queryConsoleTabs.forEach(tab => {
+            if (tab.savedQueryId === id) {
+                tab.savedQueryId = null;
+                tab.savedQueryName = "";
+            }
+        });
+
+        await searchQueryHistory();
+        await uiAlert("Kueri berhasil dihapus dari riwayat!", { variant: 'success' });
+    } catch (err) {
+        await uiAlert("Gagal menghapus kueri: " + err.message, { variant: 'error' });
     }
 }

@@ -90,3 +90,89 @@
         </div>
     </div>
 </div>
+
+<!-- ============================================================================
+     MODAL: QUERY HISTORY
+     ============================================================================ -->
+<div class="modal-overlay" id="query-history-modal">
+    <div class="modal-content" style="max-width: 950px; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3>Riwayat Kueri (Query History)</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Cari dan muat kueri yang disimpan sebelumnya ke editor tab baru.</p>
+            </div>
+            <button class="close-btn" onclick="closeQueryHistoryModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem;">
+            <!-- Filters row -->
+            <div style="display: flex; gap: 0.75rem; align-items: flex-end; margin-bottom: 1.25rem; flex-wrap: wrap;">
+                <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+                    <label for="history-search-term" style="font-size: 0.8rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Pencarian (Nama / Konten SQL):</label>
+                    <input type="text" id="history-search-term" class="form-control" placeholder="Cari nama atau isi kueri..." style="font-size: 0.85rem; height: 34px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;" onkeydown="if(event.key==='Enter') searchQueryHistory()">
+                </div>
+                <div class="form-group" style="width: 150px; margin-bottom: 0;">
+                    <label for="history-start-date" style="font-size: 0.8rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Dari Tanggal:</label>
+                    <input type="date" id="history-start-date" class="form-control" style="font-size: 0.85rem; height: 34px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.5rem;" onchange="searchQueryHistory()">
+                </div>
+                <div class="form-group" style="width: 150px; margin-bottom: 0;">
+                    <label for="history-end-date" style="font-size: 0.8rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Sampai Tanggal:</label>
+                    <input type="date" id="history-end-date" class="form-control" style="font-size: 0.85rem; height: 34px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.5rem;" onchange="searchQueryHistory()">
+                </div>
+                <button class="btn btn-primary" onclick="searchQueryHistory()" style="height: 34px; width: auto; font-size: 0.8rem; padding: 0 1rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+                    <i class="fa-solid fa-magnifying-glass"></i> Cari
+                </button>
+                <button class="btn btn-secondary" onclick="resetQueryHistoryFilters()" style="height: 34px; width: auto; font-size: 0.8rem; padding: 0 1rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+                    <i class="fa-solid fa-arrows-rotate"></i> Reset
+                </button>
+            </div>
+
+            <!-- Main Split Layout for History -->
+            <div style="display: flex; gap: 1.25rem; height: 420px;">
+                <!-- Left panel: list of queries -->
+                <div style="width: 45%; border: 1px solid var(--border-flat); border-radius: 6px; overflow-y: auto; background: #07090d; display: flex; flex-direction: column;">
+                    <table class="mapper-table" style="width: 100%; margin-bottom: 0;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--border-flat); background: rgba(255,255,255,0.02);">
+                                <th style="padding: 0.6rem 0.75rem; color: var(--accent-teal);">Nama Query</th>
+                                <th style="padding: 0.6rem 0.75rem; color: var(--accent-teal); width: 130px;">Tanggal</th>
+                                <th style="padding: 0.6rem 0.75rem; color: var(--accent-teal); width: 50px; text-align: center;">Hapus</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-queries-list">
+                            <!-- Items loaded dynamically -->
+                        </tbody>
+                    </table>
+                    <div id="history-queries-empty" style="padding: 3rem 1.5rem; text-align: center; color: var(--text-muted);">
+                        <i class="fa-solid fa-clock-rotate-left" style="font-size: 2rem; opacity: 0.2; margin-bottom: 0.75rem; display: block;"></i>
+                        Tidak ada histori query yang cocok.
+                    </div>
+                </div>
+
+                <!-- Right panel: Code Preview & Actions -->
+                <div style="flex: 1; border: 1px solid var(--border-flat); border-radius: 6px; background: #07090d; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+                    <div style="background: rgba(255, 255, 255, 0.02); border-bottom: 1px solid var(--border-flat); padding: 0.5rem 0.75rem; display: flex; align-items: center; justify-content: space-between;">
+                        <span style="font-size: 0.82rem; font-weight: 600; color: #ffffff;" id="history-preview-title">Preview: (Pilih query)</span>
+                        <div style="display: none; gap: 0.4rem;" id="history-preview-actions">
+                            <button class="btn btn-secondary" onclick="copyHistoryPreviewToClipboard()" style="height: 26px; width: auto; padding: 0 0.55rem; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                <i class="fa-solid fa-copy"></i> Salin
+                            </button>
+                            <button class="btn btn-primary" onclick="openHistoryInNewTab()" style="height: 26px; width: auto; padding: 0 0.55rem; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 0.25rem; background: var(--accent-teal); color: #0d0f14;">
+                                <i class="fa-solid fa-square-plus"></i> Buka di Tab Baru
+                            </button>
+                        </div>
+                    </div>
+                    <div style="flex: 1; position: relative; overflow: hidden;">
+                        <div id="history-preview-monaco-container" style="height: 100%; width: 100%;"></div>
+                        <div id="history-preview-placeholder" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.8rem; background: #07090d; z-index: 10;">
+                            <i class="fa-solid fa-code" style="font-size: 2.5rem; opacity: 0.15; margin-bottom: 0.75rem;"></i>
+                            Pilih kueri dari daftar sebelah kiri untuk melihat preview script.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeQueryHistoryModal()" style="width: auto;">Tutup</button>
+        </div>
+    </div>
+</div>

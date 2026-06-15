@@ -366,6 +366,18 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
                 UpdatedAt DATETIME NOT NULL DEFAULT GETDATE()
             );
         END
+
+        -- Ensure SavedQueries table exists
+        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID('dbo.SavedQueries') AND type in ('U'))
+        BEGIN
+            CREATE TABLE dbo.SavedQueries (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                QueryName NVARCHAR(255) NOT NULL,
+                QueryText NVARCHAR(MAX) NOT NULL,
+                CreatedAt DATETIME NOT NULL DEFAULT GETDATE(),
+                UpdatedAt DATETIME NOT NULL DEFAULT GETDATE()
+            );
+        END
     ");
 }
 
@@ -1117,6 +1129,108 @@ app.MapGet("/api/db/schema", async ([FromQuery] int jobId, [FromQuery] string db
 // ============================================================================
 // SSMS-LITE QUERY CONSOLE ENDPOINTS
 // ============================================================================
+
+// SAVED QUERIES (QUERY HISTORY) ENDPOINTS
+app.MapGet("/api/query/saved-queries", async (
+    [FromQuery] string searchTerm, 
+    [FromQuery] DateTime? startDate, 
+    [FromQuery] DateTime? endDate, 
+    IConfiguration config) =>
+{
+    try
+    {
+        using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+        var queries = await conn.QueryAsync<SavedQuery>(@"
+            SELECT Id, QueryName, QueryText, CreatedAt, UpdatedAt 
+            FROM dbo.SavedQueries
+            WHERE 1=1
+              AND (@SearchTerm IS NULL OR @SearchTerm = '' OR QueryName LIKE @SearchPattern OR QueryText LIKE @SearchPattern)
+              AND (@StartDate IS NULL OR CreatedAt >= @StartDate)
+              AND (@EndDate IS NULL OR CreatedAt < DATEADD(day, 1, @EndDate))
+            ORDER BY UpdatedAt DESC",
+            new { 
+                SearchTerm = searchTerm, 
+                SearchPattern = $"%{searchTerm}%", 
+                StartDate = startDate, 
+                EndDate = endDate 
+            });
+        return Results.Ok(queries);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { Success = false, Message = $"Gagal mengambil daftar query: {ex.Message}" });
+    }
+});
+
+app.MapGet("/api/query/saved-queries/{id:int}", async (int id, IConfiguration config) =>
+{
+    try
+    {
+        using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+        var query = await conn.QuerySingleOrDefaultAsync<SavedQuery>(
+            "SELECT Id, QueryName, QueryText, CreatedAt, UpdatedAt FROM dbo.SavedQueries WHERE Id = @Id", new { Id = id });
+        return query != null ? Results.Ok(query) : Results.NotFound($"Query dengan ID {id} tidak ditemukan");
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { Success = false, Message = $"Gagal mengambil detail query: {ex.Message}" });
+    }
+});
+
+app.MapPost("/api/query/saved-queries", async ([FromBody] SavedQuery request, IConfiguration config) =>
+{
+    if (string.IsNullOrEmpty(request?.QueryName) || string.IsNullOrEmpty(request?.QueryText))
+    {
+        return Results.BadRequest(new { Success = false, Message = "Nama Query dan Script Query tidak boleh kosong" });
+    }
+
+    try
+    {
+        using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+        if (request.Id > 0)
+        {
+            await conn.ExecuteAsync(@"
+                UPDATE dbo.SavedQueries
+                SET QueryName = @QueryName,
+                    QueryText = @QueryText,
+                    UpdatedAt = GETDATE()
+                WHERE Id = @Id",
+                request);
+            return Results.Ok(new { Success = true, Message = "Query berhasil diperbarui", Id = request.Id });
+        }
+        else
+        {
+            var id = await conn.QuerySingleAsync<int>(@"
+                INSERT INTO dbo.SavedQueries (QueryName, QueryText, CreatedAt, UpdatedAt)
+                VALUES (@QueryName, @QueryText, GETDATE(), GETDATE());
+                SELECT CAST(SCOPE_IDENTITY() as int);",
+                request);
+            return Results.Ok(new { Success = true, Message = "Query berhasil disimpan", Id = id });
+        }
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { Success = false, Message = $"Gagal menyimpan query: {ex.Message}" });
+    }
+});
+
+app.MapDelete("/api/query/saved-queries/{id:int}", async (int id, IConfiguration config) =>
+{
+    try
+    {
+        using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+        var deleted = await conn.ExecuteAsync("DELETE FROM dbo.SavedQueries WHERE Id = @Id", new { Id = id });
+        if (deleted > 0)
+        {
+            return Results.Ok(new { Success = true, Message = "Query berhasil dihapus" });
+        }
+        return Results.NotFound(new { Success = false, Message = "Query tidak ditemukan" });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { Success = false, Message = $"Gagal menghapus query: {ex.Message}" });
+    }
+});
 
 // 0. SHARED CONNECTION HISTORY ENDPOINTS
 app.MapGet("/api/query/connections", async (IConfiguration config) =>
