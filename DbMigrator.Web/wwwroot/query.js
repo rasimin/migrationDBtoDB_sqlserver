@@ -402,10 +402,49 @@ function renderDatabaseDropdown(databases, selectedDb) {
     filterDatabaseList('');
 }
 
+let queryConsoleDbNavIndex = -1;
+
+function handleDbDropdownKeydown(e) {
+    const listContainer = document.getElementById('query-db-list');
+    if (!listContainer) return;
+    const items = listContainer.querySelectorAll('.db-item');
+    if (items.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        queryConsoleDbNavIndex++;
+        if (queryConsoleDbNavIndex >= items.length) queryConsoleDbNavIndex = items.length - 1;
+        updateDbDropdownHighlight(items);
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        queryConsoleDbNavIndex--;
+        if (queryConsoleDbNavIndex < 0) queryConsoleDbNavIndex = 0;
+        updateDbDropdownHighlight(items);
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (queryConsoleDbNavIndex >= 0 && queryConsoleDbNavIndex < items.length) {
+            items[queryConsoleDbNavIndex].click();
+        }
+    }
+}
+
+function updateDbDropdownHighlight(items) {
+    items.forEach((item, idx) => {
+        if (idx === queryConsoleDbNavIndex) {
+            item.classList.add('nav-highlight');
+            item.scrollIntoView({ block: 'nearest' });
+        } else {
+            item.classList.remove('nav-highlight');
+        }
+    });
+}
+
 function filterDatabaseList(searchQuery) {
     const listContainer = document.getElementById('query-db-list');
     if (!listContainer) return;
     
+    queryConsoleDbNavIndex = -1;
+
     const query = (searchQuery || '').toLowerCase().trim();
     const filtered = queryConsoleDatabases.filter(db => db.toLowerCase().includes(query));
     

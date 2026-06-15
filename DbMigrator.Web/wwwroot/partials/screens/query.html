@@ -92,7 +92,7 @@
                                 <i class="fa-solid fa-chevron-down" style="font-size: 0.7rem; opacity: 0.7;"></i>
                             </div>
                             <div id="query-db-dropdown">
-                                <input type="text" id="query-db-search" placeholder="Cari database..." oninput="filterDatabaseList(this.value)" autocomplete="off">
+                                <input type="text" id="query-db-search" placeholder="Cari database..." oninput="filterDatabaseList(this.value)" onkeydown="handleDbDropdownKeydown(event)" autocomplete="off">
                                 <div id="query-db-list">
                                     <!-- Items loaded dynamically -->
                                 </div>

@@ -2309,8 +2309,17 @@ textarea.form-control {
 /* Custom Searchable Database Dropdown */
 .query-db-custom-select {
     position: relative;
-    width: 180px;
+    min-width: 220px;
+    max-width: 350px;
     user-select: none;
+}
+
+#query-db-trigger-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    max-width: calc(100% - 20px);
 }
 
 #query-db-trigger {
@@ -2407,8 +2416,8 @@ textarea.form-control {
     flex-shrink: 0;
 }
 
-.db-item:hover {
-    background: rgba(0, 173, 181, 0.15); /* 0, 173, 181 is #00adb5 */
+.db-item:hover, .db-item.nav-highlight {
+    background: rgba(0, 173, 181, 0.25); /* 0, 173, 181 is #00adb5 */
     color: #ffffff;
 }
 
