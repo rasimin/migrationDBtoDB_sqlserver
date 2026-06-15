@@ -86,6 +86,9 @@ dbo.CleanTargetTables (Id INT PK, JobId INT FK, TableName NVARCHAR, ExecutionOrd
 
 -- DDL Object Migration Items
 dbo.ObjectMigrationItems (Id INT PK, JobId INT FK, ObjectName NVARCHAR, ObjectType NVARCHAR, NativeSqlScript NVARCHAR, ExecutionOrder INT, IsEnabled BIT, LastStatus NVARCHAR, LastErrorMessage NVARCHAR, LastRunAt DATETIME)
+
+-- Saved Queries (Query Console History)
+dbo.SavedQueries (Id INT PK, QueryName NVARCHAR, QueryText NVARCHAR, CreatedAt DATETIME, UpdatedAt DATETIME)
 ```
 
 ---
@@ -128,6 +131,10 @@ dbo.ObjectMigrationItems (Id INT PK, JobId INT FK, ObjectName NVARCHAR, ObjectTy
 | **POST** | `/api/jobs/{jobId}/clean-tables/run`| Execute table cleanup (mass or single table) | `id` (Optional query parameter) |
 | **GET** | `/api/jobs/{jobId}/clean-tables/generate-sp`| Generate single SP containing all clean codes | - |
 | **POST** | `/api/jobs/{jobId}/clean-tables/reset-status`| Reset all clean tables status to Pending | - |
+| **GET** | `/api/query/saved-queries`| Retrieve saved query history with search and date range filters | `searchTerm`, `startDate`, `endDate` |
+| **GET** | `/api/query/saved-queries/{id}`| Retrieve details of a specific saved query | - |
+| **POST** | `/api/query/saved-queries`| Create or update a saved query script | `SavedQuery` JSON |
+| **DELETE**| `/api/query/saved-queries/{id}`| Delete a saved query from history | - |
 
 ---
 
@@ -290,6 +297,13 @@ connection.on('ReceiveError', (errorObj) => {
 *   **Action Edit Button:** Added an Edit button (pen icon) to Native SQL mapping cards in the dashboard, next to the run (Play) button.
 *   **Dynamic Modal Binding:** Enhanced the `#data-native-sql-modal` in `index.html` to house a hidden ID input (`#data-native-sql-id`) and an ID-mapped save button (`#data-native-sql-submit-btn`), allowing the modal to serve as both an "Add" and an "Edit" interface.
 *   **State Persistence & Update:** Implemented `editNativeSqlMapping(id)` in `app.js` which populates the form inputs with the existing configuration, toggles the modal's title and button texts, and updates the backend records via `POST /api/mappings/tables` while keeping execution order and status parameters intact.
+
+### 🛠️ F-16: Save Queries & Query History Console
+*   **Startup Migration SQL Table:** Dynamically creates the `dbo.SavedQueries` table inside the configuration database `appims` at application startup.
+*   **Backend CRUD APIs:** Exposes `/api/query/saved-queries` (GET to fetch history, POST to save/update, and DELETE to remove query records) to manage saved query scripts.
+*   **Tab State Integration:** Added `savedQueryId` and `savedQueryName` metadata properties to console tab objects in the client-side state.
+*   **Save/Save As Controls:** Users can click **Save** (updates query if already saved, prompts for name if new) and **Save As** (prompts for new name and forks). Auto-generated names are timestamp-based (e.g., `Query_20260615_161618`).
+*   **Query History & Preview Panel:** Integrated `#query-history-modal` with search inputs (by name or content SQL) and date range filters. Left pane shows queries list, right pane lazy-loads a read-only Monaco editor preview. Scripts can be copied to clipboard or loaded into a new console tab instantly.
 
 ---
 
