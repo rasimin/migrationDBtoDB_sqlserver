@@ -16,6 +16,7 @@ let monacoSqlCompletionProvider = null;
 let schemaDiffEditor = null;
 let schemaDiffEditorInitializing = false;
 let queryConsoleSchema = { Objects: [], Columns: [] };
+let queryConsoleSchemaCache = {};
 let queryConsoleActiveTables = [];
 let queryConsoleTabs = [];
 let queryConsoleActiveTabId = null;
@@ -326,7 +327,14 @@ async function connectQueryConsole(isSilent = false, targetDatabase = null) {
     }
 }
 
-async function loadQueryConsoleSchema() {
+async function loadQueryConsoleSchema(forceRefresh = false) {
+    const db = queryConsoleActiveDatabase;
+    
+    if (!forceRefresh && queryConsoleSchemaCache[db]) {
+        queryConsoleSchema = queryConsoleSchemaCache[db];
+        return;
+    }
+
     const loader = document.getElementById('query-schema-loader');
     if (loader) loader.style.display = 'inline-block';
     
@@ -347,7 +355,8 @@ async function loadQueryConsoleSchema() {
         
         if (!res.ok) throw new Error("Gagal mengambil skema database");
         queryConsoleSchema = await res.json();
-        console.log("Database schema autocomplete reloaded:", queryConsoleSchema);
+        queryConsoleSchemaCache[db] = queryConsoleSchema;
+        console.log("Database schema autocomplete reloaded for:", db);
     } catch (err) {
         console.error("Gagal memuat autocomplete:", err);
     } finally {
@@ -507,6 +516,7 @@ function disconnectQueryConsole() {
     queryConsoleActiveDatabase = "";
     queryConsoleDatabases = [];
     queryConsoleSchema = { Objects: [], Columns: [] };
+    queryConsoleSchemaCache = {};
     
     // Clear all tab models to avoid memory leaks
     if (queryConsoleTabs && queryConsoleTabs.length > 0) {
@@ -663,6 +673,7 @@ function switchQueryTabActive(tabId) {
 
     // Restore database selection for this tab
     if (nextActiveTab.database) {
+        const prevDb = queryConsoleActiveDatabase;
         queryConsoleActiveDatabase = nextActiveTab.database;
         
         // Update trigger text in dropdown UI
@@ -677,8 +688,10 @@ function switchQueryTabActive(tabId) {
         }
         localStorage.setItem('queryConsoleActiveDatabase', queryConsoleActiveDatabase);
         
-        // Reload schema for Monaco autocomplete asynchronously
-        loadQueryConsoleSchema();
+        // Reload schema for Monaco autocomplete asynchronously ONLY if db changed
+        if (prevDb !== queryConsoleActiveDatabase) {
+            loadQueryConsoleSchema();
+        }
     }
 
     // Swap model in Monaco Editor
