@@ -839,7 +839,6 @@ function closeQueryTab(tabId, event) {
         renderQueryTabs();
     }
 }
-
 function renderQueryTabs() {
     const listContainer = document.getElementById('query-tabs-list');
     if (!listContainer) return;
@@ -847,7 +846,15 @@ function renderQueryTabs() {
     listContainer.innerHTML = queryConsoleTabs.map(tab => {
         const isActive = tab.id === queryConsoleActiveTabId;
         return `
-            <div class="query-console-tab ${isActive ? 'active' : ''}" onclick="switchQueryTabActive('${tab.id}')" ondblclick="renameQueryTab('${tab.id}')" title="Klik dua kali untuk mengubah nama tab">
+            <div class="query-console-tab ${isActive ? 'active' : ''}" 
+                 draggable="true" 
+                 ondragstart="handleQueryTabDragStart(event, '${tab.id}')" 
+                 ondragover="handleQueryTabDragOver(event, '${tab.id}')" 
+                 ondragend="handleQueryTabDragEnd(event)" 
+                 ondrop="handleQueryTabDrop(event, '${tab.id}')" 
+                 onclick="switchQueryTabActive('${tab.id}')" 
+                 ondblclick="renameQueryTab('${tab.id}')" 
+                 title="Klik dua kali untuk mengubah nama tab">
                 <i class="fa-solid fa-code" style="font-size: 0.75rem; opacity: 0.8;"></i>
                 <span>${escapeHtml(tab.name)}</span>
                 <span class="query-console-tab-close" onclick="closeQueryTab('${tab.id}', event)" title="Tutup Tab">
@@ -874,6 +881,170 @@ async function renameQueryTab(tabId) {
     }
 }
 
+// ── Query Console Tab Drag and Drop & Editing Functions ─────────────────────
+let draggedQueryTabId = null;
+let lastTargetTabId = null;
+let queryTabRects = [];
+let queryTabElements = [];
+let draggedQueryTabIdx = -1;
+
+function handleQueryTabDragStart(e, tabId) {
+    draggedQueryTabId = tabId;
+    lastTargetTabId = tabId;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', tabId);
+    
+    // Cache tab elements and dimensions
+    const listContainer = document.getElementById('query-tabs-list');
+    if (listContainer) {
+        queryTabElements = Array.from(listContainer.children);
+        queryTabRects = queryTabElements.map(el => el.getBoundingClientRect());
+    }
+    draggedQueryTabIdx = queryConsoleTabs.findIndex(t => t.id === tabId);
+    
+    const tabEl = e.currentTarget;
+    setTimeout(() => {
+        tabEl.classList.add('dragging');
+    }, 0);
+}
+
+function handleQueryTabDragOver(e, targetTabId) {
+    if (e.preventDefault) {
+        e.preventDefault();
+    }
+    e.dataTransfer.dropEffect = 'move';
+    
+    if (!draggedQueryTabId) return false;
+    
+    if (targetTabId && targetTabId !== draggedQueryTabId) {
+        lastTargetTabId = targetTabId;
+    }
+    
+    const targetIdx = queryConsoleTabs.findIndex(t => t.id === targetTabId);
+    if (targetIdx === -1 || draggedQueryTabIdx === -1) return false;
+    
+    const gap = 2.4; // matching style.css gap of 0.15rem (~2.4px at 16px root font size)
+    
+    queryTabElements.forEach((el, i) => {
+        if (targetIdx > draggedQueryTabIdx) {
+            if (i > draggedQueryTabIdx && i <= targetIdx) {
+                // Shift left
+                const shift = -queryTabRects[draggedQueryTabIdx].width - gap;
+                el.style.transform = `translateX(${shift}px)`;
+            } else if (i === draggedQueryTabIdx) {
+                // Shift right to the target position
+                const shift = queryTabRects.slice(draggedQueryTabIdx + 1, targetIdx + 1).reduce((sum, r) => sum + r.width + gap, 0);
+                el.style.transform = `translateX(${shift}px)`;
+            } else {
+                el.style.transform = '';
+            }
+        } else if (targetIdx < draggedQueryTabIdx) {
+            if (i >= targetIdx && i < draggedQueryTabIdx) {
+                // Shift right
+                const shift = queryTabRects[draggedQueryTabIdx].width + gap;
+                el.style.transform = `translateX(${shift}px)`;
+            } else if (i === draggedQueryTabIdx) {
+                // Shift left to the target position
+                const shift = queryTabRects.slice(targetIdx, draggedQueryTabIdx).reduce((sum, r) => sum + r.width + gap, 0);
+                el.style.transform = `translateX(${-shift}px)`;
+            } else {
+                el.style.transform = '';
+            }
+        } else {
+            el.style.transform = '';
+        }
+    });
+    
+    return false;
+}
+
+function handleQueryTabsListDragOver(e) {
+    if (e.preventDefault) {
+        e.preventDefault();
+    }
+    e.dataTransfer.dropEffect = 'move';
+    
+    if (!draggedQueryTabId) return false;
+    
+    // Fallback: if cursor is over the container background rather than a tab
+    const closestTabId = getClosestTabId(e.clientX);
+    if (closestTabId) {
+        handleQueryTabDragOver(e, closestTabId);
+    }
+    return false;
+}
+
+function getClosestTabId(clientX) {
+    if (queryTabElements.length === 0) return null;
+    
+    let closestId = null;
+    let minDistance = Infinity;
+    
+    queryTabElements.forEach((el, index) => {
+        const rect = queryTabRects[index];
+        if (!rect) return;
+        const centerX = rect.left + rect.width / 2;
+        const distance = Math.abs(clientX - centerX);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestId = queryConsoleTabs[index].id;
+        }
+    });
+    
+    return closestId;
+}
+
+function handleQueryTabDragEnd(e) {
+    // Perform array reordering in dragend so it is guaranteed to execute,
+    // even if dropped slightly outside a tab element bounds
+    if (draggedQueryTabId && lastTargetTabId && lastTargetTabId !== draggedQueryTabId) {
+        const dragIdx = queryConsoleTabs.findIndex(t => t.id === draggedQueryTabId);
+        const targetIdx = queryConsoleTabs.findIndex(t => t.id === lastTargetTabId);
+        
+        if (dragIdx !== -1 && targetIdx !== -1) {
+            // Reorder tabs array
+            const [draggedTab] = queryConsoleTabs.splice(dragIdx, 1);
+            queryConsoleTabs.splice(targetIdx, 0, draggedTab);
+            
+            // Temporarily disable transitions to avoid visual jump back when rendering
+            queryTabElements.forEach(el => {
+                el.style.transition = 'none';
+                el.style.transform = '';
+            });
+            
+            renderQueryTabs();
+        }
+    }
+
+    // Reset element styles
+    queryTabElements.forEach(el => {
+        el.style.transform = '';
+        el.style.transition = '';
+        el.classList.remove('dragging');
+    });
+    
+    draggedQueryTabId = null;
+    draggedQueryTabIdx = -1;
+    lastTargetTabId = null;
+    queryTabElements = [];
+    queryTabRects = [];
+}
+
+function handleQueryTabDrop(e, targetTabId) {
+    e.stopPropagation();
+    e.preventDefault();
+}
+
+function toggleCommentSelection() {
+    if (!queryConsoleEditor) return;
+    
+    queryConsoleEditor.focus();
+    
+    const action = queryConsoleEditor.getAction('editor.action.commentLine');
+    if (action) {
+        action.run();
+    }
+}
 function saveQueryRunResult(tabId, data) {
     const tab = queryConsoleTabs.find(t => t.id === tabId);
     if (!tab) return;

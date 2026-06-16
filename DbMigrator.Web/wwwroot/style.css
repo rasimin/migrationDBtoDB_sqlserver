@@ -3473,7 +3473,7 @@ textarea.form-control {
     font-weight: 500;
     font-family: var(--font-heading), sans-serif;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     position: relative;
     user-select: none;
 }
@@ -3521,6 +3521,11 @@ textarea.form-control {
     background: rgba(244, 63, 94, 0.2);
     color: #f43f5e !important;
     opacity: 1;
+}
+
+.query-console-tab.dragging {
+    opacity: 0.4;
+    border: 1px dashed var(--accent-teal) !important;
 }
 
 
