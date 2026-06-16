@@ -670,7 +670,7 @@ function switchQueryTabActive(tabId) {
         // Hide the current active tab's container
         const currentContainer = document.getElementById('query-results-tab-content-' + queryConsoleActiveTabId);
         if (currentContainer) {
-            currentContainer.style.display = 'none';
+            currentContainer.classList.add('inactive');
         }
         
         if (msgContent) currentActiveTab.messagesHtml = msgContent.innerHTML;
@@ -734,7 +734,7 @@ function switchQueryTabActive(tabId) {
     if (resultsContainer) {
         // Hide all sibling containers
         Array.from(resultsContainer.children).forEach(child => {
-            child.style.display = 'none';
+            child.classList.add('inactive');
         });
         
         // Show/create nextActiveTab's container
@@ -745,7 +745,7 @@ function switchQueryTabActive(tabId) {
             nextContainer.className = 'query-tab-results-content';
             resultsContainer.appendChild(nextContainer);
         }
-        nextContainer.style.display = 'block';
+        nextContainer.classList.remove('inactive');
     }
     
     if (msgContent) {
@@ -2722,17 +2722,20 @@ function renderTableRowsChunk(tableId, queryRunId, rows, headersLength, startInd
     const endIndex = Math.min(startIndex + chunkSize, rows.length);
     const fragment = document.createDocumentFragment();
 
+    const existingRowCount = tbody.children.length;
+
     for (let i = startIndex; i < endIndex; i++) {
         const row = rows[i];
         const tr = document.createElement('tr');
-        let html = '';
+        const rowNum = existingRowCount + (i - startIndex) + 1;
+        let html = `<td class="row-num-cell">${rowNum}</td>`;
         for (let j = 0; j < row.length; j++) {
             const cell = row[j];
             if (cell === null) {
-                html += `<td title="NULL"><span style="color: rgba(255,255,255,0.15); font-style: italic;">NULL</span></td>`;
+                html += `<td class="null-cell">NULL</td>`;
             } else {
                 const strVal = cell.toString();
-                html += `<td title="${escapeHtml(strVal)}">${escapeHtml(strVal)}</td>`;
+                html += `<td>${escapeHtml(strVal)}</td>`;
             }
         }
         tr.innerHTML = html;
@@ -2801,7 +2804,9 @@ async function runQueryConsole() {
         }
         tabResultsCont.innerHTML = "";
         if (queryConsoleActiveTabId === runningTabId) {
-            tabResultsCont.style.display = 'block';
+            tabResultsCont.classList.remove('inactive');
+        } else {
+            tabResultsCont.classList.add('inactive');
         }
     }
 
@@ -2898,11 +2903,21 @@ async function runQueryConsole() {
         if (tables.length > 1) {
             containerHtml += `<div class="query-results-tabs">`;
             tables.forEach((table, index) => {
-                const rowCountText = table.Rows.length === 0 ? '0 baris' : `${table.Rows.length} baris`;
+                const rowCount = table.Rows.length;
+                let rowCountText = '';
+                if (rowCount === 0) {
+                    rowCountText = '0 baris';
+                } else if (rowCount > 150) {
+                    rowCountText = `${rowCount} baris (150 ditampilkan)`;
+                } else {
+                    rowCountText = `${rowCount} baris`;
+                }
+                const colCount = table.Headers ? table.Headers.length : 0;
+                const colCountText = `${colCount} kolom`;
                 const isFirst = index === 0 ? 'active' : '';
                 containerHtml += `
                     <button class="query-tab-btn ${isFirst}" data-tab-idx="${index}" onclick="switchQueryTab('${runningTabId}', ${index})">
-                        <i class="fa-solid fa-table"></i> Hasil ${index + 1} (${rowCountText})
+                        <i class="fa-solid fa-table"></i> Hasil ${index + 1} (${rowCountText}, ${colCountText})
                     </button>
                 `;
             });
@@ -2919,19 +2934,25 @@ async function runQueryConsole() {
                 <div class="query-results-grid-wrapper query-grid-wrapper" id="query-grid-wrapper-${runningTabId}-${index}" ${isHidden}>
                     <table class="mapper-table query-results-table" id="query-results-table-${runningTabId}-${index}" data-query-run-id="${queryRunId}" style="margin-bottom: 0;">
                         <thead>
-                            <tr>${table.Headers.map(h => `<th style="position: relative;">${escapeHtml(h)}<div class="resizer"></div></th>`).join('')}</tr>
+                            <tr>
+                                <th class="row-num-hdr">#</th>
+                                ${table.Headers.map(h => `<th style="position: relative;">${escapeHtml(h)}<div class="resizer"></div></th>`).join('')}
+                            </tr>
                         </thead>
                         <tbody>
                             ${table.Rows.length === 0 
-                                ? `<tr><td colspan="${table.Headers.length}" style="text-align: center; color: var(--text-muted);">Tidak ada baris yang dikembalikan.</td></tr>`
-                                : initialRows.map(row => 
-                                    `<tr>${row.map(cell => {
-                                        if (cell === null) {
-                                            return `<td title="NULL"><span style="color: rgba(255,255,255,0.15); font-style: italic;">NULL</span></td>`;
-                                        }
-                                        const strVal = cell.toString();
-                                        return `<td title="${escapeHtml(strVal)}">${escapeHtml(strVal)}</td>`;
-                                    }).join('')}</tr>`
+                                ? `<tr><td colspan="${table.Headers.length + 1}" style="text-align: center; color: var(--text-muted);">Tidak ada baris yang dikembalikan.</td></tr>`
+                                : initialRows.map((row, rIdx) => 
+                                    `<tr>
+                                        <td class="row-num-cell">${rIdx + 1}</td>
+                                        ${row.map(cell => {
+                                            if (cell === null) {
+                                                return `<td class="null-cell">NULL</td>`;
+                                            }
+                                            const strVal = cell.toString();
+                                            return `<td>${escapeHtml(strVal)}</td>`;
+                                        }).join('')}
+                                    </tr>`
                                 ).join('')
                             }
                         </tbody>
@@ -2957,7 +2978,12 @@ async function runQueryConsole() {
             rowsCountText = `${tables.length} tabel dikembalikan (total ${totalRows} baris) dalam ${data.ExecutionTimeMs}ms`;
         } else if (tables.length === 1) {
             const rowCount = tables[0]?.Rows.length ?? 0;
-            rowsCountText = `${rowCount} baris (${data.ExecutionTimeMs}ms)`;
+            const colCount = tables[0]?.Headers?.length ?? 0;
+            if (rowCount > 150) {
+                rowsCountText = `${rowCount} baris (150 ditampilkan), ${colCount} kolom (${data.ExecutionTimeMs}ms)`;
+            } else {
+                rowsCountText = `${rowCount} baris, ${colCount} kolom (${data.ExecutionTimeMs}ms)`;
+            }
         } else {
             rowsCountText = `${data.ExecutionTimeMs}ms`;
         }
@@ -2998,11 +3024,14 @@ async function runQueryConsole() {
         // Schedule background chunked rendering for rows after the first 100
         tables.forEach((table, index) => {
             if (table.Rows.length > 100) {
-                const remainingRows = table.Rows.slice(100);
-                const tableDomId = `query-results-table-${runningTabId}-${index}`;
-                requestAnimationFrame(() => {
-                    renderTableRowsChunk(tableDomId, queryRunId, remainingRows, table.Headers.length, 0, 150);
-                });
+                // Limit rendering in the DOM to max 150 total rows for performance
+                const remainingRows = table.Rows.slice(100, 150);
+                if (remainingRows.length > 0) {
+                    const tableDomId = `query-results-table-${runningTabId}-${index}`;
+                    requestAnimationFrame(() => {
+                        renderTableRowsChunk(tableDomId, queryRunId, remainingRows, table.Headers.length, 0, 150);
+                    });
+                }
             }
         });
 
@@ -3013,11 +3042,55 @@ async function runQueryConsole() {
             }
             if (rowsCount) rowsCount.innerHTML = tabData.rowsCountText;
 
-            // Initialize drag-resize columns on all rendered tables within this tab's container
+            // Initialize drag-resize columns and infinite scroll
             const tabResultsCont = document.getElementById('query-results-tab-content-' + runningTabId);
             if (tabResultsCont) {
                 tabResultsCont.querySelectorAll('.query-results-table').forEach(tbl => {
                     initTableResizers(tbl);
+                });
+
+                // Attach infinite scroll event handlers to wrappers
+                tabResultsCont.querySelectorAll('.query-results-grid-wrapper').forEach((wrapper, index) => {
+                    const tableObj = tables[index];
+                    if (!tableObj || tableObj.Rows.length <= 150) return;
+
+                    const tblDom = wrapper.querySelector('.query-results-table');
+                    if (!tblDom) return;
+                    const qRunId = tblDom.getAttribute('data-query-run-id');
+
+                    let isLoadingMore = false;
+
+                    wrapper.addEventListener('scroll', () => {
+                        if (isLoadingMore) return;
+
+                        const threshold = 40; // pixels from the bottom to trigger load
+                        const isNearBottom = wrapper.scrollTop + wrapper.clientHeight >= wrapper.scrollHeight - threshold;
+
+                        if (isNearBottom) {
+                            const tbody = tblDom.querySelector('tbody');
+                            if (!tbody) return;
+
+                            const renderedCount = tbody.children.length;
+                            const totalCount = tableObj.Rows.length;
+
+                            if (renderedCount < totalCount) {
+                                isLoadingMore = true;
+
+                                const chunkSize = 100;
+                                const nextChunk = tableObj.Rows.slice(renderedCount, Math.min(renderedCount + chunkSize, totalCount));
+
+                                const newRenderedCount = renderedCount + nextChunk.length;
+                                
+                                // Update counts on status bar and buttons
+                                updateLoadedRowsDisplay(runningTabId, index, totalCount, newRenderedCount);
+
+                                requestAnimationFrame(() => {
+                                    renderTableRowsChunk(tblDom.id, qRunId, nextChunk, tableObj.Headers.length, 0, 100);
+                                    isLoadingMore = false;
+                                });
+                            }
+                        }
+                    });
                 });
             }
 
@@ -3116,7 +3189,13 @@ function switchQueryTab(tabId, index) {
         if (rowsCount) {
             const msMatch = rowsCount.textContent.match(/\((\d+ms)\)/);
             const msStr = msMatch ? ` (${msMatch[1]})` : "";
-            rowsCount.innerHTML = `Tabel ${index + 1}: ${activeTable.Rows.length} baris ditampilkan${msStr}`;
+            const colCount = activeTable.Headers ? activeTable.Headers.length : 0;
+            const rowCount = activeTable.Rows.length;
+            if (rowCount > 150) {
+                rowsCount.innerHTML = `Tabel ${index + 1}: ${rowCount} baris (150 ditampilkan), ${colCount} kolom ditampilkan${msStr}`;
+            } else {
+                rowsCount.innerHTML = `Tabel ${index + 1}: ${rowCount} baris, ${colCount} kolom ditampilkan${msStr}`;
+            }
             if (activeTable.IsTruncated || activeTable.isTruncated) {
                 rowsCount.innerHTML += ` <span class="query-warning-badge" style="background: rgba(251, 146, 60, 0.15); color: #fb923c; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-left: 8px; font-weight: bold; border: 1px solid rgba(251, 146, 60, 0.3);" title="Hasil dibatasi untuk mencegah browser hang. Silakan tambahkan TOP atau filter WHERE pada kueri Anda."><i class="fa-solid fa-triangle-exclamation"></i> Hasil Dibatasi</span>`;
             }
@@ -3288,6 +3367,46 @@ async function copyQueryResultGrid() {
         });
 }
 
+function updateLoadedRowsDisplay(tabId, tableIndex, totalRows, renderedRowsCount) {
+    const rowsCount = document.getElementById('query-rows-count');
+    const tab = queryConsoleTabs.find(t => t.id === tabId);
+    
+    // 1. Update status bar text if it is the currently active tab
+    if (rowsCount && queryConsoleActiveTabId === tabId) {
+        const msMatch = rowsCount.textContent.match(/\((\d+ms)\)/);
+        const msStr = msMatch ? ` (${msMatch[1]})` : "";
+        
+        let colCount = 0;
+        if (tab && tab.results && tab.results[tableIndex]) {
+            colCount = tab.results[tableIndex].Headers ? tab.results[tableIndex].Headers.length : 0;
+        }
+
+        if (tab && tab.results && tab.results.length > 1) {
+            rowsCount.innerHTML = `Tabel ${tableIndex + 1}: ${totalRows} baris (${renderedRowsCount} ditampilkan), ${colCount} kolom ditampilkan${msStr}`;
+        } else {
+            rowsCount.innerHTML = `${totalRows} baris (${renderedRowsCount} ditampilkan), ${colCount} kolom${msStr}`;
+        }
+        
+        // Sync to active tab state
+        if (tab) {
+            tab.rowsCountText = rowsCount.innerHTML;
+        }
+    }
+
+    // 2. Update sub-tab button text if multiple tables exist
+    const tabResultsCont = document.getElementById('query-results-tab-content-' + tabId);
+    if (tabResultsCont) {
+        const tabBtn = tabResultsCont.querySelector(`.query-tab-btn[data-tab-idx="${tableIndex}"]`);
+        if (tabBtn) {
+            let colCount = 0;
+            if (tab && tab.results && tab.results[tableIndex]) {
+                colCount = tab.results[tableIndex].Headers ? tab.results[tableIndex].Headers.length : 0;
+            }
+            tabBtn.innerHTML = `<i class="fa-solid fa-table"></i> Hasil ${tableIndex + 1} (${totalRows} baris (${renderedRowsCount} ditampilkan), ${colCount} kolom)`;
+        }
+    }
+}
+
 function initTableResizers(table) {
     if (!table) return;
 
@@ -3330,6 +3449,296 @@ function initTableResizers(table) {
             document.addEventListener('mouseup', onMouseUp);
         });
     });
+}
+
+function insertScopeIdentity() {
+    if (!queryConsoleEditor) return;
+
+    queryConsoleEditor.focus();
+    const selection = queryConsoleEditor.getSelection();
+    const range = new monaco.Range(
+        selection.startLineNumber,
+        selection.startColumn,
+        selection.endLineNumber,
+        selection.endColumn
+    );
+    const text = "DECLARE @NewID BIGINT = SCOPE_IDENTITY()";
+    const op = {
+        range: range,
+        text: text,
+        forceMoveMarkers: true
+    };
+    queryConsoleEditor.executeEdits("insert-helper", [op]);
+}
+
+// ── INSERT Statement Mapper Modal Logic ────────────────────────────────────
+let mapperTableName = '[RDO_TTransaction]';
+let mapperColumns = [];
+let mapperOriginalValues = [];
+let mapperCurrentValues = [];
+
+function openInsertMapperModal() {
+    const modal = document.getElementById('insert-mapper-modal');
+    if (!modal) return;
+
+    modal.classList.add('active');
+
+    // Prefill with selection from active Monaco Editor if it contains an INSERT statement
+    if (queryConsoleEditor) {
+        const selectionVal = queryConsoleEditor.getModel().getValueInRange(queryConsoleEditor.getSelection()).trim();
+        if (selectionVal && /INSERT\s+INTO/i.test(selectionVal)) {
+            document.getElementById('mapper-sql-input').value = selectionVal;
+        }
+    }
+
+    parseMapperSQL();
+}
+
+function closeInsertMapperModal() {
+    const modal = document.getElementById('insert-mapper-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        const content = modal.querySelector('.modal-content');
+        if (content) {
+            content.classList.remove('maximized');
+        }
+        const icon = document.getElementById('insert-mapper-maximize-icon');
+        if (icon) {
+            icon.className = 'fa-solid fa-expand';
+        }
+    }
+}
+
+function toggleInsertMapperMaximize() {
+    const modal = document.getElementById('insert-mapper-modal');
+    if (!modal) return;
+    const content = modal.querySelector('.modal-content');
+    const icon = document.getElementById('insert-mapper-maximize-icon');
+    
+    if (content) {
+        const isMaximized = content.classList.toggle('maximized');
+        if (icon) {
+            if (isMaximized) {
+                icon.className = 'fa-solid fa-compress';
+            } else {
+                icon.className = 'fa-solid fa-expand';
+            }
+        }
+    }
+}
+
+function splitMapperSqlList(str) {
+    const out = [];
+    let cur = '';
+    let inQ = false;
+    for (let i = 0; i < str.length; i++) {
+        const ch = str[i];
+        if (ch === "'") {
+            if (inQ && str[i+1] === "'") {
+                cur += "''";
+                i++;
+                continue;
+            }
+            inQ = !inQ;
+            cur += ch;
+        } else if (ch === ',' && !inQ) {
+            out.push(cur.trim());
+            cur = '';
+        } else {
+            cur += ch;
+        }
+    }
+    if (cur.trim().length || out.length) out.push(cur.trim());
+    return out;
+}
+
+function parseMapperSQL() {
+    const sqlInputVal = document.getElementById('mapper-sql-input').value;
+    if (!sqlInputVal.trim()) return;
+
+    const m = sqlInputVal.match(/INSERT\s+INTO\s+(\[[^\]]+\]|[\w\.]+)\s*\(([\s\S]*?)\)\s*VALUES\s*\(([\s\S]*?)\)\s*;?/i);
+    if (!m) {
+        uiAlert('Format INSERT tidak dikenali. Pastikan struktur kueri memiliki pola: INSERT INTO NamaTabel (Kolom) VALUES (Nilai);');
+        return;
+    }
+
+    mapperTableName = m[1].trim();
+    const colsStr = m[2];
+    const valsStr = m[3];
+    const cols = splitMapperSqlList(colsStr).map(s => s.replace(/^\[|\]$/g, '').trim());
+    const vals = splitMapperSqlList(valsStr);
+
+    mapperColumns = cols;
+    mapperOriginalValues = vals.slice(0, cols.length);
+    mapperCurrentValues = vals.slice(0, cols.length);
+
+    renderMapperTable();
+    generateMapperSQL();
+    applyMapperFilter();
+}
+
+function getTypeInfoMapper(v) {
+    const s = String(v).trim();
+    if (/^null$/i.test(s)) return { label: 'NULL', cls: 'null' };
+    if (/^@[\w\.]+$/.test(s)) return { label: 'Variable', cls: 'variable' };
+    if (/^'.*'$/s.test(s)) {
+        const inner = s.slice(1, -1);
+        if (/^\d{4}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)?$/.test(inner)) return { label: 'Date', cls: 'date' };
+        return { label: 'String', cls: 'string' };
+    }
+    if (/^-?\d+(?:\.\d+)?$/.test(s)) return { label: 'Number', cls: 'number' };
+    if (s === '') return { label: 'String', cls: 'string' };
+    return { label: 'String', cls: 'string' };
+}
+
+function renderMapperTable() {
+    const tbody = document.getElementById('mapper-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    
+    // Add input listener if not already there, using delegation
+    if (!tbody.dataset.listenerAttached) {
+        tbody.addEventListener('input', (e) => {
+            if (e.target.tagName !== 'INPUT') return;
+            const tr = e.target.closest('tr');
+            const idx = parseInt(tr.dataset.index);
+            const val = e.target.value;
+            
+            mapperCurrentValues[idx] = val;
+            const t = getTypeInfoMapper(val);
+            const badge = tr.querySelector('.mapper-badge');
+            if (badge) {
+                badge.className = 'mapper-badge ' + t.cls;
+                badge.textContent = t.label;
+            }
+            const changed = val !== mapperOriginalValues[idx];
+            tr.classList.toggle('changed', changed);
+            
+            generateMapperSQL();
+        });
+        tbody.dataset.listenerAttached = 'true';
+    }
+
+    mapperColumns.forEach((col, i) => {
+        const val = mapperCurrentValues[i] ?? '';
+        const t = getTypeInfoMapper(val);
+        const changed = val !== mapperOriginalValues[i];
+        const tr = document.createElement('tr');
+        tr.dataset.index = i;
+        if (changed) tr.classList.add('changed');
+        tr.innerHTML = `
+            <td class="num">${i + 1}</td>
+            <td class="field"><code>[${escapeHtml(col)}]</code></td>
+            <td class="value"><input type="text" spellcheck="false" value="${escapeHtml(val)}" /></td>
+            <td><span class="mapper-badge ${t.cls}">${t.label}</span></td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function formatMapperList(arr, per = 5) {
+    const lines = [];
+    for (let i = 0; i < arr.length; i += per) {
+        lines.push('    ' + arr.slice(i, i + per).join(', '));
+    }
+    return lines.join(',\n');
+}
+
+function generateMapperSQL() {
+    if (!mapperColumns.length) return;
+    const cols = mapperColumns.map(c => `[${c}]`);
+    const vals = mapperCurrentValues.map(v => v);
+    const sql = `INSERT INTO ${mapperTableName} (\n${formatMapperList(cols)}\n)\nVALUES (\n${formatMapperList(vals)}\n);`;
+    
+    const outputArea = document.getElementById('mapper-sql-output');
+    if (outputArea) {
+        outputArea.value = sql;
+    }
+}
+
+function applyMapperFilter() {
+    const searchVal = document.getElementById('mapper-search');
+    const onlyChangedVal = document.getElementById('mapper-only-changed');
+    const tbody = document.getElementById('mapper-tbody');
+    const counter = document.getElementById('mapper-counter');
+    if (!tbody) return;
+
+    const q = searchVal ? searchVal.value.toLowerCase().trim() : '';
+    const only = onlyChangedVal ? onlyChangedVal.checked : false;
+    let visible = 0;
+    
+    tbody.querySelectorAll('tr').forEach(tr => {
+        const idx = parseInt(tr.dataset.index);
+        const field = mapperColumns[idx].toLowerCase();
+        const changed = mapperCurrentValues[idx] !== mapperOriginalValues[idx];
+        const match = !q || field.includes(q);
+        const show = match && (!only || changed);
+        tr.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+
+    if (counter) {
+        counter.textContent = `${visible} dari ${mapperColumns.length} field${visible !== mapperColumns.length ? ' (filter)' : ''}`;
+    }
+}
+
+function resetMapperToOriginal() {
+    mapperCurrentValues = mapperOriginalValues.slice();
+    renderMapperTable();
+    generateMapperSQL();
+    applyMapperFilter();
+}
+
+async function copyMapperOutputToClipboard() {
+    const outputArea = document.getElementById('mapper-sql-output');
+    if (!outputArea || !outputArea.value.trim()) return;
+
+    try {
+        await navigator.clipboard.writeText(outputArea.value);
+        uiAlert("SQL hasil berhasil disalin ke clipboard!");
+    } catch (e) {
+        uiAlert("Gagal menyalin output: " + e.message);
+    }
+}
+
+function applyMapperToEditor() {
+    const outputArea = document.getElementById('mapper-sql-output');
+    if (!outputArea || !outputArea.value.trim()) return;
+
+    const textToInsert = outputArea.value;
+
+    const insertToActive = document.getElementById('mapper-insert-active-tab').checked;
+
+    if (insertToActive && queryConsoleEditor) {
+        queryConsoleEditor.focus();
+        const selection = queryConsoleEditor.getSelection();
+        const range = new monaco.Range(
+            selection.startLineNumber,
+            selection.startColumn,
+            selection.endLineNumber,
+            selection.endColumn
+        );
+        const op = {
+            range: range,
+            text: textToInsert,
+            forceMoveMarkers: true
+        };
+        queryConsoleEditor.executeEdits("insert-mapper", [op]);
+        closeInsertMapperModal();
+    } else {
+        // Fallback or explicit request to open in a new tab
+        insertMapperToNewTab();
+    }
+}
+
+function insertMapperToNewTab() {
+    const outputArea = document.getElementById('mapper-sql-output');
+    if (!outputArea || !outputArea.value.trim()) return;
+
+    const textToInsert = outputArea.value;
+    addNewQueryTab(textToInsert);
+    closeInsertMapperModal();
 }
 
 // ── Generate INSERT Script Logic ───────────────────────────────────────────

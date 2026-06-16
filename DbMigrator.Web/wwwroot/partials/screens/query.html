@@ -115,6 +115,12 @@
                     <button class="btn btn-secondary" onclick="openGenerateInsertModal()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Generate INSERT script untuk data tabel">
                         <i class="fa-solid fa-code" style="font-size: 0.75rem;"></i> Generate Insert
                     </button>
+                    <button class="btn btn-secondary" onclick="insertScopeIdentity()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Sisipkan DECLARE @NewID BIGINT = SCOPE_IDENTITY() di posisi kursor">
+                        <i class="fa-solid fa-key" style="font-size: 0.75rem;"></i> Scope Identity
+                    </button>
+                    <button class="btn btn-secondary" onclick="openInsertMapperModal()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Buka Mapper Script INSERT untuk mengubah values dengan mudah">
+                        <i class="fa-solid fa-sliders" style="font-size: 0.75rem;"></i> Insert Mapper
+                    </button>
                     <button class="btn btn-secondary" onclick="saveQueryConsole()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Simpan query ke database">
                         <i class="fa-solid fa-floppy-disk" style="font-size: 0.75rem;"></i> Save
                     </button>

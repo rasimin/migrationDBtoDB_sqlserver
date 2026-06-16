@@ -176,3 +176,114 @@
         </div>
     </div>
 </div>
+
+<!-- ============================================================================
+     MODAL: INSERT SCRIPT MAPPER
+     ============================================================================ -->
+<div class="modal-overlay" id="insert-mapper-modal">
+    <div class="modal-content" style="max-width: 1100px; width: 95%; max-height: 90vh; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3>INSERT Statement Mapper</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Tempel kueri INSERT, sesuaikan nilai kolom melalui grid interaktif, dan salin/sisipkan hasilnya.</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.65rem;">
+                <button onclick="toggleInsertMapperMaximize()" title="Maximize / Restore" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; transition: color 0.15s ease;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='var(--text-muted)'">
+                    <i class="fa-solid fa-expand" id="insert-mapper-maximize-icon"></i>
+                </button>
+                <button class="close-btn" onclick="closeInsertMapperModal()" style="margin: 0;">&times;</button>
+            </div>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; overflow-y: auto;">
+            
+            <!-- Grid Top: Input & Output -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-flat); border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <span style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">SQL Input (Kueri INSERT Asli)</span>
+                        <button onclick="parseMapperSQL()" class="btn btn-primary" style="width: auto; height: 26px; font-size: 0.72rem; padding: 0 0.65rem; background: var(--accent-teal); color: #0d0f14; border-color: var(--accent-teal); display: inline-flex; align-items: center; gap: 0.25rem;">
+                            <i class="fa-solid fa-arrows-rotate"></i> Parse SQL
+                        </button>
+                    </div>
+                    <textarea id="mapper-sql-input" style="width: 100%; height: 160px; min-height: 120px; background: #07090d; color: #e5e7eb; border: 1px solid var(--border-flat); border-radius: 6px; padding: 10px; font-family: Consolas, Monaco, monospace; font-size: 0.82rem; outline: none; resize: vertical;" spellcheck="false" placeholder="INSERT INTO [NamaTabel] ([Kolom1], [Kolom2]) VALUES ('Nilai1', 'Nilai2');"></textarea>
+                </div>
+                
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-flat); border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <span style="font-size: 0.8rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">SQL Output (Kueri Hasil Perubahan)</span>
+                        <span style="font-size: 0.7rem; color: var(--accent-teal); background: rgba(34,211,238,0.1); border: 1px solid rgba(34,211,238,0.2); padding: 2px 6px; border-radius: 12px; font-weight: bold;">LIVE UPDATE</span>
+                    </div>
+                    <textarea id="mapper-sql-output" readonly style="width: 100%; height: 160px; min-height: 120px; background: #07090d; color: #e5e7eb; border: 1px solid var(--border-flat); border-radius: 6px; padding: 10px; font-family: Consolas, Monaco, monospace; font-size: 0.82rem; outline: none; resize: vertical;" spellcheck="false"></textarea>
+                </div>
+            </div>
+
+            <!-- Toolbar Grid & Table -->
+            <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-flat); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;">
+                <!-- Table Toolbar -->
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0.85rem; border-bottom: 1px solid var(--border-flat); background: rgba(255,255,255,0.02); flex-wrap: wrap; gap: 0.5rem;">
+                    <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                        <div style="position: relative;">
+                            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.55rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.75rem; pointer-events: none;"></i>
+                            <input type="text" id="mapper-search" oninput="applyMapperFilter()" placeholder="Cari field..." style="background: #07090d; border: 1px solid var(--border-flat); color: #fff; padding: 0.35rem 0.6rem 0.35rem 1.65rem; border-radius: 6px; font-size: 0.8rem; min-width: 200px; outline: none;">
+                        </div>
+                        <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; color: #cbd5e1; cursor: pointer; user-select: none; margin: 0;">
+                            <input type="checkbox" id="mapper-only-changed" onchange="applyMapperFilter()" style="width: 14px; height: 14px; cursor: pointer; accent-color: var(--accent-teal);">
+                            Hanya yang diubah
+                        </label>
+                        <span id="mapper-counter" style="font-size: 0.75rem; color: var(--text-muted); padding: 0.2rem 0.5rem; background: #07090d; border: 1px solid var(--border-flat); border-radius: 6px;">0 field</span>
+                    </div>
+                    
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-secondary" onclick="resetMapperToOriginal()" style="height: 28px; width: auto; font-size: 0.75rem; padding: 0 0.65rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                            <i class="fa-solid fa-rotate-left"></i> Reset ke Asli
+                        </button>
+                        <button class="btn btn-secondary" onclick="copyMapperOutputToClipboard()" style="height: 28px; width: auto; font-size: 0.75rem; padding: 0 0.65rem; display: inline-flex; align-items: center; gap: 0.25rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06);">
+                            <i class="fa-solid fa-copy"></i> Copy Output
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Table Wrapper -->
+                <div id="mapper-table-wrapper" style="max-height: 280px; overflow-y: auto; background: #07090d;">
+                    <table class="mapper-table" style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
+                        <thead>
+                            <tr style="position: sticky; top: 0; z-index: 5; background: #07090d; border-bottom: 1px solid var(--border-flat);">
+                                <th style="width: 60px; text-align: center; font-size: 0.75rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">No</th>
+                                <th style="width: 250px; font-size: 0.75rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">Nama Field</th>
+                                <th style="font-size: 0.75rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">Value (Dapat Diedit)</th>
+                                <th style="width: 120px; font-size: 0.75rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">Tipe</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mapper-tbody">
+                            <!-- Rows populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tips row -->
+            <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; padding: 0 0.25rem;">
+                <div>Tips: Ketik <kbd style="background: #07090d; border: 1px solid var(--border-flat); padding: 1px 4px; border-radius: 4px; font-size: 0.7rem; font-family: monospace;">NULL</kbd> tanpa kutip untuk null, gunakan <kbd style="background: #07090d; border: 1px solid var(--border-flat); padding: 1px 4px; border-radius: 4px; font-size: 0.7rem; font-family: monospace;">'teks'</kbd> untuk string, <kbd style="background: #07090d; border: 1px solid var(--border-flat); padding: 1px 4px; border-radius: 4px; font-size: 0.7rem; font-family: monospace;">@var</kbd> untuk variabel.</div>
+                <div>Format otomatis setiap 5 kolom untuk keterbacaan.</div>
+            </div>
+
+        </div>
+        <div class="modal-footer" style="padding: 0.75rem 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+            <!-- Insertion target option -->
+            <div style="display: flex; align-items: center; gap: 0.5rem; user-select: none;">
+                <input type="checkbox" id="mapper-insert-active-tab" checked style="width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent-teal);">
+                <label for="mapper-insert-active-tab" style="font-size: 0.8rem; color: #ffffff; cursor: pointer; margin: 0;">Masukkan ke tab aktif saat ini</label>
+            </div>
+            
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-secondary" onclick="closeInsertMapperModal()" style="width: auto; height: 32px; font-size: 0.8rem;">Batal</button>
+                <button class="btn btn-secondary" onclick="insertMapperToNewTab()" style="width: auto; height: 32px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem; color: var(--accent-teal); border-color: rgba(45, 212, 191, 0.2); background: rgba(45, 212, 191, 0.04);">
+                    <i class="fa-solid fa-square-plus"></i> Buka di Tab Baru
+                </button>
+                <button class="btn btn-primary" onclick="applyMapperToEditor()" style="width: auto; height: 32px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem; background: var(--accent-teal); color: #0d0f14; border-color: var(--accent-teal);">
+                    <i class="fa-solid fa-file-import"></i> Masukkan ke SQL Editor
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
