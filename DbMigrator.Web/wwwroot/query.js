@@ -4915,3 +4915,261 @@ function closeAllSchemaItemDropdowns() {
         a.classList.remove('menu-active');
     });
 }
+
+// ── Create Stored Procedure Modal Logic ──────────────────────────────────────
+function openCreateSpModal() {
+    const nameInput = document.getElementById('sp-name-input');
+    if (nameInput) {
+        nameInput.value = 'dbo.usp_MyStoredProcedure';
+    }
+
+    const tbody = document.getElementById('sp-params-tbody');
+    if (tbody) {
+        tbody.innerHTML = '';
+    }
+
+    const emptyMsg = document.getElementById('sp-params-empty');
+    if (emptyMsg) {
+        emptyMsg.style.display = 'block';
+    }
+
+    const modal = document.getElementById('create-sp-modal');
+    if (modal) {
+        modal.classList.add('active');
+    }
+}
+
+function closeCreateSpModal() {
+    const modal = document.getElementById('create-sp-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+function addSpParameterRow() {
+    const tbody = document.getElementById('sp-params-tbody');
+    const emptyMsg = document.getElementById('sp-params-empty');
+    if (!tbody) return;
+
+    if (emptyMsg) {
+        emptyMsg.style.display = 'none';
+    }
+
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--border-flat)';
+    tr.innerHTML = `
+        <td style="padding: 0.4rem 0.5rem; vertical-align: middle;">
+            <input type="text" class="form-control sp-param-name" placeholder="@ParameterName" oninput="sanitizeParamName(this)" style="font-size: 0.82rem; height: 30px; border-radius: 4px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.5rem;">
+        </td>
+        <td style="padding: 0.4rem 0.5rem; vertical-align: middle; width: 150px;">
+            <select class="form-control sp-param-type" onchange="toggleParamSizeField(this)" style="font-size: 0.82rem; height: 30px; border-radius: 4px; background: #07090d; border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.25rem;">
+                <option value="INT">INT</option>
+                <option value="BIGINT">BIGINT</option>
+                <option value="VARCHAR" selected>VARCHAR</option>
+                <option value="NVARCHAR">NVARCHAR</option>
+                <option value="CHAR">CHAR</option>
+                <option value="NCHAR">NCHAR</option>
+                <option value="DECIMAL">DECIMAL</option>
+                <option value="NUMERIC">NUMERIC</option>
+                <option value="DATETIME">DATETIME</option>
+                <option value="DATE">DATE</option>
+                <option value="TIME">TIME</option>
+                <option value="BIT">BIT</option>
+                <option value="TEXT">TEXT</option>
+                <option value="NTEXT">NTEXT</option>
+                <option value="FLOAT">FLOAT</option>
+                <option value="REAL">REAL</option>
+                <option value="VARBINARY">VARBINARY</option>
+                <option value="UNIQUEIDENTIFIER">UNIQUEIDENTIFIER</option>
+            </select>
+        </td>
+        <td style="padding: 0.4rem 0.5rem; vertical-align: middle; width: 100px;">
+            <input type="text" class="form-control sp-param-size" placeholder="50" style="font-size: 0.82rem; height: 30px; border-radius: 4px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.5rem;" value="50">
+        </td>
+        <td style="padding: 0.4rem 0.5rem; vertical-align: middle; text-align: center; width: 70px;">
+            <input type="checkbox" class="sp-param-output" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-teal);">
+        </td>
+        <td style="padding: 0.4rem 0.5rem; vertical-align: middle; text-align: center; width: 50px;">
+            <button class="btn btn-secondary" onclick="removeSpParameterRow(this)" style="height: 30px; width: 30px; min-width: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #f43f5e; border-color: rgba(244,63,94,0.2); background: rgba(244,63,94,0.05);">
+                <i class="fa-solid fa-trash"></i>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+
+    // Auto focus name field
+    const nameInput = tr.querySelector('.sp-param-name');
+    if (nameInput) {
+        nameInput.focus();
+    }
+}
+
+function removeSpParameterRow(btn) {
+    const tr = btn.closest('tr');
+    if (tr) {
+        tr.remove();
+    }
+
+    const tbody = document.getElementById('sp-params-tbody');
+    const emptyMsg = document.getElementById('sp-params-empty');
+    if (tbody && tbody.children.length === 0) {
+        if (emptyMsg) {
+            emptyMsg.style.display = 'block';
+        }
+    }
+}
+
+function sanitizeParamName(inputEl) {
+    let val = inputEl.value;
+    
+    // Auto-prepend @ if there is value and it doesn't start with it
+    if (val.length > 0 && !val.startsWith('@')) {
+        val = '@' + val;
+    }
+    
+    // Keep only @ followed by word characters (letters, numbers, underscore)
+    if (val.length > 1) {
+        const at = val[0];
+        const body = val.slice(1).replace(/[^\w]/g, '');
+        val = at + body;
+    }
+    
+    if (inputEl.value !== val) {
+        inputEl.value = val;
+    }
+}
+
+function toggleParamSizeField(selectEl) {
+    const tr = selectEl.closest('tr');
+    if (!tr) return;
+
+    const sizeInput = tr.querySelector('.sp-param-size');
+    if (!sizeInput) return;
+
+    const selectedType = selectEl.value;
+    
+    // Enable/disable based on type
+    if (['VARCHAR', 'NVARCHAR', 'CHAR', 'NCHAR', 'VARBINARY'].includes(selectedType)) {
+        sizeInput.disabled = false;
+        sizeInput.value = '50';
+        sizeInput.placeholder = '50';
+        sizeInput.style.background = 'rgba(255,255,255,0.03)';
+        sizeInput.style.opacity = '1';
+    } else if (['DECIMAL', 'NUMERIC'].includes(selectedType)) {
+        sizeInput.disabled = false;
+        sizeInput.value = '18, 2';
+        sizeInput.placeholder = '18, 2';
+        sizeInput.style.background = 'rgba(255,255,255,0.03)';
+        sizeInput.style.opacity = '1';
+    } else {
+        sizeInput.disabled = true;
+        sizeInput.value = '';
+        sizeInput.placeholder = 'N/A';
+        sizeInput.style.background = 'rgba(255,255,255,0.01)';
+        sizeInput.style.opacity = '0.5';
+    }
+}
+
+async function insertSpTemplateToNewTab() {
+    const nameInput = document.getElementById('sp-name-input');
+    let spName = nameInput ? nameInput.value.trim() : '';
+    if (!spName) {
+        spName = 'dbo.usp_MyStoredProcedure';
+    }
+
+    // Read parameter rows
+    const tbody = document.getElementById('sp-params-tbody');
+    const paramRows = tbody ? tbody.querySelectorAll('tr') : [];
+    
+    const paramsList = [];
+    let hasInvalidName = false;
+
+    paramRows.forEach(tr => {
+        const nameEl = tr.querySelector('.sp-param-name');
+        const typeEl = tr.querySelector('.sp-param-type');
+        const sizeEl = tr.querySelector('.sp-param-size');
+        const outputEl = tr.querySelector('.sp-param-output');
+
+        let name = nameEl ? nameEl.value.trim() : '';
+        const type = typeEl ? typeEl.value : 'INT';
+        const size = sizeEl ? sizeEl.value.trim() : '';
+        const isOutput = outputEl ? outputEl.checked : false;
+
+        if (name) {
+            // Check name format (must start with @)
+            if (!name.startsWith('@')) {
+                name = '@' + name;
+            }
+            
+            let sizeSpec = '';
+            if (size && !['N/A'].includes(size.toUpperCase())) {
+                sizeSpec = `(${size})`;
+            }
+
+            paramsList.push({
+                name: name,
+                type: type,
+                sizeSpec: sizeSpec,
+                isOutput: isOutput
+            });
+        } else {
+            hasInvalidName = true;
+        }
+    });
+
+    if (hasInvalidName && paramRows.length > 0) {
+        const confirmEmptyName = await uiConfirm("Ada parameter yang namanya kosong. Lanjutkan tanpa menyertakan parameter kosong tersebut?", {
+            title: "Parameter Kosong"
+        });
+        if (!confirmEmptyName) return;
+    }
+
+    // Format parameter lines
+    let paramsSql = '';
+    if (paramsList.length > 0) {
+        paramsSql = '\n    ' + paramsList.map(p => {
+            let line = `${p.name} ${p.type}${p.sizeSpec}`;
+            if (p.isOutput) {
+                line += ' OUTPUT';
+            }
+            return line;
+        }).join(',\n    ') + '\n';
+    } else {
+        paramsSql = '\n';
+    }
+
+    // Generate date and author
+    const now = new Date();
+    const dateStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+
+    // T-SQL SP Template
+    const template = 
+`-- =============================================
+-- Author:      System (DbMigrator Perancang SP)
+-- Create date: ${dateStr}
+-- Description: Template Stored Procedure otomatis
+-- =============================================
+CREATE OR ALTER PROCEDURE ${spName}${paramsSql}AS
+BEGIN
+    -- SET NOCOUNT ON ditambahkan untuk mencegah kumpulan hasil tambahan
+    -- mengganggu pernyataan SELECT.
+    SET NOCOUNT ON;
+
+    -- Tulis kueri / logika bisnis Anda di bawah ini
+    -- Contoh:
+    SELECT 'Stored Procedure Berhasil Dipanggil' AS Status;
+END
+GO
+`;
+
+    // Extract tab name candidate
+    let tabName = spName;
+    if (tabName.includes('.')) {
+        const parts = tabName.split('.');
+        tabName = parts[parts.length - 1];
+    }
+    tabName = `Create_${tabName}`;
+
+    addNewQueryTab(template, tabName);
+    closeCreateSpModal();
+}
