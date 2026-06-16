@@ -603,6 +603,15 @@ document.addEventListener('click', (e) => {
             }
         }
     });
+
+    // Close Schema Explorer item dropdowns when clicking outside
+    document.querySelectorAll('.se-item-dropdown-menu').forEach(m => {
+        if (m.classList.contains('active')) {
+            if (!m.contains(e.target)) {
+                m.classList.remove('active');
+            }
+        }
+    });
 });
 
 // ── Query Console Tab Management Functions ──────────────────────────────────
@@ -1097,6 +1106,12 @@ document.addEventListener('keydown', (e) => {
     const queryTab = document.getElementById('main-screen-query');
     if (queryTab && queryTab.style.display === 'none') return;
 
+    // Ctrl + E: Run query console
+    if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.code === 'KeyE' || e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        runQueryConsole();
+    }
+
     // Ctrl + Alt + T: New Query Tab
     if (e.ctrlKey && e.altKey && (e.code === 'KeyT' || e.key === 't' || e.key === 'T')) {
         e.preventDefault();
@@ -1249,8 +1264,11 @@ function initMonacoQueryEditor() {
         // Register custom SQL autocomplete provider
         registerMonacoSqlAutocomplete();
         
-        // Add shortcut key (Ctrl+Enter) to run query console
+        // Add shortcut key (Ctrl+Enter / Ctrl+E) to run query console
         queryConsoleEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function() {
+            runQueryConsole();
+        });
+        queryConsoleEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.US_E, function() {
             runQueryConsole();
         });
 
@@ -2904,9 +2922,21 @@ async function runQueryConsole() {
             tables.push({ Headers: data.Headers, Rows: data.Rows });
         }
 
-        // ── Handle PRINT messages ──────────────────────────────────────────
+        // ── Handle PRINT messages & Execution Stats ────────────────────────
         const printMessages = data.PrintMessages || [];
-        const msgHtml = getQueryMessagesHtml(printMessages, data.ExecutionTimeMs, false);
+        
+        // Auto-generate execution statistics messages for each result set
+        const statMessages = [];
+        tables.forEach((table) => {
+            if (table.Headers.length === 1 && table.Headers[0] === 'Info' && table.Rows.length === 1 && String(table.Rows[0][0]).includes('terpengaruh')) {
+                statMessages.push(String(table.Rows[0][0]));
+            } else {
+                statMessages.push(`(${table.Rows.length} baris dikembalikan)`);
+            }
+        });
+        
+        const allMessages = [...printMessages, ...statMessages];
+        const msgHtml = getQueryMessagesHtml(allMessages, data.ExecutionTimeMs, false);
 
         let containerHtml = '';
         if (tables.length > 1) {
@@ -3108,7 +3138,7 @@ async function runQueryConsole() {
             window.lastQueryResults = tabData.lastQueryResults;
 
             // Render messages
-            renderQueryMessages(printMessages, data.ExecutionTimeMs, false);
+            renderQueryMessages(allMessages, data.ExecutionTimeMs, false, printMessages.length);
 
             switchQueryResultsTab(activeConsoleTab);
         }
@@ -3302,7 +3332,7 @@ function switchQueryResultsTab(tabName) {
 }
 
 // ── Render PRINT messages to Messages tab ─────────────────────────────────
-function renderQueryMessages(messages, executionTimeMs, isError) {
+function renderQueryMessages(messages, executionTimeMs, isError, badgeCount) {
     const msgContent = document.getElementById('query-messages-content');
     const badge = document.getElementById('query-tab-messages-badge');
     if (!msgContent) return;
@@ -3312,8 +3342,9 @@ function renderQueryMessages(messages, executionTimeMs, isError) {
     
     // Show badge with count if there are print messages
     if (badge) {
-        if (messages && messages.length > 0) {
-            badge.textContent = messages.length;
+        const count = badgeCount !== undefined ? badgeCount : (messages ? messages.length : 0);
+        if (count > 0) {
+            badge.textContent = count;
             badge.style.display = 'inline';
         } else {
             badge.style.display = 'none';
@@ -4141,10 +4172,26 @@ async function searchSchemaObjects() {
                 const jsModified = modifyDate.replace(/'/g, "\\'");
                 const escapedName = escapeHtml(obj.Name);
 
+                const actionsHtml = (typeKey === 'TABLE' || typeKey === 'VIEW') ? `
+                    <div class="se-item-actions" onclick="event.stopPropagation()">
+                        <div class="se-item-dropdown">
+                            <button onclick="toggleSchemaItemDropdown(event)" title="Pilihan Script" class="se-action-btn"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                            <div class="se-item-dropdown-menu">
+                                <button onclick="scriptSelectTop50('${jsName}'); closeAllSchemaItemDropdowns();" class="se-dropdown-item"><i class="fa-solid fa-play"></i> Select Top 50</button>
+                                ${typeKey === 'TABLE' ? `
+                                <button onclick="scriptInsertToTable('${jsName}'); closeAllSchemaItemDropdowns();" class="se-dropdown-item"><i class="fa-solid fa-file-import"></i> Script INSERT To</button>
+                                <button onclick="scriptUpdateToTable('${jsName}'); closeAllSchemaItemDropdowns();" class="se-dropdown-item"><i class="fa-solid fa-pen-to-square"></i> Script UPDATE To</button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                ` : '';
+
                 html += `
                     <div class="se-item" data-name="${escapedName.toLowerCase()}" onclick="showSchemaDefinition('${jsName}','${jsType}','${jsCreated}','${jsModified}')" title="${escapedName}">
                         <i class="fa-solid ${grp.icon} se-item-icon ${grp.typeClass}"></i>
                         <span class="se-item-name">${escapedName}</span>
+                        ${actionsHtml}
                     </div>`;
             });
 
@@ -4758,5 +4805,113 @@ function toggleQueryToolbarDropdown(event, id) {
 function closeAllQueryToolbarDropdowns() {
     document.querySelectorAll('.query-toolbar-dropdown').forEach(d => {
         d.classList.remove('active');
+    });
+}
+
+// ── Schema Explorer Quick Script Actions ───────────────────────────────────
+function cleanQueryTableName(name) {
+    if (!name) return "";
+    let clean = name.replace(/[\[\]]/g, ""); // Remove brackets
+    if (clean.includes('.')) {
+        const parts = clean.split('.');
+        return parts[parts.length - 1]; // Return the last part
+    }
+    return clean;
+}
+
+function scriptSelectTop50(tableName) {
+    const cleanTName = tableName.trim();
+    const query = `SELECT TOP 50 *\nFROM ${cleanTName};`;
+    addNewQueryTab(query, `Select_${cleanQueryTableName(cleanTName)}`);
+}
+
+function scriptInsertToTable(tableName) {
+    const cleanTName = tableName.trim();
+    let columns = [];
+    if (queryConsoleSchema && queryConsoleSchema.Columns) {
+        columns = queryConsoleSchema.Columns.filter(c => {
+            const cTable = cleanQueryTableName(c.TableName || c.tableName || '');
+            return cTable.toLowerCase() === cleanQueryTableName(cleanTName).toLowerCase();
+        });
+    }
+
+    let query = "";
+    if (columns.length > 0) {
+        const colList = columns.map(c => `    [${c.ColumnName || c.columnName}]`).join(',\n');
+        const valList = columns.map((c, idx) => {
+            const colName = c.ColumnName || c.columnName;
+            const colType = c.DataType || c.dataType || 'column';
+            const comma = idx === columns.length - 1 ? ' ' : ',';
+            return `    NULL${comma} -- ${colName} (${colType})`;
+        }).join('\n');
+        query = `INSERT INTO ${cleanTName} (\n${colList}\n)\nVALUES (\n${valList}\n);`;
+    } else {
+        query = `INSERT INTO ${cleanTName} (\n    [Kolom1],\n    [Kolom2]\n)\nVALUES (\n    NULL, -- Kolom1 (int)\n    NULL  -- Kolom2 (varchar(50))\n);`;
+    }
+
+    addNewQueryTab(query, `Insert_${cleanQueryTableName(cleanTName)}`);
+}
+
+function scriptUpdateToTable(tableName) {
+    const cleanTName = tableName.trim();
+    let columns = [];
+    if (queryConsoleSchema && queryConsoleSchema.Columns) {
+        columns = queryConsoleSchema.Columns.filter(c => {
+            const cTable = cleanQueryTableName(c.TableName || c.tableName || '');
+            return cTable.toLowerCase() === cleanQueryTableName(cleanTName).toLowerCase();
+        });
+    }
+
+    let query = "";
+    if (columns.length > 0) {
+        const pkCandidate = columns.find(c => {
+            const name = (c.ColumnName || c.columnName || '').toLowerCase();
+            return name === 'id' || name === `${cleanQueryTableName(cleanTName).toLowerCase()}id` || name.endsWith('id');
+        });
+
+        const pkName = pkCandidate ? (pkCandidate.ColumnName || pkCandidate.columnName) : 'ID';
+        const setColumns = columns.filter(c => (c.ColumnName || c.columnName) !== pkName);
+        const setList = setColumns.map((c, idx) => {
+            const colName = c.ColumnName || c.columnName;
+            const colType = c.DataType || c.dataType || 'column';
+            const comma = idx === setColumns.length - 1 ? ' ' : ',';
+            return `    [${colName}] = NULL${comma} -- (${colType})`;
+        }).join('\n');
+        
+        query = `UPDATE ${cleanTName}\nSET\n${setList}\nWHERE [${pkName}] = <Nilai>;`;
+    } else {
+        query = `UPDATE ${cleanTName}\nSET\n    [Kolom1] = NULL, -- (int)\n    [Kolom2] = NULL  -- (varchar(50))\nWHERE [ID] = <Nilai>;`;
+    }
+
+    addNewQueryTab(query, `Update_${cleanQueryTableName(cleanTName)}`);
+}
+
+function toggleSchemaItemDropdown(event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    const btn = event.currentTarget;
+    const menu = btn.nextElementSibling;
+    if (!menu) return;
+
+    const isActive = menu.classList.contains('active');
+    closeAllSchemaItemDropdowns();
+
+    if (!isActive) {
+        menu.classList.add('active');
+        const actionsContainer = btn.closest('.se-item-actions');
+        if (actionsContainer) {
+            actionsContainer.classList.add('menu-active');
+        }
+    }
+}
+
+function closeAllSchemaItemDropdowns() {
+    document.querySelectorAll('.se-item-dropdown-menu').forEach(m => {
+        m.classList.remove('active');
+    });
+    document.querySelectorAll('.se-item-actions').forEach(a => {
+        a.classList.remove('menu-active');
     });
 }

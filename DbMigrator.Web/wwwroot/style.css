@@ -3719,6 +3719,105 @@ textarea.form-control {
     opacity: 0.9;
 }
 
+/* ─── Schema Explorer Item Quick Actions ────────────────────────────── */
+.se-item {
+    position: relative;
+    padding-right: 65px !important; /* space for actions on hover */
+}
+
+.se-item-actions {
+    display: none;
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    gap: 0.25rem;
+    z-index: 10;
+}
+
+.se-item:hover .se-item-actions,
+.se-item-actions.menu-active {
+    display: flex;
+}
+
+.se-action-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-flat);
+    border-radius: 4px;
+    color: var(--text-muted);
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.72rem;
+    transition: var(--transition-fast);
+}
+
+.se-action-btn:hover {
+    background: var(--accent-teal);
+    color: #0d0f14;
+    border-color: var(--accent-teal);
+}
+
+/* ─── Schema Explorer Item Dropdown Menu ────────────────────────────── */
+.se-item-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.se-item-dropdown-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-flat);
+    border-radius: 6px;
+    min-width: 150px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.65);
+    z-index: 100;
+    padding: 0.25rem;
+}
+
+.se-item-dropdown-menu.active {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.se-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.45rem 0.65rem;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: var(--font-primary);
+    font-size: 0.76rem;
+    text-align: left;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    white-space: nowrap;
+}
+
+.se-dropdown-item:hover {
+    background-color: rgba(0, 173, 181, 0.12);
+    color: var(--accent-teal);
+}
+
+.se-dropdown-item i {
+    font-size: 0.78rem;
+    width: 14px;
+    text-align: center;
+    color: var(--accent-teal);
+}
+
 
 
 

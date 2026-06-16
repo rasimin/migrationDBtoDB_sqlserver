@@ -103,7 +103,7 @@
 
                     <div style="height: 20px; width: 1px; background: var(--border-flat); margin: 0 0.25rem;"></div>
 
-                    <button class="btn btn-primary" id="btn-execute-query" onclick="runQueryConsole()" style="width: auto; height: 32px; padding: 0 1rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+                    <button class="btn btn-primary" id="btn-execute-query" onclick="runQueryConsole()" style="width: auto; height: 32px; padding: 0 1rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Execute query (Ctrl+E)">
                         <i class="fa-solid fa-play" style="font-size: 0.75rem;"></i> Execute
                     </button>
                     <button class="btn btn-secondary" onclick="clearQueryConsole()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;">
@@ -240,7 +240,7 @@
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 0.75rem; padding-right: 0.5rem; margin-left: auto;">
                                     <span id="query-schema-loader" style="font-size: 0.75rem; color: var(--accent-teal); display: none;"><i class="fa-solid fa-spinner fa-spin"></i> Memuat Skema Autocomplete...</span>
-                                    <span style="font-size: 0.72rem; color: var(--text-muted);">Tekan Jalankan SQL untuk mengeksekusi</span>
+                                    <span style="font-size: 0.72rem; color: var(--text-muted);">Tekan <strong style="color: var(--accent-teal);">Execute</strong> atau <kbd style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); padding: 1px 4px; border-radius: 4px; color: #fff;">Ctrl+E</kbd> untuk mengeksekusi</span>
                                 </div>
                             </div>
                             <div id="query-editor" style="height: 300px; overflow: hidden; background: #07090d;"></div>
