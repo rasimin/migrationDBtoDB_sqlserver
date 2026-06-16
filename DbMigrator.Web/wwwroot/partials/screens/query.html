@@ -112,24 +112,39 @@
                     <button class="btn btn-secondary" onclick="toggleCommentSelection()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Remark / Unremark code (Ctrl+/)">
                         <i class="fa-solid fa-comment" style="font-size: 0.75rem;"></i> Remark
                     </button>
-                    <button class="btn btn-secondary" onclick="openGenerateInsertModal()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Generate INSERT script untuk data tabel">
-                        <i class="fa-solid fa-code" style="font-size: 0.75rem;"></i> Generate Insert
-                    </button>
-                    <button class="btn btn-secondary" onclick="insertScopeIdentity()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Sisipkan DECLARE @NewID BIGINT = SCOPE_IDENTITY() di posisi kursor">
-                        <i class="fa-solid fa-key" style="font-size: 0.75rem;"></i> Scope Identity
-                    </button>
-                    <button class="btn btn-secondary" onclick="openInsertMapperModal()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Buka Mapper Script INSERT untuk mengubah values dengan mudah">
-                        <i class="fa-solid fa-sliders" style="font-size: 0.75rem;"></i> Insert Mapper
-                    </button>
-                    <button class="btn btn-secondary" onclick="saveQueryConsole()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Simpan query ke database">
-                        <i class="fa-solid fa-floppy-disk" style="font-size: 0.75rem;"></i> Save
-                    </button>
-                    <button class="btn btn-secondary" onclick="saveAsQueryConsole()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Simpan query sebagai nama baru ke database">
-                        <i class="fa-solid fa-file-signature" style="font-size: 0.75rem;"></i> Save As
-                    </button>
-                    <button class="btn btn-secondary" onclick="openQueryHistoryModal()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Buka riwayat kueri yang disimpan">
-                        <i class="fa-solid fa-clock-rotate-left" style="font-size: 0.75rem;"></i> Query History
-                    </button>
+                    <div class="query-toolbar-dropdown" id="dropdown-insert-helpers">
+                        <button class="btn btn-secondary" onclick="toggleQueryToolbarDropdown(event, 'dropdown-insert-helpers')" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Insert Tools & Helpers">
+                            <i class="fa-solid fa-code" style="font-size: 0.75rem;"></i> Insert Tools <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem; opacity: 0.7; margin-left: 0.2rem;"></i>
+                        </button>
+                        <div class="query-toolbar-dropdown-menu">
+                            <button class="query-toolbar-dropdown-item" onclick="openGenerateInsertModal(); closeAllQueryToolbarDropdowns();" title="Generate INSERT script untuk data tabel">
+                                <i class="fa-solid fa-code"></i> Generate Insert
+                            </button>
+                            <button class="query-toolbar-dropdown-item" onclick="insertScopeIdentity(); closeAllQueryToolbarDropdowns();" title="Sisipkan DECLARE @NewID BIGINT = SCOPE_IDENTITY() di posisi kursor">
+                                <i class="fa-solid fa-key"></i> Scope Identity
+                            </button>
+                            <button class="query-toolbar-dropdown-item" onclick="openInsertMapperModal(); closeAllQueryToolbarDropdowns();" title="Buka Mapper Script INSERT untuk mengubah values dengan mudah">
+                                <i class="fa-solid fa-sliders"></i> Insert Mapper
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="query-toolbar-dropdown" id="dropdown-query-storage">
+                        <button class="btn btn-secondary" onclick="toggleQueryToolbarDropdown(event, 'dropdown-query-storage')" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Simpan & Riwayat Kueri">
+                            <i class="fa-solid fa-floppy-disk" style="font-size: 0.75rem;"></i> Query File <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem; opacity: 0.7; margin-left: 0.2rem;"></i>
+                        </button>
+                        <div class="query-toolbar-dropdown-menu">
+                            <button class="query-toolbar-dropdown-item" onclick="saveQueryConsole(); closeAllQueryToolbarDropdowns();" title="Simpan query ke database">
+                                <i class="fa-solid fa-floppy-disk"></i> Save
+                            </button>
+                            <button class="query-toolbar-dropdown-item" onclick="saveAsQueryConsole(); closeAllQueryToolbarDropdowns();" title="Simpan query sebagai nama baru ke database">
+                                <i class="fa-solid fa-file-signature"></i> Save As
+                            </button>
+                            <button class="query-toolbar-dropdown-item" onclick="openQueryHistoryModal(); closeAllQueryToolbarDropdowns();" title="Buka riwayat kueri yang disimpan">
+                                <i class="fa-solid fa-clock-rotate-left"></i> Query History
+                            </button>
+                        </div>
+                    </div>
                     <button class="btn btn-secondary" id="btn-toggle-schema-explorer" onclick="toggleSchemaExplorer()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Sembunyikan/Tampilkan Schema Explorer">
                         <i class="fa-solid fa-folder-minus"></i> <span id="toggle-schema-exp-text">Hide Explorer</span>
                     </button>

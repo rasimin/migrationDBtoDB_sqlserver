@@ -594,6 +594,15 @@ document.addEventListener('click', (e) => {
             tableDropdown.style.display = 'none';
         }
     }
+
+    // Close Query Toolbar Dropdowns when clicking outside
+    document.querySelectorAll('.query-toolbar-dropdown').forEach(d => {
+        if (d.classList.contains('active')) {
+            if (!d.contains(e.target)) {
+                d.classList.remove('active');
+            }
+        }
+    });
 });
 
 // ── Query Console Tab Management Functions ──────────────────────────────────
@@ -4730,4 +4739,24 @@ async function deleteHistoryQuery(id, event) {
     } catch (err) {
         await uiAlert("Gagal menghapus kueri: " + err.message, { variant: 'error' });
     }
+}
+
+// ── Query Toolbar Dropdown Logic ──────────────────────────────────────────
+function toggleQueryToolbarDropdown(event, id) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById(id);
+    if (!dropdown) return;
+
+    const isActive = dropdown.classList.contains('active');
+    closeAllQueryToolbarDropdowns();
+
+    if (!isActive) {
+        dropdown.classList.add('active');
+    }
+}
+
+function closeAllQueryToolbarDropdowns() {
+    document.querySelectorAll('.query-toolbar-dropdown').forEach(d => {
+        d.classList.remove('active');
+    });
 }

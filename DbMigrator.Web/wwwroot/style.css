@@ -3662,6 +3662,63 @@ textarea.form-control {
     border-color: rgba(34, 211, 238, 0.26);
 }
 
+/* ─── Query Toolbar Dropdowns ───────────────────────────────────────── */
+.query-toolbar-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.query-toolbar-dropdown-menu {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: 100%;
+    margin-top: 6px;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-flat);
+    border-radius: 8px;
+    min-width: 190px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+    z-index: 1000;
+    padding: 0.35rem;
+}
+
+.query-toolbar-dropdown.active .query-toolbar-dropdown-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.query-toolbar-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: var(--font-primary);
+    font-size: 0.82rem;
+    text-align: left;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.query-toolbar-dropdown-item:hover {
+    background-color: rgba(0, 173, 181, 0.12);
+    color: var(--accent-teal);
+}
+
+.query-toolbar-dropdown-item i {
+    font-size: 0.85rem;
+    width: 16px;
+    text-align: center;
+    color: var(--accent-teal);
+    opacity: 0.9;
+}
+
 
 
 
