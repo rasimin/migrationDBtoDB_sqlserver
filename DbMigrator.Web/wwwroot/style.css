@@ -1880,6 +1880,7 @@ textarea.form-control {
     color: var(--text-muted);
     font-size: 0.6rem;
     transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-right: 0.25rem;
 }
 
 .se-folder.open > .se-folder-chevron {
@@ -2290,6 +2291,10 @@ textarea.form-control {
 .modal-content.maximized #schema-viewer-monaco-container,
 .modal-content.maximized #ssrs-viewer-monaco-container {
     height: calc(95vh - 220px) !important;
+}
+
+.modal-content.maximized #query-history-split {
+    height: calc(95vh - 250px) !important;
 }
 
 @media (max-width: 860px) {

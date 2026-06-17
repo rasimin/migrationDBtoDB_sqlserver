@@ -101,7 +101,12 @@
                 <h3>Riwayat Kueri (Query History)</h3>
                 <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Cari dan muat kueri yang disimpan sebelumnya ke editor tab baru.</p>
             </div>
-            <button class="close-btn" onclick="closeQueryHistoryModal()">&times;</button>
+            <div style="display: flex; align-items: center; gap: 0.65rem;">
+                <button onclick="toggleQueryHistoryMaximize()" title="Maximize / Restore" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; transition: color 0.15s ease;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='var(--text-muted)'">
+                    <i class="fa-solid fa-expand" id="query-history-maximize-icon"></i>
+                </button>
+                <button class="close-btn" onclick="closeQueryHistoryModal()" style="margin: 0;">&times;</button>
+            </div>
         </div>
         <div class="modal-body" style="padding: 1.25rem 1.75rem;">
             <!-- Filters row -->
@@ -127,7 +132,7 @@
             </div>
 
             <!-- Main Split Layout for History -->
-            <div style="display: flex; gap: 1.25rem; height: 420px;">
+            <div id="query-history-split" style="display: flex; gap: 1.25rem; height: 420px;">
                 <!-- Left panel: list of queries -->
                 <div style="width: 45%; border: 1px solid var(--border-flat); border-radius: 6px; overflow-y: auto; background: #07090d; display: flex; flex-direction: column;">
                     <table class="mapper-table" style="width: 100%; margin-bottom: 0;">
