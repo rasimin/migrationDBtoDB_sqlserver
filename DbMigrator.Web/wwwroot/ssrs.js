@@ -7,7 +7,14 @@ let currentSsrsPath = '/';
 let ssrsItemsCache = [];
 
 // Handle Switch Tab lifecycle hook
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
+    if (window.__partialsReady) {
+        try {
+            await window.__partialsReady;
+        } catch {
+            return;
+        }
+    }
     // If the tab is stored as ssrs, make sure we initialize it
     const activeTab = localStorage.getItem('dbmigrator_active_tab');
     if (activeTab === 'ssrs') {
@@ -27,13 +34,20 @@ window.switchMainTab = function(tabId) {
 let savedSsrsConnectionsCache = [];
 
 function initSsrsTab() {
+    const connectPanel = document.getElementById('ssrs-connect-panel');
+    const explorerPanel = document.getElementById('ssrs-explorer-panel');
+    if (!connectPanel || !explorerPanel) {
+        console.warn('[ssrs] DOM elements not loaded yet.');
+        return;
+    }
+
     if (ssrsConnection) {
         // Already connected, load current path
         browseSsrs(currentSsrsPath);
     } else {
         // Show login panel, hide explorer
-        document.getElementById('ssrs-connect-panel').style.display = 'block';
-        document.getElementById('ssrs-explorer-panel').style.display = 'none';
+        connectPanel.style.display = 'block';
+        explorerPanel.style.display = 'none';
         loadSavedSsrsConnections();
     }
 }
