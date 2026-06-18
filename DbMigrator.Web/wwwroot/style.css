@@ -1932,11 +1932,21 @@ textarea.form-control {
     transition: max-height 0.22s cubic-bezier(0.4, 0, 0.2, 1);
     padding-left: 32px;    /* ← bigger indent so children are clearly under parent */
     position: relative;
+    z-index: 1;
 }
 
 .se-children.open {
     max-height: 9999px;
+    overflow: visible;
     transition: max-height 0.35s cubic-bezier(0, 0, 0.2, 1);
+}
+
+.se-children:has(.menu-active) {
+    z-index: 30;
+}
+
+.se-item:has(.menu-active) {
+    z-index: 40;
 }
 
 /* Tree vertical connector line — left edge of children area */
