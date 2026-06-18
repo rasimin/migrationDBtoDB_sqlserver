@@ -567,6 +567,7 @@ async function saveAsQueryConsole() {
 // ── Query History Modal & Functions ──────────────────────────────────────────
 let historyPreviewEditor = null;
 let activeHistoryQuery = null;
+let activeHistoryVersion = null;
 
 function openQueryHistoryModal() {
     const modal = document.getElementById('query-history-modal');
@@ -574,6 +575,7 @@ function openQueryHistoryModal() {
     
     // Clear previous state
     activeHistoryQuery = null;
+    activeHistoryVersion = null;
     document.getElementById('history-preview-title').textContent = 'Preview: (Pilih query)';
     document.getElementById('history-preview-placeholder').style.display = 'flex';
     document.getElementById('history-preview-actions').style.display = 'none';
@@ -714,7 +716,14 @@ function renderQueryHistoryList(queries) {
         const dateStr = dateObj.toLocaleDateString('id-ID') + ' ' + dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
         row.innerHTML = `
-            <td style="padding: 0.6rem 0.75rem; color: #ffffff; font-weight: 500; word-break: break-all;">${escapeHtml(q.QueryName || q.queryName)}</td>
+            <td style="padding: 0.6rem 0.75rem; color: #ffffff; font-weight: 500;">
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem;">
+                    <span style="word-break: break-all; line-height: 1.4;">${escapeHtml(q.QueryName || q.queryName)}</span>
+                    <button type="button" class="btn btn-secondary history-version-btn" onclick="toggleQueryVersionHistory(${q.Id || q.id}, this, event)" title="Lihat Riwayat Versi" style="height: 22px; width: 22px; min-width: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: rgba(0, 173, 181, 0.12); border: 1px solid rgba(0, 173, 181, 0.25); color: var(--accent-teal); border-radius: 4px; flex-shrink: 0; transition: all 0.15s ease;">
+                        <i class="fa-solid fa-clock-rotate-left" style="font-size: 0.7rem;"></i>
+                    </button>
+                </div>
+            </td>
             <td style="padding: 0.6rem 0.75rem; color: var(--text-muted); font-size: 0.75rem;">${dateStr}</td>
             <td style="padding: 0.6rem 0.75rem; text-align: center;">
                 <button type="button" class="btn btn-secondary" onclick="deleteHistoryQuery(${q.Id || q.id}, event)" title="Hapus Kueri" style="height: 26px; width: 26px; min-width: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; border-radius: 4px;">
@@ -724,7 +733,7 @@ function renderQueryHistoryList(queries) {
         `;
 
         row.addEventListener('click', (e) => {
-            // Check if user clicked the delete button or inside it
+            // Check if user clicked any button in the row (delete or history toggle)
             if (e.target.closest('button')) return;
             selectHistoryQuery(q, row);
         });
@@ -733,13 +742,184 @@ function renderQueryHistoryList(queries) {
     });
 }
 
+async function toggleQueryVersionHistory(queryId, btnEl, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    
+    const row = btnEl.closest('tr');
+    const nextRow = row.nextElementSibling;
+    const isExpanded = nextRow && nextRow.classList.contains('version-history-row');
+    
+    // Collapse if already expanded
+    if (isExpanded) {
+        nextRow.remove();
+        btnEl.innerHTML = '<i class="fa-solid fa-clock-rotate-left" style="font-size: 0.7rem;"></i>';
+        btnEl.style.background = 'rgba(0, 173, 181, 0.12)';
+        btnEl.style.color = 'var(--accent-teal)';
+        return;
+    }
+    
+    // Collapse other open histories
+    document.querySelectorAll('.version-history-row').forEach(el => el.remove());
+    document.querySelectorAll('.history-version-btn').forEach(btn => {
+        btn.innerHTML = '<i class="fa-solid fa-clock-rotate-left" style="font-size: 0.7rem;"></i>';
+        btn.style.background = 'rgba(0, 173, 181, 0.12)';
+        btn.style.color = 'var(--accent-teal)';
+    });
+    
+    // Set to loading status
+    btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="font-size: 0.7rem;"></i>';
+    
+    try {
+        const res = await fetch(`${API_BASE}/query/saved-queries/${queryId}/history`);
+        if (!res.ok) throw new Error("Gagal mengambil riwayat versi");
+        const versions = await res.json();
+        
+        // Cache globally for selection preview
+        window.loadedQueryVersions = window.loadedQueryVersions || {};
+        versions.forEach(v => {
+            window.loadedQueryVersions[v.Id || v.id] = v;
+        });
+        
+        let contentHtml = '';
+        if (!versions || versions.length === 0) {
+            contentHtml = `
+                <div style="padding: 0.6rem 0.5rem; color: var(--text-muted); font-size: 0.75rem; text-align: center;">
+                    Belum ada riwayat perubahan (versi sebelumnya).
+                </div>
+            `;
+        } else {
+            contentHtml = versions.map((v, index) => {
+                const dateObj = new Date(v.SavedAt || v.savedAt);
+                const dateStr = dateObj.toLocaleDateString('id-ID') + ' ' + dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                const vId = v.Id || v.id;
+                
+                return `
+                    <div class="version-item" data-version-id="${vId}" onclick="selectVersionPreview(${vId}, event)" style="display: flex; align-items: center; justify-content: space-between; padding: 0.45rem 0.6rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border-flat); border-radius: 4px; cursor: pointer; transition: all 0.15s ease; margin-bottom: 0.25rem;">
+                        <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; flex: 1;">
+                            <span style="font-size: 0.75rem; color: #ffffff; font-weight: 500; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">Versi #${versions.length - index}: ${escapeHtml(v.QueryName || v.queryName)}</span>
+                            <span style="font-size: 0.68rem; color: var(--text-muted);"><i class="fa-solid fa-calendar-day" style="font-size: 0.65rem; margin-right: 0.3rem; opacity: 0.7;"></i>${dateStr}</span>
+                        </div>
+                        <div style="display: flex; gap: 0.3rem; margin-left: 0.5rem;">
+                            <button type="button" class="btn btn-secondary open-version-tab-btn" onclick="openVersionInNewTab(${vId}, event)" title="Buka sebagai SQL Baru" style="height: 22px; width: 22px; min-width: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.25); color: var(--accent-purple); border-radius: 4px; transition: all 0.15s ease;">
+                                <i class="fa-solid fa-square-plus" style="font-size: 0.7rem;"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Insert expanded version row
+        const versionRow = document.createElement('tr');
+        versionRow.className = 'version-history-row';
+        versionRow.style.background = 'rgba(0,0,0,0.15)';
+        versionRow.innerHTML = `
+            <td colspan="3" style="padding: 0.5rem 0.75rem 0.65rem 1.25rem; border-bottom: 1px solid var(--border-flat);">
+                <div style="border-left: 2px solid var(--accent-teal); padding-left: 0.65rem;">
+                    <div style="font-size: 0.75rem; font-weight: 600; color: var(--accent-teal); margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                        <span>Riwayat Versi Sebelumnya (Versioning)</span>
+                        <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: normal;">*Klik versi untuk preview, klik + untuk SQL baru</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column;">
+                        ${contentHtml}
+                    </div>
+                </div>
+            </td>
+        `;
+        
+        row.parentNode.insertBefore(versionRow, row.nextSibling);
+        btnEl.innerHTML = '<i class="fa-solid fa-chevron-up" style="font-size: 0.7rem;"></i>';
+        btnEl.style.background = 'rgba(0, 173, 181, 0.25)';
+        btnEl.style.color = '#ffffff';
+        
+    } catch (err) {
+        console.error(err);
+        btnEl.innerHTML = '<i class="fa-solid fa-clock-rotate-left" style="font-size: 0.7rem;"></i>';
+        await uiAlert("Gagal memuat riwayat versi: " + err.message);
+    }
+}
+
+function selectVersionPreview(versionId, event) {
+    if (event) {
+        event.stopPropagation();
+    }
+    const version = window.loadedQueryVersions ? window.loadedQueryVersions[versionId] : null;
+    if (!version) return;
+    
+    activeHistoryQuery = null;
+    activeHistoryVersion = version;
+    
+    // Highlight version item, remove highlight from other versions
+    document.querySelectorAll('.version-item').forEach(el => {
+        el.style.borderColor = 'var(--border-flat)';
+        el.style.background = 'rgba(255,255,255,0.02)';
+    });
+    const selectedItem = event.currentTarget.closest('.version-item') || document.querySelector(`.version-item[data-version-id="${versionId}"]`);
+    if (selectedItem) {
+        selectedItem.style.borderColor = 'var(--accent-teal)';
+        selectedItem.style.background = 'rgba(0, 173, 181, 0.04)';
+    }
+    
+    // Remove background highlight from parent query table rows
+    const tbody = document.getElementById('history-queries-list');
+    if (tbody) {
+        tbody.querySelectorAll('tr').forEach(r => {
+            if (!r.classList.contains('version-history-row')) {
+                r.style.background = 'transparent';
+            }
+        });
+    }
+
+    // Set preview value
+    if (historyPreviewEditor) {
+        historyPreviewEditor.setValue(version.QueryText || version.queryText || '');
+    }
+
+    // Hide placeholder, show actions
+    document.getElementById('history-preview-placeholder').style.display = 'none';
+    document.getElementById('history-preview-title').textContent = `Preview Versi: ${version.QueryName || version.queryName}`;
+    document.getElementById('history-preview-actions').style.display = 'flex';
+}
+
+function openVersionInNewTab(versionId, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    const version = window.loadedQueryVersions ? window.loadedQueryVersions[versionId] : null;
+    if (!version) return;
+
+    const queryText = version.QueryText || version.queryText || '';
+    const queryName = version.QueryName || version.queryName || 'Query';
+
+    // Buka tab baru tanpa savedQueryId (sql baru)
+    addNewQueryTab(queryText, `${queryName}_Versi`);
+
+    renderQueryTabs();
+    closeQueryHistoryModal();
+}
+
 function selectHistoryQuery(query, rowEl) {
     activeHistoryQuery = query;
+    activeHistoryVersion = null;
 
     // Highlight selected row
     const tbody = document.getElementById('history-queries-list');
-    tbody.querySelectorAll('tr').forEach(r => r.style.background = 'transparent');
+    tbody.querySelectorAll('tr').forEach(r => {
+        if (!r.classList.contains('version-history-row')) {
+            r.style.background = 'transparent';
+        }
+    });
     rowEl.style.background = 'rgba(0, 173, 181, 0.08)';
+
+    // Remove version highlights
+    document.querySelectorAll('.version-item').forEach(el => {
+        el.style.borderColor = 'var(--border-flat)';
+        el.style.background = 'rgba(255,255,255,0.02)';
+    });
 
     // Set preview value
     if (historyPreviewEditor) {
@@ -753,8 +933,9 @@ function selectHistoryQuery(query, rowEl) {
 }
 
 async function copyHistoryPreviewToClipboard() {
-    if (!activeHistoryQuery) return;
-    const text = activeHistoryQuery.QueryText || activeHistoryQuery.queryText || '';
+    const activeObj = activeHistoryVersion || activeHistoryQuery;
+    if (!activeObj) return;
+    const text = activeObj.QueryText || activeObj.queryText || '';
     try {
         await navigator.clipboard.writeText(text);
         await uiAlert("Script kueri berhasil disalin ke clipboard!", { variant: 'success' });
@@ -764,21 +945,29 @@ async function copyHistoryPreviewToClipboard() {
 }
 
 async function openHistoryInNewTab() {
-    if (!activeHistoryQuery) return;
+    const activeObj = activeHistoryVersion || activeHistoryQuery;
+    if (!activeObj) return;
 
-    const queryText = activeHistoryQuery.QueryText || activeHistoryQuery.queryText || '';
-    const queryName = activeHistoryQuery.QueryName || activeHistoryQuery.queryName || 'Query';
-    const queryId = activeHistoryQuery.Id || activeHistoryQuery.id;
+    const queryText = activeObj.QueryText || activeObj.queryText || '';
+    const queryName = activeObj.QueryName || activeObj.queryName || 'Query';
 
-    // Create a new tab and focus it
-    addNewQueryTab(queryText, queryName);
+    const isVersion = !!activeHistoryVersion;
 
-    // Link new tab to database record
-    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
-    if (activeTab) {
-        activeTab.savedQueryId = queryId;
-        activeTab.savedQueryName = queryName;
-        activeTab.name = queryName;
+    if (isVersion) {
+        // Buka tab baru tanpa savedQueryId (sql baru)
+        addNewQueryTab(queryText, `${queryName}_Versi`);
+    } else {
+        const queryId = activeObj.Id || activeObj.id;
+        // Create a new tab and focus it
+        addNewQueryTab(queryText, queryName);
+
+        // Link new tab to database record
+        const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+        if (activeTab) {
+            activeTab.savedQueryId = queryId;
+            activeTab.savedQueryName = queryName;
+            activeTab.name = queryName;
+        }
     }
 
     renderQueryTabs();

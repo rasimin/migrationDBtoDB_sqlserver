@@ -378,6 +378,18 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
                 UpdatedAt DATETIME NOT NULL DEFAULT GETDATE()
             );
         END
+
+        -- Ensure SavedQueryHistory table exists
+        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID('dbo.SavedQueryHistory') AND type in ('U'))
+        BEGIN
+            CREATE TABLE dbo.SavedQueryHistory (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                QueryId INT NOT NULL FOREIGN KEY REFERENCES dbo.SavedQueries(Id) ON DELETE CASCADE,
+                QueryName NVARCHAR(255) NOT NULL,
+                QueryText NVARCHAR(MAX) NOT NULL,
+                SavedAt DATETIME NOT NULL DEFAULT GETDATE()
+            );
+        END
     ");
 }
 
@@ -1189,6 +1201,27 @@ app.MapPost("/api/query/saved-queries", async ([FromBody] SavedQuery request, IC
         using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
         if (request.Id > 0)
         {
+            // Ambil data query saat ini sebelum diperbarui untuk disimpan ke tabel riwayat (versioning)
+            var existing = await conn.QuerySingleOrDefaultAsync<SavedQuery>(
+                "SELECT QueryName, QueryText, UpdatedAt FROM dbo.SavedQueries WHERE Id = @Id", new { Id = request.Id });
+
+            if (existing != null)
+            {
+                // Hanya buat riwayat versi jika terdapat perbedaan nama atau isi kueri
+                if (existing.QueryName != request.QueryName || existing.QueryText != request.QueryText)
+                {
+                    await conn.ExecuteAsync(@"
+                        INSERT INTO dbo.SavedQueryHistory (QueryId, QueryName, QueryText, SavedAt)
+                        VALUES (@QueryId, @QueryName, @QueryText, @SavedAt)",
+                        new {
+                            QueryId = request.Id,
+                            QueryName = existing.QueryName,
+                            QueryText = existing.QueryText,
+                            SavedAt = existing.UpdatedAt
+                        });
+                }
+            }
+
             await conn.ExecuteAsync(@"
                 UPDATE dbo.SavedQueries
                 SET QueryName = @QueryName,
@@ -1211,6 +1244,24 @@ app.MapPost("/api/query/saved-queries", async ([FromBody] SavedQuery request, IC
     catch (Exception ex)
     {
         return Results.BadRequest(new { Success = false, Message = $"Gagal menyimpan query: {ex.Message}" });
+    }
+});
+
+app.MapGet("/api/query/saved-queries/{id:int}/history", async (int id, IConfiguration config) =>
+{
+    try
+    {
+        using var conn = new SqlConnection(config.GetConnectionString("ConfigDb"));
+        var history = await conn.QueryAsync<SavedQueryHistory>(@"
+            SELECT Id, QueryId, QueryName, QueryText, SavedAt 
+            FROM dbo.SavedQueryHistory 
+            WHERE QueryId = @QueryId 
+            ORDER BY SavedAt DESC", new { QueryId = id });
+        return Results.Ok(history);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { Success = false, Message = $"Gagal mengambil riwayat versi: {ex.Message}" });
     }
 });
 
