@@ -364,6 +364,21 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
                 SavedAt DATETIME NOT NULL DEFAULT GETDATE()
             );
         END
+
+        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID('dbo.QueryExecutionLogs') AND type in ('U'))
+        BEGIN
+            CREATE TABLE dbo.QueryExecutionLogs (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                ServerName NVARCHAR(255) NOT NULL,
+                DatabaseName NVARCHAR(255) NOT NULL,
+                QueryText NVARCHAR(MAX) NOT NULL,
+                Status NVARCHAR(50) NOT NULL,
+                ExecutionTimeMs BIGINT NULL,
+                ErrorMessage NVARCHAR(MAX) NULL,
+                ResponseMessages NVARCHAR(MAX) NULL,
+                ExecutedAt DATETIME NOT NULL DEFAULT GETDATE()
+            );
+        END
     ");
 }
 

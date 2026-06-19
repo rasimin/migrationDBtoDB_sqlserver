@@ -271,4 +271,17 @@ namespace DbMigrator.Web.Models
         public string Domain { get; set; } = "";
         public DateTime CreatedAt { get; set; }
     }
+
+    public class QueryExecutionLog
+    {
+        public int Id { get; set; }
+        public string ServerName { get; set; } = "";
+        public string DatabaseName { get; set; } = "";
+        public string QueryText { get; set; } = "";
+        public string Status { get; set; } = "";
+        public long? ExecutionTimeMs { get; set; }
+        public string ErrorMessage { get; set; }
+        public string ResponseMessages { get; set; }
+        public DateTime ExecutedAt { get; set; }
+    }
 }

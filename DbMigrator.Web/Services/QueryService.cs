@@ -265,84 +265,187 @@ namespace DbMigrator.Web.Services
                 builder.IntegratedSecurity = true;
             }
 
-            using var conn = new SqlConnection(builder.ConnectionString);
-            
-            var printMessages = new List<string>();
-            conn.FireInfoMessageEventOnUserErrors = true;
-            conn.InfoMessage += (sender, e) => {
-                foreach (SqlError err in e.Errors)
-                {
-                    printMessages.Add(err.Message);
-                }
-            };
-            
-            await conn.OpenAsync(cancellationToken);
+            int logId = 0;
+            try
+            {
+                using var configConn = new SqlConnection(ConfigConnectionString);
+                logId = await configConn.QuerySingleAsync<int>(@"
+                    INSERT INTO dbo.QueryExecutionLogs (ServerName, DatabaseName, QueryText, Status, ExecutedAt)
+                    VALUES (@ServerName, @DatabaseName, @QueryText, 'InProgress', GETDATE());
+                    SELECT CAST(SCOPE_IDENTITY() as int);",
+                    new {
+                        ServerName = request.ServerName,
+                        DatabaseName = request.Database,
+                        QueryText = request.QueryText
+                    });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Gagal menyimpan log awal: {ex.Message}");
+            }
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            using var command = new SqlCommand(request.QueryText, conn);
-            using var reader = await command.ExecuteReaderAsync(cancellationToken);
-
-            var tables = new List<QueryResultTable>();
-
-            do
+            try
             {
-                var headers = new List<string>();
-                var rows = new List<List<object>>();
-                bool isTruncated = false;
-
-                if (reader.FieldCount == 0)
-                {
-                    var affected = reader.RecordsAffected;
-                    if (affected >= 0)
+                using var conn = new SqlConnection(builder.ConnectionString);
+                
+                var printMessages = new List<string>();
+                conn.FireInfoMessageEventOnUserErrors = true;
+                conn.InfoMessage += (sender, e) => {
+                    foreach (SqlError err in e.Errors)
                     {
-                        headers.Add("Info");
-                        rows.Add(new List<object> { $"({affected} baris terpengaruh)" });
+                        printMessages.Add(err.Message);
                     }
-                }
-                else
-                {
-                    for (int i = 0; i < reader.FieldCount; i++)
-                    {
-                        headers.Add(reader.GetName(i));
-                    }
+                };
+                
+                await conn.OpenAsync(cancellationToken);
 
-                    int rowCount = 0;
-                    const int MaxConsoleRows = 1000;
-                    while (await reader.ReadAsync(cancellationToken))
+                using var command = new SqlCommand(request.QueryText, conn);
+                using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+                var tables = new List<QueryResultTable>();
+
+                do
+                {
+                    var headers = new List<string>();
+                    var rows = new List<List<object>>();
+                    bool isTruncated = false;
+
+                    if (reader.FieldCount == 0)
                     {
-                        if (rowCount >= MaxConsoleRows)
+                        var affected = reader.RecordsAffected;
+                        if (affected >= 0)
                         {
-                            isTruncated = true;
-                            break;
+                            headers.Add("Info");
+                            rows.Add(new List<object> { $"({affected} baris terpengaruh)" });
                         }
-                        var row = new List<object>();
+                    }
+                    else
+                    {
                         for (int i = 0; i < reader.FieldCount; i++)
                         {
-                            var val = reader.GetValue(i);
-                            row.Add(val == DBNull.Value ? null : val);
+                            headers.Add(reader.GetName(i));
                         }
-                        rows.Add(row);
-                        rowCount++;
+
+                        int rowCount = 0;
+                        const int MaxConsoleRows = 1000;
+                        while (await reader.ReadAsync(cancellationToken))
+                        {
+                            if (rowCount >= MaxConsoleRows)
+                            {
+                                isTruncated = true;
+                                break;
+                            }
+                            var row = new List<object>();
+                            for (int i = 0; i < reader.FieldCount; i++)
+                            {
+                                var val = reader.GetValue(i);
+                                row.Add(val == DBNull.Value ? null : val);
+                            }
+                            rows.Add(row);
+                            rowCount++;
+                        }
+                    }
+
+                    if (headers.Count > 0)
+                    {
+                        tables.Add(new QueryResultTable { Headers = headers, Rows = rows, IsTruncated = isTruncated });
+                    }
+                } while (await reader.NextResultAsync(cancellationToken));
+
+                stopwatch.Stop();
+
+                var firstTable = tables.FirstOrDefault();
+
+                if (logId > 0)
+                {
+                    try
+                    {
+                        using var configConn = new SqlConnection(ConfigConnectionString);
+                        string responseMessages = printMessages != null && printMessages.Count > 0 
+                            ? string.Join(Environment.NewLine, printMessages) 
+                            : null;
+
+                        if (string.IsNullOrEmpty(responseMessages))
+                        {
+                            var affectedRowsMsgs = new List<string>();
+                            foreach (var tbl in tables)
+                            {
+                                if (tbl.Headers.Count == 1 && tbl.Headers[0] == "Info" && tbl.Rows.Count > 0)
+                                {
+                                    affectedRowsMsgs.Add(tbl.Rows[0][0]?.ToString());
+                                }
+                            }
+                            if (affectedRowsMsgs.Count > 0)
+                            {
+                                responseMessages = string.Join(Environment.NewLine, affectedRowsMsgs);
+                            }
+                        }
+
+                        await configConn.ExecuteAsync(@"
+                            UPDATE dbo.QueryExecutionLogs
+                            SET Status = 'Success',
+                                ExecutionTimeMs = @ExecutionTimeMs,
+                                ResponseMessages = @ResponseMessages,
+                                ErrorMessage = NULL
+                            WHERE Id = @Id",
+                            new {
+                                Id = logId,
+                                ExecutionTimeMs = stopwatch.ElapsedMilliseconds,
+                                ResponseMessages = responseMessages
+                            });
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Gagal mengupdate log sukses: {ex.Message}");
                     }
                 }
 
-                if (headers.Count > 0)
+                return new ExecuteQueryResult
                 {
-                    tables.Add(new QueryResultTable { Headers = headers, Rows = rows, IsTruncated = isTruncated });
-                }
-            } while (await reader.NextResultAsync(cancellationToken));
-
-            stopwatch.Stop();
-
-            var firstTable = tables.FirstOrDefault();
-            return new ExecuteQueryResult
+                    Tables = tables,
+                    Headers = firstTable?.Headers ?? new List<string>(),
+                    Rows = firstTable?.Rows ?? new List<List<object>>(),
+                    ExecutionTimeMs = stopwatch.ElapsedMilliseconds,
+                    PrintMessages = printMessages
+                };
+            }
+            catch (Exception ex)
             {
-                Tables = tables,
-                Headers = firstTable?.Headers ?? new List<string>(),
-                Rows = firstTable?.Rows ?? new List<List<object>>(),
-                ExecutionTimeMs = stopwatch.ElapsedMilliseconds,
-                PrintMessages = printMessages
-            };
+                stopwatch.Stop();
+                if (logId > 0)
+                {
+                    try
+                    {
+                        using var configConn = new SqlConnection(ConfigConnectionString);
+                        await configConn.ExecuteAsync(@"
+                            UPDATE dbo.QueryExecutionLogs
+                            SET Status = 'Failed',
+                                ExecutionTimeMs = @ExecutionTimeMs,
+                                ErrorMessage = @ErrorMessage
+                            WHERE Id = @Id",
+                            new {
+                                Id = logId,
+                                ExecutionTimeMs = stopwatch.ElapsedMilliseconds,
+                                ErrorMessage = ex.Message
+                            });
+                    }
+                    catch (Exception logEx)
+                    {
+                        Console.WriteLine($"Gagal mengupdate log error: {logEx.Message}");
+                    }
+                }
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<QueryExecutionLog>> GetExecutionLogsAsync()
+        {
+            using var conn = new SqlConnection(ConfigConnectionString);
+            return await conn.QueryAsync<QueryExecutionLog>(@"
+                SELECT TOP 100 Id, ServerName, DatabaseName, QueryText, Status, ExecutionTimeMs, ErrorMessage, ResponseMessages, ExecutedAt
+                FROM dbo.QueryExecutionLogs
+                ORDER BY ExecutedAt DESC");
         }
 
         public async Task<IEnumerable<dynamic>> GetSchemaObjectsAsync(QuerySchemaObjectsRequest request)

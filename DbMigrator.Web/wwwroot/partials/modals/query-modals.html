@@ -345,3 +345,79 @@
         </div>
     </div>
 </div>
+
+<!-- ============================================================================
+     MODAL: QUERY EXECUTION LOGS
+     ============================================================================ -->
+<div class="modal-overlay" id="query-execution-log-modal">
+    <div class="modal-content" style="max-width: 1050px; width: 95%; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3>Log Eksekusi Kueri</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Menampilkan 100 query terakhir yang dieksekusi.</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.65rem;">
+                <button class="close-btn" onclick="closeQueryExecutionLogModal()" style="margin: 0;">&times;</button>
+            </div>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem;">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;">
+                <button class="btn btn-secondary" onclick="loadQueryExecutionLogs()" style="height: 30px; width: auto; font-size: 0.75rem; padding: 0 0.85rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+                    <i class="fa-solid fa-arrows-rotate"></i> Refresh Log
+                </button>
+            </div>
+            
+            <div style="display: flex; gap: 1.25rem; height: 450px;">
+                <!-- Left side: List of execution logs -->
+                <div style="width: 50%; border: 1px solid var(--border-flat); border-radius: 6px; overflow-y: auto; background: #07090d; display: flex; flex-direction: column;">
+                    <table class="mapper-table" style="width: 100%; margin-bottom: 0; border-collapse: collapse;">
+                        <thead>
+                            <tr style="position: sticky; top: 0; z-index: 5; background: #07090d; border-bottom: 1px solid var(--border-flat);">
+                                <th style="padding: 0.6rem 0.5rem; color: var(--accent-teal); font-size: 0.75rem; text-align: left;">Waktu</th>
+                                <th style="padding: 0.6rem 0.5rem; color: var(--accent-teal); font-size: 0.75rem; text-align: left;">Server & DB</th>
+                                <th style="padding: 0.6rem 0.5rem; color: var(--accent-teal); font-size: 0.75rem; text-align: center; width: 80px;">Status</th>
+                                <th style="padding: 0.6rem 0.5rem; color: var(--accent-teal); font-size: 0.75rem; text-align: right; width: 60px;">Durasi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="execution-logs-list">
+                            <!-- Loaded dynamically -->
+                        </tbody>
+                    </table>
+                    <div id="execution-logs-empty" style="padding: 3rem 1.5rem; text-align: center; color: var(--text-muted); display: none;">
+                        <i class="fa-solid fa-list-check" style="font-size: 2rem; opacity: 0.2; margin-bottom: 0.75rem; display: block;"></i>
+                        Tidak ada log eksekusi query.
+                    </div>
+                </div>
+
+                <!-- Right side: Execution details preview -->
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 0.75rem; overflow: hidden;">
+                    <!-- Query Text Preview -->
+                    <div style="flex: 1; border: 1px solid var(--border-flat); border-radius: 6px; background: #07090d; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+                        <div style="background: rgba(255, 255, 255, 0.02); border-bottom: 1px solid var(--border-flat); padding: 0.4rem 0.75rem; display: flex; align-items: center; justify-content: space-between;">
+                            <span style="font-size: 0.8rem; font-weight: 600; color: #ffffff;">Script Query</span>
+                            <button class="btn btn-secondary" id="btn-copy-log-query" onclick="copyLogQueryToClipboard()" style="height: 24px; padding: 0 0.5rem; font-size: 0.7rem; display: none;">
+                                <i class="fa-solid fa-copy"></i> Salin Query
+                            </button>
+                        </div>
+                        <div style="flex: 1; overflow: auto; padding: 0.5rem; font-family: Consolas, Monaco, monospace; font-size: 0.8rem; white-space: pre-wrap; word-break: break-all; color: #cbd5e1; background: #07090d;" id="log-query-preview">
+                            <div style="color: var(--text-muted); text-align: center; margin-top: 2rem;">Pilih log di sebelah kiri untuk melihat detail</div>
+                        </div>
+                    </div>
+
+                    <!-- Response / Error Preview -->
+                    <div style="height: 180px; border: 1px solid var(--border-flat); border-radius: 6px; background: #07090d; display: flex; flex-direction: column; overflow: hidden;">
+                        <div style="background: rgba(255, 255, 255, 0.02); border-bottom: 1px solid var(--border-flat); padding: 0.4rem 0.75rem;">
+                            <span style="font-size: 0.8rem; font-weight: 600; color: #ffffff;">Respon / Pesan Error</span>
+                        </div>
+                        <div style="flex: 1; overflow: auto; padding: 0.5rem; font-family: Consolas, Monaco, monospace; font-size: 0.8rem; white-space: pre-wrap; word-break: break-all; color: #e2e8f0; background: #07090d;" id="log-response-preview">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeQueryExecutionLogModal()" style="width: auto;">Tutup</button>
+        </div>
+    </div>
+</div>
+

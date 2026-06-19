@@ -1216,3 +1216,142 @@ GO
     addNewQueryTab(template, tabName);
     closeCreateSpModal();
 }
+
+// ── Query Execution Logs Modal & Functions ──────────────────────────────────
+let activeLogItem = null;
+
+function openQueryExecutionLogModal() {
+    const modal = document.getElementById('query-execution-log-modal');
+    if (!modal) return;
+    
+    // Clear preview
+    activeLogItem = null;
+    document.getElementById('log-query-preview').innerHTML = '<div style="color: var(--text-muted); text-align: center; margin-top: 2rem;">Pilih log di sebelah kiri untuk melihat detail</div>';
+    document.getElementById('log-response-preview').innerHTML = '';
+    document.getElementById('btn-copy-log-query').style.display = 'none';
+    
+    modal.classList.add('active');
+    
+    loadQueryExecutionLogs();
+}
+
+function closeQueryExecutionLogModal() {
+    const modal = document.getElementById('query-execution-log-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+async function loadQueryExecutionLogs() {
+    const listBody = document.getElementById('execution-logs-list');
+    const emptyDiv = document.getElementById('execution-logs-empty');
+    if (!listBody) return;
+    
+    listBody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--accent-teal);"><i class="fa-solid fa-spinner fa-spin"></i> Memuat log...</td></tr>';
+    if (emptyDiv) emptyDiv.style.display = 'none';
+    
+    try {
+        const res = await fetch(`${API_BASE}/query/execution-logs`);
+        if (!res.ok) throw new Error("Gagal mengambil log dari server.");
+        const logs = await res.json();
+        
+        listBody.innerHTML = '';
+        if (!logs || logs.length === 0) {
+            if (emptyDiv) emptyDiv.style.display = 'block';
+            return;
+        }
+        if (emptyDiv) emptyDiv.style.display = 'none';
+        
+        // Cache globally for selection preview
+        window.loadedExecutionLogs = {};
+        
+        logs.forEach(log => {
+            window.loadedExecutionLogs[log.Id || log.id] = log;
+            
+            const row = document.createElement('tr');
+            row.style.cursor = 'pointer';
+            row.style.borderBottom = '1px solid var(--border-flat)';
+            
+            const dateObj = new Date(log.ExecutedAt || log.executedAt);
+            const timeStr = dateObj.toLocaleDateString('id-ID') + ' ' + dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            
+            let statusBadge = '';
+            const status = log.Status || log.status;
+            if (status === 'Success') {
+                statusBadge = '<span style="background: rgba(34,197,94,0.12); color: #22c55e; border: 1px solid rgba(34,197,94,0.2); border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; font-weight: bold;">Success</span>';
+            } else if (status === 'Failed') {
+                statusBadge = '<span style="background: rgba(239,68,68,0.12); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; font-weight: bold;">Failed</span>';
+            } else {
+                statusBadge = '<span style="background: rgba(234,179,8,0.12); color: #eab308; border: 1px solid rgba(234,179,8,0.2); border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; font-weight: bold;">Running</span>';
+            }
+            
+            const duration = log.ExecutionTimeMs !== null ? `${log.ExecutionTimeMs} ms` : '-';
+            
+            row.innerHTML = `
+                <td style="padding: 0.6rem 0.5rem; color: #ffffff; font-size: 0.78rem;">${timeStr}</td>
+                <td style="padding: 0.6rem 0.5rem; color: var(--text-muted); font-size: 0.78rem; word-break: break-all;">
+                    <strong>${escapeHtml(log.ServerName || log.serverName)}</strong><br/>
+                    <span style="opacity: 0.8;">[${escapeHtml(log.DatabaseName || log.databaseName)}]</span>
+                </td>
+                <td style="padding: 0.6rem 0.5rem; text-align: center;">${statusBadge}</td>
+                <td style="padding: 0.6rem 0.5rem; text-align: right; color: var(--text-muted); font-size: 0.78rem;">${duration}</td>
+            `;
+            
+            row.addEventListener('click', () => {
+                // Highlight row
+                listBody.querySelectorAll('tr').forEach(r => r.style.background = 'transparent');
+                row.style.background = 'rgba(45, 212, 191, 0.08)';
+                
+                selectExecutionLogItem(log);
+            });
+            
+            listBody.appendChild(row);
+        });
+        
+    } catch (err) {
+        console.error("Error loading execution logs:", err);
+        listBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Gagal memuat log: ${escapeHtml(err.message)}</td></tr>`;
+    }
+}
+
+function selectExecutionLogItem(log) {
+    activeLogItem = log;
+    
+    const queryPreview = document.getElementById('log-query-preview');
+    const responsePreview = document.getElementById('log-response-preview');
+    const copyBtn = document.getElementById('btn-copy-log-query');
+    
+    if (queryPreview) {
+        queryPreview.textContent = log.QueryText || log.queryText || '';
+    }
+    
+    if (responsePreview) {
+        const errorMsg = log.ErrorMessage || log.errorMessage;
+        const responseMsg = log.ResponseMessages || log.responseMessages;
+        
+        if (errorMsg) {
+            responsePreview.innerHTML = `<span style="color: #ef4444;">${escapeHtml(errorMsg)}</span>`;
+        } else if (responseMsg) {
+            responsePreview.textContent = responseMsg;
+        } else {
+            responsePreview.innerHTML = '<span style="color: var(--text-muted); font-style: italic;">Tidak ada pesan respon.</span>';
+        }
+    }
+    
+    if (copyBtn) {
+        copyBtn.style.display = 'inline-flex';
+    }
+}
+
+async function copyLogQueryToClipboard() {
+    if (!activeLogItem) return;
+    const queryText = activeLogItem.QueryText || activeLogItem.queryText;
+    if (!queryText) return;
+    
+    try {
+        await navigator.clipboard.writeText(queryText);
+        uiAlert("Query berhasil disalin!", { variant: 'success' });
+    } catch (e) {
+        uiAlert("Gagal menyalin: " + e.message, { variant: 'error' });
+    }
+}

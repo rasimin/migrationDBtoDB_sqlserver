@@ -284,5 +284,19 @@ namespace DbMigrator.Web.Controllers
                 return Ok(new { Success = false, Message = $"Gagal generate insert script: {ex.Message}" });
             }
         }
+
+        [HttpGet("execution-logs")]
+        public async Task<IActionResult> GetExecutionLogs()
+        {
+            try
+            {
+                var logs = await _queryService.GetExecutionLogsAsync();
+                return Ok(logs);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { Success = false, Message = $"Gagal mengambil log: {ex.Message}" });
+            }
+        }
     }
 }
