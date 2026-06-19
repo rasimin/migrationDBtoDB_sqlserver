@@ -930,8 +930,8 @@ async function deleteHistoryQuery(id, event) {
     if (!confirmDel) return;
 
     try {
-        const res = await fetch(`${API_BASE}/query/saved-queries/${id}`, {
-            method: 'DELETE'
+        const res = await fetch(`${API_BASE}/query/saved-queries/${id}/delete`, {
+            method: 'POST'
         });
         if (!res.ok) throw new Error("Gagal menghapus kueri di database.");
 

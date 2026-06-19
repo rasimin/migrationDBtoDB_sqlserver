@@ -141,8 +141,8 @@ async function deleteSavedConnectionClick() {
     }
     
     try {
-        const res = await fetch(`${API_BASE}/query/connections/${id}`, {
-            method: 'DELETE'
+        const res = await fetch(`${API_BASE}/query/connections/${id}/delete`, {
+            method: 'POST'
         });
         if (!res.ok) throw new Error("Gagal menghapus koneksi");
         
@@ -1261,6 +1261,49 @@ function initMonacoQueryEditor() {
             }
         });
 
+        // Intercept Tab key for "ssf" / "SSF" expansion
+        queryConsoleEditor.onKeyDown(function(e) {
+            if (e.keyCode === monaco.KeyCode.Tab) {
+                const selection = queryConsoleEditor.getSelection();
+                if (selection && !selection.isEmpty()) return;
+
+                const position = queryConsoleEditor.getPosition();
+                const model = queryConsoleEditor.getModel();
+                if (!model) return;
+
+                const textBefore = model.getValueInRange({
+                    startLineNumber: position.lineNumber,
+                    startColumn: 1,
+                    endLineNumber: position.lineNumber,
+                    endColumn: position.column
+                });
+
+                // Match ssf (case-insensitive) preceded by word boundary, whitespace or start of line
+                const match = textBefore.match(/(?:^|\s)ssf$/i);
+                if (match) {
+                    // Prevent standard tab insert
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // Calculate start column of "ssf"
+                    const startColumn = position.column - 3;
+                    const range = new monaco.Range(
+                        position.lineNumber,
+                        startColumn,
+                        position.lineNumber,
+                        position.column
+                    );
+
+                    queryConsoleEditor.executeEdits("ssf-snippet-expansion", [{
+                        range: range,
+                        text: "select top 50 * from ",
+                        forceMoveMarkers: true
+                    }]);
+                }
+            }
+        });
+
+
         // Register custom SQL autocomplete provider
         registerMonacoSqlAutocomplete();
         
@@ -1505,6 +1548,21 @@ function registerMonacoSqlAutocomplete() {
                     });
                 });
             }
+            // 4. Custom Snippets (e.g. ssf)
+            suggestions.push({
+                label: 'ssf',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                detail: 'Select top 50 from table',
+                documentation: 'Expands to: select top 50 * from ',
+                insertText: 'select top 50 * from '
+            });
+            suggestions.push({
+                label: 'SSF',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                detail: 'Select top 50 from table',
+                documentation: 'Expands to: select top 50 * from ',
+                insertText: 'select top 50 * from '
+            });
 
             return { suggestions: suggestions };
         }

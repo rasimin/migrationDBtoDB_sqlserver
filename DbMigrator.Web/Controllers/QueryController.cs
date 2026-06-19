@@ -89,6 +89,7 @@ namespace DbMigrator.Web.Controllers
             }
         }
 
+        [HttpPost("saved-queries/{id:int}/delete")]
         [HttpDelete("saved-queries/{id:int}")]
         public async Task<IActionResult> DeleteSavedQuery(int id)
         {
@@ -140,6 +141,7 @@ namespace DbMigrator.Web.Controllers
             }
         }
 
+        [HttpPost("connections/{id:int}/delete")]
         [HttpDelete("connections/{id:int}")]
         public async Task<IActionResult> DeleteSavedConnection(int id)
         {
