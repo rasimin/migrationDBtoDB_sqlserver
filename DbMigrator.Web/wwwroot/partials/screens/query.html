@@ -117,9 +117,6 @@
                             <i class="fa-solid fa-code" style="font-size: 0.75rem;"></i> Insert Tools <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem; opacity: 0.7; margin-left: 0.2rem;"></i>
                         </button>
                         <div class="query-toolbar-dropdown-menu">
-                            <button class="query-toolbar-dropdown-item" onclick="openGenerateInsertModal(); closeAllQueryToolbarDropdowns();" title="Generate INSERT script untuk data tabel">
-                                <i class="fa-solid fa-code"></i> Generate Insert
-                            </button>
                             <button class="query-toolbar-dropdown-item" onclick="insertScopeIdentity(); closeAllQueryToolbarDropdowns();" title="Sisipkan DECLARE @NewID BIGINT = SCOPE_IDENTITY() di posisi kursor">
                                 <i class="fa-solid fa-key"></i> Scope Identity
                             </button>
@@ -220,7 +217,7 @@
                         </div>
 
                         <!-- Tree List Container -->
-                        <div id="schema-exp-list" style="flex: 1; min-height: 200px; max-height: 520px; overflow-y: auto; border: 1px solid var(--border-flat); border-radius: 6px; padding: 0.3rem 0.25rem; background: #07090d;">
+                        <div id="schema-exp-list" style="flex: 1; min-height: 200px; max-height: 520px; overflow: auto; border: 1px solid var(--border-flat); border-radius: 6px; padding: 0.3rem 0.25rem; background: #07090d;">
                             <div style="padding: 1.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;">
                                 <i class="fa-solid fa-folder-tree" style="font-size: 1.5rem; margin-bottom: 0.5rem; display: block; opacity: 0.3;"></i>
                                 Klik <strong>Muat</strong> untuk memuat daftar objek skema.

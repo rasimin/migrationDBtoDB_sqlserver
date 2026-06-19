@@ -253,6 +253,8 @@
     user-select: none;
     transition: background 0.15s ease;
     position: relative;
+    width: max-content;
+    min-width: 100%;
 }
 
 .se-folder:hover {
@@ -360,6 +362,8 @@
     cursor: pointer;
     transition: background 0.12s ease;
     position: relative;
+    width: max-content;
+    min-width: 100%;
 }
 
 .se-item:hover {
@@ -404,10 +408,7 @@
     font-size: 0.77rem;
     color: #cbd5e1;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     flex: 1;
-    min-width: 0;
     transition: color 0.1s ease;
 }
 
@@ -429,6 +430,23 @@
 #schema-exp-list {
     padding: 0.3rem 0.25rem !important;
     gap: 0 !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.08) rgba(255, 255, 255, 0.01);
+}
+
+#schema-exp-list::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+#schema-exp-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.01);
+}
+#schema-exp-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+}
+#schema-exp-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 /* Deprecated flat-list item — hidden after tree migration */

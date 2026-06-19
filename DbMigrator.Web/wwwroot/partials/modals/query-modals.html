@@ -5,28 +5,21 @@
     <div class="modal-content" style="max-width: 500px; border-color: var(--accent-teal);">
         <div class="modal-header">
             <div>
-                <h3>Generate INSERT Script</h3>
+                <h3>Script INSERT To (with data)</h3>
                 <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Hasilkan script kueri INSERT SQL dari data tabel berdasarkan kondisi WHERE.</p>
             </div>
-            <button class="close-btn" onclick="closeGenerateInsertModal()">&times;</button>
+            <button class="close-btn" onclick="closeInsertToWithDataModal()">&times;</button>
         </div>
         <div class="modal-body" style="padding: 1.25rem 1.75rem; min-height: 360px;">
+            <!-- Hidden input to store selected table -->
+            <input type="hidden" id="insert-table-select" value="">
+            
+            <!-- Table Display Label -->
             <div class="form-group" style="margin-bottom: 1.25rem;">
-                <label style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Pilih Tabel:</label>
-                <div class="query-table-custom-select">
-                    <div id="query-table-trigger" onclick="toggleTableDropdown(event)">
-                        <span id="query-table-trigger-text">-- Pilih Tabel --</span>
-                        <i class="fa-solid fa-chevron-down" style="font-size: 0.7rem; opacity: 0.7;"></i>
-                    </div>
-                    <div id="query-table-dropdown">
-                        <input type="text" id="query-table-search" placeholder="Cari tabel..." oninput="filterTableList(this.value)" autocomplete="off">
-                        <div id="query-table-list">
-                            <!-- Items loaded dynamically -->
-                        </div>
-                    </div>
-                </div>
-                <input type="hidden" id="insert-table-select" value="">
+                <label style="font-size: 0.82rem; font-weight: 600; color: var(--accent-teal); display: block; margin-bottom: 0.4rem;">Tabel:</label>
+                <div style="font-size: 0.95rem; font-weight: bold; color: #ffffff;" id="insert-table-display">-- Nama Tabel --</div>
             </div>
+
             <div class="form-group" style="margin-bottom: 1.25rem;">
                 <label for="insert-where-clause" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">WHERE Clause (Opsional):</label>
                 <input type="text" id="insert-where-clause" class="form-control" placeholder="Contoh: IDAgentStructure = 144" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;">
@@ -39,7 +32,7 @@
             <div id="generate-insert-status" style="display: none; font-size: 0.8rem; padding: 0.5rem 0.75rem; border-radius: 6px; margin-top: 1rem;"></div>
         </div>
         <div class="modal-footer">
-            <button class="btn btn-secondary" onclick="closeGenerateInsertModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-secondary" onclick="closeInsertToWithDataModal()" style="width: auto;">Batal</button>
             <button class="btn btn-primary" id="btn-generate-insert-exec" onclick="executeGenerateInsertScript()" style="width: auto; background: var(--accent-teal); color: #0d0f14; border-color: var(--accent-teal); display: inline-flex; align-items: center; gap: 0.35rem;">
                 <i class="fa-solid fa-gears"></i> Generate Script
             </button>

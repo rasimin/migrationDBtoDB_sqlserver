@@ -1,4 +1,4 @@
-﻿    <div id="main-screen-migration" class="main-screen">
+    <div id="main-screen-migration" class="main-screen">
         <div class="dashboard-grid">
 
         <!-- ============================================================ -->
@@ -542,65 +542,6 @@
                             <!-- Tools Grid: SP Generator & Database Backup/Restore [NEW] -->
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 1.5rem; align-items: start;">
                                 
-                                <!-- Stored Procedure Generator Card -->
-                                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); border-radius: 10px; padding: 1.5rem;">
-                                    <h4 style="margin: 0 0 1rem 0; font-size: 0.95rem; color: #ffffff; display: flex; align-items: center; gap: 0.4rem; border-bottom: 1px solid var(--border-flat); padding-bottom: 0.5rem;">
-                                        <i class="fa-solid fa-file-code" style="color: var(--accent-teal);"></i> Stored Procedure Generator
-                                    </h4>
-                                    <div style="display: flex; flex-direction: column; gap: 1.2rem;">
-                                        <!-- DB Source/Target Selection -->
-                                        <div>
-                                            <label style="display: block; font-size: 0.82rem; font-weight: 600; color: #ffffff; margin-bottom: 0.4rem;">Pilih Referensi Database</label>
-                                            <div style="display: flex; gap: 1.5rem; align-items: center;">
-                                                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--text-light); cursor: pointer;">
-                                                    <input type="radio" name="tool-db-ref" value="source" checked onchange="populateToolsTableDatalist(true)" style="accent-color: var(--accent-purple); cursor: pointer;">
-                                                    <span>Source DB</span>
-                                                </label>
-                                                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--text-light); cursor: pointer;">
-                                                    <input type="radio" name="tool-db-ref" value="target" onchange="populateToolsTableDatalist(true)" style="accent-color: var(--accent-purple); cursor: pointer;">
-                                                    <span>Target DB</span>
-                                                </label>
-                                            </div>
-                                        </div>
-
-                                        <!-- Table Selector with Autocomplete -->
-                                        <div class="form-group" style="margin-bottom: 0;">
-                                            <label for="tool-table-name" style="display: block; font-size: 0.82rem; font-weight: 600; color: #ffffff; margin-bottom: 0.4rem;">Nama Tabel</label>
-                                            <div class="table-search-field">
-                                                <input id="tool-table-name" class="form-control table-search-input" autocomplete="off" placeholder="Ketik atau pilih nama tabel..." style="font-size: 0.82rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%;">
-                                                <button type="button" class="table-search-toggle" data-table-input="tool-table-name" title="Tampilkan tabel">
-                                                    <i class="fa-solid fa-chevron-down"></i>
-                                                </button>
-                                                <div id="tool-table-options" class="table-autocomplete" style="max-height: 200px; overflow-y: auto;"></div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Key Column / PK -->
-                                        <div class="form-group" style="margin-bottom: 0;">
-                                            <label for="tool-key-column" style="display: block; font-size: 0.82rem; font-weight: 600; color: #ffffff; margin-bottom: 0.4rem;">Kolom Kunci (Primary Key)</label>
-                                            <input type="text" id="tool-key-column" value="Id" placeholder="Misal: Id, idcustomer, NIK..." class="form-control" style="font-size: 0.82rem; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%;">
-                                        </div>
-
-                                        <!-- Options Checkboxes -->
-                                        <div style="display: flex; flex-direction: column; gap: 0.75rem; padding: 0.25rem 0;">
-                                            <label style="display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.8rem; color: var(--text-light); cursor: pointer; line-height: 1.4;">
-                                                <input type="checkbox" id="tool-exclude-identity" checked style="accent-color: var(--accent-purple); margin-top: 3px; cursor: pointer;">
-                                                <span>Eksklusi Kolom Kunci pada script <strong>INSERT</strong> (Identity Auto-Increment)</span>
-                                            </label>
-                                        </div>
-
-                                        <!-- Action Buttons -->
-                                        <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem;">
-                                            <button class="btn btn-secondary" onclick="generateToolSpScript('insert')" style="flex: 1; padding: 0.6rem 1rem; font-size: 0.82rem; border-color: var(--accent-teal); color: var(--accent-teal); background: rgba(0,173,181,0.05); font-weight: 600; height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; cursor: pointer;">
-                                                <i class="fa-solid fa-file-circle-plus"></i> Generate SP INSERT
-                                            </button>
-                                            <button class="btn btn-secondary" onclick="generateToolSpScript('update')" style="flex: 1; padding: 0.6rem 1rem; font-size: 0.82rem; border-color: var(--accent-purple); color: var(--accent-purple); background: rgba(168,85,247,0.06); font-weight: 600; height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; cursor: pointer;">
-                                                <i class="fa-solid fa-file-signature"></i> Generate SP UPDATE
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
                                 <!-- Database Backup & Restore Card -->
                                 <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); border-radius: 10px; padding: 1.5rem;">
                                     <h4 style="margin: 0 0 1rem 0; font-size: 0.95rem; color: #ffffff; display: flex; align-items: center; gap: 0.4rem; border-bottom: 1px solid var(--border-flat); padding-bottom: 0.5rem;">

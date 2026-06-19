@@ -203,6 +203,7 @@ async function searchSchemaObjects() {
                                 ${typeKey === 'TABLE' ? `
                                 <button onclick="scriptInsertToTable('${jsName}'); closeAllSchemaItemDropdowns();" class="se-dropdown-item"><i class="fa-solid fa-file-import"></i> Script INSERT To</button>
                                 <button onclick="scriptUpdateToTable('${jsName}'); closeAllSchemaItemDropdowns();" class="se-dropdown-item"><i class="fa-solid fa-pen-to-square"></i> Script UPDATE To</button>
+                                <button onclick="openInsertToWithDataModal('${jsName}'); closeAllSchemaItemDropdowns();" class="se-dropdown-item"><i class="fa-solid fa-database"></i> Script INSERT To (with data)</button>
                                 ` : ''}
                             </div>
                         </div>

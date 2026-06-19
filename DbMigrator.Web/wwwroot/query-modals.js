@@ -268,47 +268,26 @@ function insertMapperToNewTab() {
     closeInsertMapperModal();
 }
 
-// ── Generate INSERT Script Logic ───────────────────────────────────────────
-async function openGenerateInsertModal() {
+// ── Insert to ( with data) Script Logic ───────────────────────────────────────────
+async function openInsertToWithDataModal(tableName) {
     if (!queryConsoleActiveServer) {
         await uiAlert("Hubungkan ke database server terlebih dahulu!");
         return;
     }
     
-    // Reset selections
+    if (!tableName) {
+        await uiAlert("Nama tabel tidak valid!");
+        return;
+    }
+    
+    // Set selection
     const selectHidden = document.getElementById('insert-table-select');
-    if (selectHidden) selectHidden.value = '';
+    if (selectHidden) selectHidden.value = tableName;
     
-    const triggerText = document.getElementById('query-table-trigger-text');
-    if (triggerText) triggerText.textContent = '-- Pilih Tabel --';
+    const tableDisplay = document.getElementById('insert-table-display');
+    if (tableDisplay) tableDisplay.textContent = tableName;
     
-    // Clear search
-    const searchInput = document.getElementById('query-table-search');
-    if (searchInput) searchInput.value = '';
-    
-    // Extract and sort table list
-    queryConsoleActiveTables = (queryConsoleSchema.Objects || queryConsoleSchema.objects || [])
-        .filter(obj => (obj.Type || obj.type) === 'TABLE')
-        .map(obj => obj.Name || obj.name)
-        .sort();
-        
-    // Render list
-    filterTableList('');
-    
-    const modal = document.getElementById('generate-insert-modal');
-    if (modal) modal.classList.add('active');
-}
-
-function closeGenerateInsertModal() {
-    const modal = document.getElementById('generate-insert-modal');
-    if (modal) modal.classList.remove('active');
-    
-    const tableSelect = document.getElementById('insert-table-select');
-    if (tableSelect) tableSelect.value = '';
-    
-    const triggerText = document.getElementById('query-table-trigger-text');
-    if (triggerText) triggerText.textContent = '-- Pilih Tabel --';
-    
+    // Reset other inputs
     const whereInput = document.getElementById('insert-where-clause');
     if (whereInput) whereInput.value = '';
     
@@ -321,70 +300,34 @@ function closeGenerateInsertModal() {
         statusDiv.innerHTML = '';
     }
     
-    const dropdown = document.getElementById('query-table-dropdown');
-    if (dropdown) dropdown.style.display = 'none';
+    const modal = document.getElementById('generate-insert-modal');
+    if (modal) modal.classList.add('active');
 }
 
-function toggleTableDropdown(event) {
-    if (event) event.stopPropagation();
-    const dropdown = document.getElementById('query-table-dropdown');
-    if (!dropdown) return;
-    const isVisible = dropdown.style.display === 'block';
-    dropdown.style.display = isVisible ? 'none' : 'block';
-    if (!isVisible) {
-        const searchInput = document.getElementById('query-table-search');
-        if (searchInput) {
-            searchInput.value = '';
-            filterTableList('');
-            searchInput.focus();
-        }
+function closeInsertToWithDataModal() {
+    const modal = document.getElementById('generate-insert-modal');
+    if (modal) modal.classList.remove('active');
+    
+    const tableSelect = document.getElementById('insert-table-select');
+    if (tableSelect) tableSelect.value = '';
+    
+    const tableDisplay = document.getElementById('insert-table-display');
+    if (tableDisplay) tableDisplay.textContent = '-- Nama Tabel --';
+    
+    const whereInput = document.getElementById('insert-where-clause');
+    if (whereInput) whereInput.value = '';
+    
+    const useVarsCheckbox = document.getElementById('insert-use-variables');
+    if (useVarsCheckbox) useVarsCheckbox.checked = false;
+    
+    const statusDiv = document.getElementById('generate-insert-status');
+    if (statusDiv) {
+        statusDiv.style.display = 'none';
+        statusDiv.innerHTML = '';
     }
 }
 
-function filterTableList(searchQuery) {
-    const listContainer = document.getElementById('query-table-list');
-    if (!listContainer) return;
-    
-    const query = (searchQuery || '').toLowerCase().trim();
-    const filtered = queryConsoleActiveTables.filter(t => t.toLowerCase().includes(query));
-    
-    const activeTableSelect = document.getElementById('insert-table-select');
-    const selectedTableVal = activeTableSelect ? activeTableSelect.value : '';
-    
-    if (filtered.length === 0) {
-        listContainer.innerHTML = `<div style="padding: 0.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;">Tidak ditemukan</div>`;
-        return;
-    }
-    
-    listContainer.innerHTML = filtered.map(t => {
-        const isSelected = t === selectedTableVal;
-        return `
-            <div class="table-select-item ${isSelected ? 'selected' : ''}" 
-                 onclick="selectTableForInsert('${escapeHtml(t)}')" 
-                 title="${escapeHtml(t)}">
-                ${escapeHtml(t)}
-            </div>
-        `;
-    }).join('');
-}
 
-function selectTableForInsert(tableName) {
-    const tableSelectInput = document.getElementById('insert-table-select');
-    if (tableSelectInput) {
-        tableSelectInput.value = tableName;
-    }
-    
-    const triggerText = document.getElementById('query-table-trigger-text');
-    if (triggerText) {
-        triggerText.textContent = tableName;
-    }
-    
-    // Close dropdown
-    const dropdown = document.getElementById('query-table-dropdown');
-    if (dropdown) {
-        dropdown.style.display = 'none';
-    }
-}
 
 async function executeGenerateInsertScript() {
     const tableSelect = document.getElementById('insert-table-select');
@@ -450,7 +393,7 @@ async function executeGenerateInsertScript() {
         }
         
         await uiAlert(`Script INSERT berhasil digenerate (${data.RowCount} baris) dan dimasukkan ke editor!`);
-        closeGenerateInsertModal();
+        closeInsertToWithDataModal();
     } catch (err) {
         console.error(err);
         if (statusDiv) {
