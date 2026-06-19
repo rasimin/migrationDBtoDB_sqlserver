@@ -17,7 +17,7 @@
                     <div class="form-group" style="flex: 1; margin-bottom: 0;">
                         <label for="query-saved-conn-select" style="font-size: 0.82rem; font-weight: 600; color: var(--accent-teal); display: block; margin-bottom: 0.4rem;">Pilih dari Histori Koneksi</label>
                         <div style="display: flex; gap: 0.25rem;">
-                            <select id="query-saved-conn-select" class="form-control" onchange="prefillSavedConnection()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; flex: 1;">
+                            <select id="query-saved-conn-select" class="form-control" onchange="prefillSavedConnection()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; flex: 1; padding: 0 0.75rem;">
                                 <option value="">-- Pilih Histori --</option>
                             </select>
                             <button type="button" class="btn btn-secondary" onclick="deleteSavedConnectionClick()" title="Hapus koneksi terpilih" style="height: 38px; width: 38px; min-width: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; border-radius: 8px;">
@@ -41,7 +41,7 @@
 
                 <div class="form-group" style="margin-bottom: 1rem;">
                     <label for="query-auth-type" style="font-size: 0.82rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Authentication:</label>
-                    <select id="query-auth-type" class="form-control" onchange="toggleQueryAuthFields()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff;">
+                    <select id="query-auth-type" class="form-control" onchange="toggleQueryAuthFields()" style="font-size: 0.85rem; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;">
                         <option value="SQL">SQL Server Authentication</option>
                         <option value="Windows">Windows Authentication</option>
                     </select>
@@ -81,8 +81,29 @@
             <!-- Query Editor Main Panel (Hidden by default) -->
             <div id="query-editor-main-panel" style="display: none;">
                 <!-- Toolbar (SSMS Style) -->
-                <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 1.25rem; margin-bottom: 1.25rem; flex-wrap: wrap; background: rgba(255,255,255,0.02); padding: 0.5rem 1rem; border: 1px solid var(--border-flat); border-radius: 8px;">
+                <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 1.25rem; margin-bottom: 1.25rem; flex-wrap: wrap; background: rgba(255, 255, 255, 0.02); padding: 0.5rem 1rem; border: 1px solid var(--border-flat); border-radius: 8px;">
                     
+                    <!-- Server Selector Custom Dropdown -->
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fa-solid fa-server" style="color: var(--accent-teal); font-size: 0.85rem;"></i>
+                        <div class="query-server-custom-select">
+                            <div id="query-server-trigger" onclick="toggleServerDropdown(event)">
+                                <span id="query-server-trigger-text">Belum terhubung</span>
+                                <i class="fa-solid fa-chevron-down" style="font-size: 0.7rem; opacity: 0.7;"></i>
+                            </div>
+                            <div id="query-server-dropdown">
+                                <div id="query-server-list">
+                                    <!-- Connected servers loaded dynamically -->
+                                </div>
+                                <div style="border-top: 1px solid var(--border-flat); margin-top: 0.5rem; padding-top: 0.5rem;">
+                                    <button type="button" class="btn btn-secondary" onclick="openNewConnectionModalClick(event)" style="width: 100%; height: 28px; font-size: 0.76rem; display: flex; align-items: center; justify-content: center; gap: 0.25rem; padding: 0; background: rgba(45, 212, 191, 0.1); border-color: rgba(45, 212, 191, 0.2); color: var(--accent-teal);">
+                                        <i class="fa-solid fa-plus"></i> Hubungkan Server Baru
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- DB Selector Custom Dropdown -->
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <i class="fa-solid fa-database" style="color: var(--accent-teal); font-size: 0.85rem;"></i>
@@ -154,13 +175,10 @@
 
                     <div style="height: 20px; width: 1px; background: var(--border-flat); margin: 0 0.25rem; flex-grow: 1; border: none;"></div>
 
-                    <!-- Server Connection Info Badge -->
-                    <div style="display: flex; align-items: center; gap: 0.4rem; background: rgba(255, 255, 255, 0.03); padding: 0.25rem 0.75rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05);">
-                        <i class="fa-solid fa-server" style="color: var(--accent-teal); font-size: 0.75rem;"></i>
-                        <span id="query-active-conn-info" style="font-size: 0.78rem; color: #ffffff; font-weight: 500;">Belum terhubung</span>
-                    </div>
+                    <!-- Hidden elements kept for script compatibility -->
+                    <span id="query-active-conn-info" style="display: none;">Belum terhubung</span>
 
-                    <button class="btn btn-secondary" onclick="disconnectQueryConsole()" style="width: auto; height: 32px; padding: 0 0.75rem; font-size: 0.8rem; color: #f43f5e; border-color: rgba(244, 63, 94, 0.2); background: rgba(244, 63, 94, 0.05); display: inline-flex; align-items: center; gap: 0.35rem;" title="Disconnect">
+                    <button class="btn btn-secondary" onclick="disconnectQueryConsole()" style="width: auto; height: 32px; padding: 0 0.75rem; font-size: 0.8rem; color: #f43f5e; border-color: rgba(244, 63, 94, 0.2); background: rgba(244, 63, 94, 0.05); display: inline-flex; align-items: center; gap: 0.35rem;" title="Putuskan semua koneksi server">
                         <i class="fa-solid fa-power-off" style="font-size: 0.75rem;"></i> Disconnect
                     </button>
                 </div>
@@ -197,12 +215,18 @@
                             </div>
 
                             <!-- Toolbar row: full-text search + expand/collapse all -->
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
-                                <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.74rem; color: var(--text-muted); cursor: pointer; user-select: none;" title="Cari juga di dalam definisi SP/Function">
-                                    <input type="checkbox" id="schema-exp-search-content" style="width: 13px; height: 13px; accent-color: var(--accent-teal); cursor: pointer;">
-                                    Cari dalam konten
-                                </label>
-                                <div style="display: flex; gap: 0.25rem;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+                                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                    <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.74rem; color: var(--text-muted); cursor: pointer; user-select: none;" title="Cari juga di dalam definisi SP/Function">
+                                        <input type="checkbox" id="schema-exp-search-content" style="width: 13px; height: 13px; accent-color: var(--accent-teal); cursor: pointer;">
+                                        Cari dalam konten
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.74rem; color: var(--text-muted); cursor: pointer; user-select: none;" title="Tampilkan semua database pada server yang terhubung">
+                                        <input type="checkbox" id="schema-exp-show-all" onchange="toggleSchemaShowAllDbs(this.checked)" style="width: 13px; height: 13px; accent-color: var(--accent-teal); cursor: pointer;">
+                                        Tampilkan Semua DB
+                                    </label>
+                                </div>
+                                <div style="display: flex; gap: 0.25rem; align-items: center; margin-top: auto;">
                                     <button class="btn btn-secondary" onclick="expandCollapseAllSchemaFolders(true)" title="Expand semua folder"
                                         style="height: 24px; padding: 0 0.45rem; font-size: 0.7rem; display: inline-flex; align-items: center; gap: 0.2rem; width: auto;">
                                         <i class="fa-solid fa-expand"></i>

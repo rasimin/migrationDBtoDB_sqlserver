@@ -269,8 +269,12 @@ function insertMapperToNewTab() {
 }
 
 // ── Insert to ( with data) Script Logic ───────────────────────────────────────────
-async function openInsertToWithDataModal(tableName) {
-    if (!queryConsoleActiveServer) {
+let insertToWithDataServer = "";
+let insertToWithDataDb = "";
+
+async function openInsertToWithDataModal(tableName, serverName = null, dbName = null) {
+    const sName = serverName || queryConsoleActiveServer;
+    if (!sName) {
         await uiAlert("Hubungkan ke database server terlebih dahulu!");
         return;
     }
@@ -279,6 +283,9 @@ async function openInsertToWithDataModal(tableName) {
         await uiAlert("Nama tabel tidak valid!");
         return;
     }
+    
+    insertToWithDataServer = sName;
+    insertToWithDataDb = dbName || queryConsoleActiveDatabase;
     
     // Set selection
     const selectHidden = document.getElementById('insert-table-select');
@@ -325,6 +332,9 @@ function closeInsertToWithDataModal() {
         statusDiv.style.display = 'none';
         statusDiv.innerHTML = '';
     }
+    
+    insertToWithDataServer = "";
+    insertToWithDataDb = "";
 }
 
 
@@ -357,12 +367,21 @@ async function executeGenerateInsertScript() {
     }
     
     try {
+        const sName = insertToWithDataServer || queryConsoleActiveServer;
+        const dName = insertToWithDataDb || queryConsoleActiveDatabase;
+        const conn = activeConnections[sName] || {
+            serverName: queryConsoleActiveServer,
+            authType: queryConsoleActiveAuth,
+            login: queryConsoleActiveLogin,
+            password: queryConsoleActivePassword
+        };
+        
         const payload = {
-            ServerName: queryConsoleActiveServer,
-            Authentication: queryConsoleActiveAuth,
-            Login: queryConsoleActiveLogin,
-            Password: queryConsoleActivePassword,
-            Database: queryConsoleActiveDatabase,
+            ServerName: conn.serverName,
+            Authentication: conn.authType,
+            Login: conn.login,
+            Password: conn.password,
+            Database: dName,
             TableName: tableName,
             WhereClause: whereClause,
             UseVariables: useVariables

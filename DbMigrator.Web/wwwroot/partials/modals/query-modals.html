@@ -421,3 +421,71 @@
     </div>
 </div>
 
+<!-- ============================================================================
+     MODAL: CHANGE / NEW CONNECTION
+     ============================================================================ -->
+<div class="modal-overlay" id="query-connection-modal">
+    <div class="modal-content" style="max-width: 480px; width: 95%; border-color: var(--accent-teal);">
+        <div class="modal-header">
+            <div>
+                <h3>Hubungkan ke Server</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Masukkan kredensial server baru.</p>
+            </div>
+            <button class="close-btn" onclick="closeChangeConnectionModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.75rem; display: flex; flex-direction: column; gap: 0.75rem;">
+            <!-- Hidden active sessions list for JS compatibility -->
+            <div id="modal-active-sessions-list" style="display: none;"></div>
+
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+                <label for="modal-query-saved-conn-select" style="font-size: 0.8rem; font-weight: 600; color: var(--accent-teal); display: block; margin-bottom: 0.25rem;">Pilih dari Histori Koneksi</label>
+                <select id="modal-query-saved-conn-select" class="form-control" onchange="prefillModalSavedConnection()" style="font-size: 0.82rem; height: 36px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); color: #fff; width: 100%; padding: 0 0.5rem;">
+                    <option value="">-- Pilih Histori --</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+                <label for="modal-query-server-name" style="font-size: 0.8rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.25rem;">Server name:</label>
+                <input type="text" id="modal-query-server-name" class="form-control" placeholder="RASIMIN\MSSQLSERVER2022" style="font-size: 0.82rem; height: 36px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); color: #ffffff; width: 100%; padding: 0 0.5rem;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+                <label for="modal-query-auth-type" style="font-size: 0.8rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.25rem;">Authentication:</label>
+                <select id="modal-query-auth-type" class="form-control" onchange="toggleModalQueryAuthFields()" style="font-size: 0.82rem; height: 36px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); color: #ffffff; width: 100%; padding: 0 0.5rem;">
+                    <option value="SQL">SQL Server Authentication</option>
+                    <option value="Windows">Windows Authentication</option>
+                </select>
+            </div>
+
+            <div id="modal-query-auth-credentials-section">
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                    <label for="modal-query-login" style="font-size: 0.8rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.25rem;">Login:</label>
+                    <input type="text" id="modal-query-login" class="form-control" placeholder="sa" style="font-size: 0.82rem; height: 36px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); color: #ffffff; width: 100%; padding: 0 0.5rem;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                    <label for="modal-query-password" style="font-size: 0.8rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.25rem;">Password:</label>
+                    <input type="password" id="modal-query-password" class="form-control" style="font-size: 0.82rem; height: 36px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); color: #ffffff; width: 100%; padding: 0 0.5rem;">
+                </div>
+            </div>
+
+            <div style="margin-top: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <input type="checkbox" id="modal-query-save-connection" onchange="toggleModalSaveConnectionNameField()" style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--accent-teal);">
+                    <label for="modal-query-save-connection" style="font-size: 0.8rem; color: #ffffff; cursor: pointer; user-select: none;">Simpan koneksi ini untuk orang lain</label>
+                </div>
+                <div id="modal-query-save-conn-name-container" style="display: none;">
+                    <label for="modal-query-connection-name" style="font-size: 0.8rem; font-weight: 600; color: var(--accent-teal); display: block; margin-bottom: 0.25rem;">Nama Koneksi:</label>
+                    <input type="text" id="modal-query-connection-name" class="form-control" placeholder="Contoh: DB Produksi HIbank" style="font-size: 0.82rem; height: 36px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); color: #ffffff; width: 100%; padding: 0 0.5rem;">
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeChangeConnectionModal()" style="width: auto;">Batal</button>
+            <button class="btn btn-primary" onclick="connectModalQueryConsole()" id="btn-modal-query-connect" style="width: auto; background: var(--accent-teal); color: #0d0f14; border-color: var(--accent-teal); display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
+                <i class="fa-solid fa-plug"></i> Hubungkan
+            </button>
+        </div>
+    </div>
+</div>
+

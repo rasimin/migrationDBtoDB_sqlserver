@@ -4,6 +4,7 @@
 
 // ── Query Console connection panel and syntax highlighting logic ──
 let savedConnectionsCache = [];
+let activeConnections = {}; // Registry of connected servers: { serverName: { serverName, authType, login, password, databases: [] } }
 let queryConsoleActiveServer = "";
 let queryConsoleActiveAuth = "";
 let queryConsoleActiveLogin = "";
@@ -254,6 +255,15 @@ async function connectQueryConsole(isSilent = false, targetDatabase = null) {
             queryConsoleActiveDatabase = data.DefaultDatabase || "master";
         }
         
+        // Add to activeConnections registry
+        activeConnections[serverName] = {
+            serverName: serverName,
+            authType: authType,
+            login: login,
+            password: password,
+            databases: data.Databases || []
+        };
+        
         // Save connection state to localStorage
         localStorage.setItem('queryConsoleConnected', 'true');
         localStorage.setItem('queryConsoleServerName', serverName);
@@ -270,7 +280,11 @@ async function connectQueryConsole(isSilent = false, targetDatabase = null) {
         document.getElementById('query-editor-main-panel').style.display = 'block';
         
         // Set connection badge text
-        document.getElementById('query-active-conn-info').textContent = serverName;
+        document.getElementById('query-active-conn-info').textContent = `${serverName} (${queryConsoleActiveDatabase})`;
+        const serverTriggerText = document.getElementById('query-server-trigger-text');
+        if (serverTriggerText) {
+            serverTriggerText.textContent = serverName;
+        }
         
         // Initialize Monaco Editor
         initMonacoQueryEditor();
@@ -290,6 +304,10 @@ async function connectQueryConsole(isSilent = false, targetDatabase = null) {
                 name: 'Query 1',
                 value: initialValue,
                 model: model,
+                serverName: serverName,
+                authType: authType,
+                login: login,
+                password: password,
                 database: queryConsoleActiveDatabase || "master",
                 savedQueryId: null,
                 savedQueryName: "",
@@ -314,6 +332,9 @@ async function connectQueryConsole(isSilent = false, targetDatabase = null) {
         
         // Load initial autocomplete schema
         await loadQueryConsoleSchema();
+        if (typeof rebuildSchemaExplorerTree === 'function') {
+            rebuildSchemaExplorerTree();
+        }
     } catch (err) {
         if (!isSilent) {
             await uiAlert("Koneksi Gagal: " + err.message);
@@ -508,6 +529,11 @@ async function selectDatabase(dbName) {
     
     // Reload autocomplete schema for this database
     await changeQueryDatabase();
+    
+    // Redraw Object Explorer tree
+    if (typeof rebuildSchemaExplorerTree === 'function') {
+        rebuildSchemaExplorerTree();
+    }
 }
 
 function disconnectQueryConsole() {
@@ -517,6 +543,7 @@ function disconnectQueryConsole() {
     queryConsoleActivePassword = "";
     queryConsoleActiveDatabase = "";
     queryConsoleDatabases = [];
+    activeConnections = {};
     queryConsoleSchema = { Objects: [], Columns: [] };
     queryConsoleSchemaCache = {};
     
@@ -587,6 +614,14 @@ document.addEventListener('click', (e) => {
         }
     }
     
+    const serverDropdown = document.getElementById('query-server-dropdown');
+    const serverTrigger = document.getElementById('query-server-trigger');
+    if (serverDropdown && serverDropdown.style.display === 'block') {
+        if (!serverDropdown.contains(e.target) && !serverTrigger.contains(e.target)) {
+            serverDropdown.style.display = 'none';
+        }
+    }
+    
     const tableDropdown = document.getElementById('query-table-dropdown');
     const tableTrigger = document.getElementById('query-table-trigger');
     if (tableDropdown && tableDropdown.style.display === 'block') {
@@ -615,7 +650,7 @@ document.addEventListener('click', (e) => {
 });
 
 // ── Query Console Tab Management Functions ──────────────────────────────────
-function addNewQueryTab(initialValue = '', tabName = '') {
+function addNewQueryTab(initialValue = '', tabName = '', targetServer = null, targetDatabase = null) {
     if (!queryConsoleEditor) {
         console.warn("Monaco editor is not initialized yet.");
         return;
@@ -639,12 +674,33 @@ function addNewQueryTab(initialValue = '', tabName = '') {
     // Create a new Monaco model for this tab
     const model = monaco.editor.createModel(queryValue, 'sql');
 
+    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+
+    // Resolve connection config
+    let sName = targetServer || (activeTab ? (activeTab.serverName || "") : queryConsoleActiveServer);
+    let auth = activeTab ? (activeTab.authType || "SQL") : queryConsoleActiveAuth;
+    let login = activeTab ? (activeTab.login || "") : queryConsoleActiveLogin;
+    let pass = activeTab ? (activeTab.password || "") : queryConsoleActivePassword;
+    let db = targetDatabase || (activeTab ? (activeTab.database || "master") : (queryConsoleActiveDatabase || "master"));
+
+    if (targetServer && activeConnections[targetServer]) {
+        const conn = activeConnections[targetServer];
+        sName = conn.serverName;
+        auth = conn.authType;
+        login = conn.login;
+        pass = conn.password;
+    }
+
     const newTab = {
         id: tabId,
         name: tabName || `Query ${queryConsoleTabCounter}`,
         value: queryValue,
         model: model,
-        database: queryConsoleActiveDatabase || "master",
+        serverName: sName,
+        authType: auth,
+        login: login,
+        password: pass,
+        database: db,
         savedQueryId: null,
         savedQueryName: "",
         results: [],
@@ -704,27 +760,34 @@ function switchQueryTabActive(tabId) {
 
     queryConsoleActiveTabId = tabId;
 
+    // Restore connection context for this tab
+    queryConsoleActiveServer = nextActiveTab.serverName || "";
+    queryConsoleActiveAuth = nextActiveTab.authType || "SQL";
+    queryConsoleActiveLogin = nextActiveTab.login || "";
+    queryConsoleActivePassword = nextActiveTab.password || "";
+    queryConsoleActiveDatabase = nextActiveTab.database || "master";
+
+    // Set connection badge text
+    const badgeText = queryConsoleActiveServer ? `${queryConsoleActiveServer} (${queryConsoleActiveDatabase})` : "Belum terhubung";
+    document.getElementById('query-active-conn-info').textContent = badgeText;
+    const serverTriggerText = document.getElementById('query-server-trigger-text');
+    if (serverTriggerText) {
+        serverTriggerText.textContent = queryConsoleActiveServer || "Belum terhubung";
+    }
+
     // Restore database selection for this tab
-    if (nextActiveTab.database) {
-        const prevDb = queryConsoleActiveDatabase;
-        queryConsoleActiveDatabase = nextActiveTab.database;
+    if (queryConsoleActiveServer) {
+        const cached = activeConnections[queryConsoleActiveServer];
+        if (cached) {
+            renderDatabaseDropdown(cached.databases, queryConsoleActiveDatabase);
+        } else {
+            renderDatabaseDropdown([queryConsoleActiveDatabase], queryConsoleActiveDatabase);
+        }
         
-        // Update trigger text in dropdown UI
-        const triggerText = document.getElementById('query-db-trigger-text');
-        if (triggerText) {
-            triggerText.textContent = queryConsoleActiveDatabase;
-        }
-        // Update hidden select input
-        const dbSelect = document.getElementById('query-db-select');
-        if (dbSelect) {
-            dbSelect.value = queryConsoleActiveDatabase;
-        }
-        localStorage.setItem('queryConsoleActiveDatabase', queryConsoleActiveDatabase);
-        
-        // Reload schema for Monaco autocomplete asynchronously ONLY if db changed
-        if (prevDb !== queryConsoleActiveDatabase) {
-            loadQueryConsoleSchema();
-        }
+        // Reload schema for Monaco autocomplete
+        loadQueryConsoleSchema();
+    } else {
+        renderDatabaseDropdown([], "");
     }
 
     // Swap model in Monaco Editor
@@ -812,6 +875,9 @@ function switchQueryTabActive(tabId) {
     }, 50);
 
     renderQueryTabs();
+    if (typeof rebuildSchemaExplorerTree === 'function') {
+        rebuildSchemaExplorerTree();
+    }
 }
 
 function closeQueryTab(tabId, event) {
@@ -863,6 +929,7 @@ function renderQueryTabs() {
 
     listContainer.innerHTML = queryConsoleTabs.map(tab => {
         const isActive = tab.id === queryConsoleActiveTabId;
+        const serverInfo = tab.serverName ? `Server: ${tab.serverName} | DB: ${tab.database}` : 'Belum terhubung';
         return `
             <div class="query-console-tab ${isActive ? 'active' : ''}" 
                  draggable="true" 
@@ -872,7 +939,7 @@ function renderQueryTabs() {
                  ondrop="handleQueryTabDrop(event, '${tab.id}')" 
                  onclick="switchQueryTabActive('${tab.id}')" 
                  ondblclick="renameQueryTab('${tab.id}')" 
-                 title="Klik dua kali untuk mengubah nama tab">
+                 title="Double klik untuk ubah nama tab. (${serverInfo})">
                 <i class="fa-solid fa-code" style="font-size: 0.75rem; opacity: 0.8;"></i>
                 <span>${escapeHtml(tab.name)}</span>
                 <span class="query-console-tab-close" onclick="closeQueryTab('${tab.id}', event)" title="Tutup Tab">
@@ -2794,10 +2861,480 @@ function toggleQueryToolbarDropdown(event, id) {
     }
 }
 
-function closeAllQueryToolbarDropdowns() {
-    document.querySelectorAll('.query-toolbar-dropdown').forEach(d => {
-        d.classList.remove('active');
-    });
+// ── Change Connection Modal & Active Sessions Logic ────────────────────────
+function openChangeConnectionModal() {
+    const modal = document.getElementById('query-connection-modal');
+    if (!modal) return;
+    modal.classList.add('active');
+    
+    // Load saved connections for the modal select
+    loadModalSavedConnections();
+    
+    // Render active sessions list
+    renderActiveSessionsInModal();
+    
+    // Prefill form with current tab connection context or blank
+    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+    if (activeTab && activeTab.serverName) {
+        document.getElementById('modal-query-server-name').value = activeTab.serverName;
+        document.getElementById('modal-query-auth-type').value = activeTab.authType || 'SQL';
+        document.getElementById('modal-query-login').value = activeTab.login || '';
+        document.getElementById('modal-query-password').value = activeTab.password || '';
+    } else {
+        document.getElementById('modal-query-server-name').value = '';
+        document.getElementById('modal-query-auth-type').value = 'SQL';
+        document.getElementById('modal-query-login').value = '';
+        document.getElementById('modal-query-password').value = '';
+    }
+    toggleModalQueryAuthFields();
 }
+
+function closeChangeConnectionModal() {
+    const modal = document.getElementById('query-connection-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+function toggleModalQueryAuthFields() {
+    const authType = document.getElementById('modal-query-auth-type').value;
+    const credsSection = document.getElementById('modal-query-auth-credentials-section');
+    if (credsSection) {
+        credsSection.style.display = authType === 'Windows' ? 'none' : 'block';
+    }
+}
+
+function toggleModalSaveConnectionNameField() {
+    const checkbox = document.getElementById('modal-query-save-connection');
+    const container = document.getElementById('modal-query-save-conn-name-container');
+    if (checkbox && container) {
+        container.style.display = checkbox.checked ? 'block' : 'none';
+        if (checkbox.checked) {
+            const connNameInput = document.getElementById('modal-query-connection-name');
+            if (connNameInput) {
+                const serverName = document.getElementById('modal-query-server-name').value.trim();
+                connNameInput.value = serverName ? `Koneksi ${serverName}` : '';
+                connNameInput.focus();
+            }
+        }
+    }
+}
+
+async function loadModalSavedConnections() {
+    const select = document.getElementById('modal-query-saved-conn-select');
+    if (!select) return;
+    
+    select.innerHTML = '<option value="">-- Memuat Histori... --</option>';
+    
+    try {
+        const res = await fetch(`${API_BASE}/query/connections`);
+        if (!res.ok) throw new Error("Gagal mengambil histori koneksi");
+        const connections = await res.json();
+        
+        savedConnectionsCache = connections || [];
+        
+        if (savedConnectionsCache.length === 0) {
+            select.innerHTML = '<option value="">-- Belum ada Histori --</option>';
+            return;
+        }
+        
+        select.innerHTML = '<option value="">-- Pilih Histori --</option>' + 
+            savedConnectionsCache.map(conn => `<option value="${conn.Id || conn.id}">${escapeHtml(conn.ConnectionName || conn.connectionName)}</option>`).join('');
+    } catch (err) {
+        console.error(err);
+        select.innerHTML = '<option value="">-- Error memuat Histori --</option>';
+    }
+}
+
+function prefillModalSavedConnection() {
+    const select = document.getElementById('modal-query-saved-conn-select');
+    if (!select) return;
+    
+    const id = parseInt(select.value);
+    const serverInput = document.getElementById('modal-query-server-name');
+    const authSelect = document.getElementById('modal-query-auth-type');
+    const loginInput = document.getElementById('modal-query-login');
+    const passwordInput = document.getElementById('modal-query-password');
+    
+    if (isNaN(id) || id <= 0) {
+        serverInput.value = '';
+        authSelect.value = 'SQL';
+        loginInput.value = '';
+        passwordInput.value = '';
+        toggleModalQueryAuthFields();
+        return;
+    }
+    
+    const conn = savedConnectionsCache.find(c => (c.Id || c.id) === id);
+    if (!conn) return;
+    
+    serverInput.value = conn.ServerName || conn.serverName || '';
+    authSelect.value = conn.Authentication || conn.authentication || 'SQL';
+    loginInput.value = conn.Login || conn.login || '';
+    passwordInput.value = conn.Password || conn.password || '';
+    
+    toggleModalQueryAuthFields();
+}
+
+function renderActiveSessionsInModal() {
+    const container = document.getElementById('modal-active-sessions-list');
+    if (!container) return;
+    
+    const keys = Object.keys(activeConnections);
+    if (keys.length === 0) {
+        container.innerHTML = `<div style="font-size: 0.75rem; color: var(--text-muted); text-align: center; padding: 1rem 0;">Tidak ada sesi aktif.</div>`;
+        return;
+    }
+    
+    container.innerHTML = keys.map(key => {
+        const conn = activeConnections[key];
+        const safeServerName = escapeHtml(conn.serverName).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `
+            <div class="active-session-item" 
+                 onclick="connectToActiveSession('${safeServerName}')"
+                 style="padding: 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); border-radius: 6px; cursor: pointer; transition: all 0.2s;"
+                 onmouseover="this.style.background='rgba(45,212,191,0.05)'; this.style.borderColor='var(--accent-teal)';"
+                 onmouseout="this.style.background='rgba(255,255,255,0.03)'; this.style.borderColor='var(--border-flat)';"
+                 title="Hubungkan tab ini ke ${escapeHtml(conn.serverName)}">
+                <div style="font-size: 0.8rem; font-weight: 600; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                    <i class="fa-solid fa-server" style="color: var(--accent-teal); font-size: 0.7rem; margin-right: 0.3rem;"></i>${escapeHtml(conn.serverName)}
+                </div>
+                <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.15rem;">
+                    Auth: ${escapeHtml(conn.authType)} ${conn.authType === 'SQL' ? `(${escapeHtml(conn.login)})` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function connectToActiveSession(serverName) {
+    const conn = activeConnections[serverName];
+    if (!conn) return;
+    
+    // Bind current tab connection settings
+    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+    if (activeTab) {
+        activeTab.serverName = conn.serverName;
+        activeTab.authType = conn.authType;
+        activeTab.login = conn.login;
+        activeTab.password = conn.password;
+        
+        // Choose default database
+        activeTab.database = conn.databases && conn.databases.length > 0 ? conn.databases[0] : "master";
+        
+        // Update globals
+        queryConsoleActiveServer = conn.serverName;
+        queryConsoleActiveAuth = conn.authType;
+        queryConsoleActiveLogin = conn.login;
+        queryConsoleActivePassword = conn.password;
+        queryConsoleActiveDatabase = activeTab.database;
+        
+        // Update UI dropdown and badges
+        renderDatabaseDropdown(conn.databases, queryConsoleActiveDatabase);
+        document.getElementById('query-active-conn-info').textContent = `${conn.serverName} (${queryConsoleActiveDatabase})`;
+        
+        const serverTriggerText = document.getElementById('query-server-trigger-text');
+        if (serverTriggerText) {
+            serverTriggerText.textContent = conn.serverName;
+        }
+        
+        // Reload schema for Monaco autocomplete and Schema Explorer
+        await loadQueryConsoleSchema();
+        if (typeof rebuildSchemaExplorerTree === 'function') {
+            rebuildSchemaExplorerTree();
+        }
+    }
+    
+    closeChangeConnectionModal();
+}
+
+async function connectModalQueryConsole() {
+    const serverName = document.getElementById('modal-query-server-name').value.trim();
+    const authType = document.getElementById('modal-query-auth-type').value;
+    const login = document.getElementById('modal-query-login').value.trim();
+    const password = document.getElementById('modal-query-password').value;
+    
+    if (!serverName) {
+        await uiAlert("Harap masukkan Server Name!");
+        return;
+    }
+    
+    if (authType === 'SQL' && !login) {
+        await uiAlert("Harap masukkan Login username!");
+        return;
+    }
+    
+    const btn = document.getElementById('btn-modal-query-connect');
+    let origHtml = "";
+    if (btn) {
+        origHtml = btn.innerHTML;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Connecting...`;
+        btn.disabled = true;
+    }
+    
+    try {
+        const payload = {
+            ServerName: serverName,
+            Authentication: authType,
+            Login: login,
+            Password: password
+        };
+        
+        const res = await fetch(`${API_BASE}/query/connect`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) throw new Error("Gagal terhubung: " + await res.text());
+        const data = await res.json();
+        
+        if (!data.Success) {
+            throw new Error(data.Message || "Gagal terhubung ke server");
+        }
+        
+        // Save connection to history if checked
+        const saveCheck = document.getElementById('modal-query-save-connection');
+        const connNameInput = document.getElementById('modal-query-connection-name');
+        if (saveCheck && saveCheck.checked && connNameInput && connNameInput.value.trim()) {
+            const savePayload = {
+                ConnectionName: connNameInput.value.trim(),
+                ServerName: serverName,
+                Authentication: authType,
+                Login: login,
+                Password: password
+            };
+            try {
+                const saveRes = await fetch(`${API_BASE}/query/connections`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(savePayload)
+                });
+                if (saveRes.ok) {
+                    saveCheck.checked = false;
+                    connNameInput.value = '';
+                    toggleModalSaveConnectionNameField();
+                }
+            } catch (saveErr) {
+                console.error("Gagal menyimpan koneksi modal:", saveErr);
+            }
+        }
+        
+        // Add to activeConnections registry
+        activeConnections[serverName] = {
+            serverName: serverName,
+            authType: authType,
+            login: login,
+            password: password,
+            databases: data.Databases || []
+        };
+        
+        // Update current active tab connection settings
+        const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+        if (activeTab) {
+            activeTab.serverName = serverName;
+            activeTab.authType = authType;
+            activeTab.login = login;
+            activeTab.password = password;
+            activeTab.database = data.DefaultDatabase || "master";
+            
+            queryConsoleActiveServer = serverName;
+            queryConsoleActiveAuth = authType;
+            queryConsoleActiveLogin = login;
+            queryConsoleActivePassword = password;
+            queryConsoleActiveDatabase = activeTab.database;
+            
+            renderDatabaseDropdown(data.Databases, queryConsoleActiveDatabase);
+            document.getElementById('query-active-conn-info').textContent = `${serverName} (${queryConsoleActiveDatabase})`;
+            
+            const serverTriggerText = document.getElementById('query-server-trigger-text');
+            if (serverTriggerText) {
+                serverTriggerText.textContent = serverName;
+            }
+            
+            // Reload Monaco autocomplete schema
+            await loadQueryConsoleSchema();
+            
+            // Redraw Object Explorer tree
+            if (typeof rebuildSchemaExplorerTree === 'function') {
+                rebuildSchemaExplorerTree();
+            }
+        }
+        
+        closeChangeConnectionModal();
+    } catch (err) {
+        await uiAlert("Koneksi Gagal: " + err.message);
+    } finally {
+        if (btn) {
+            btn.innerHTML = origHtml;
+            btn.disabled = false;
+        }
+    }
+}
+
+function disconnectCurrentTab() {
+    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+    if (!activeTab) return;
+    
+    // Clear connection details for active tab
+    activeTab.serverName = "";
+    activeTab.authType = "SQL";
+    activeTab.login = "";
+    activeTab.password = "";
+    activeTab.database = "";
+    activeTab.results = [];
+    activeTab.lastQueryResults = null;
+    activeTab.isResultsBoxVisible = false;
+    activeTab.statusTextHtml = 'Belum terhubung';
+    activeTab.statusTextColor = 'var(--text-muted)';
+    activeTab.rowsCountText = '';
+    activeTab.messagesHtml = '';
+    activeTab.messagesBadgeText = '';
+    activeTab.messagesBadgeDisplay = 'none';
+    
+    // Refresh globals
+    queryConsoleActiveServer = "";
+    queryConsoleActiveAuth = "";
+    queryConsoleActiveLogin = "";
+    queryConsoleActivePassword = "";
+    queryConsoleActiveDatabase = "";
+    
+    document.getElementById('query-active-conn-info').textContent = "Belum terhubung";
+    const serverTriggerText = document.getElementById('query-server-trigger-text');
+    if (serverTriggerText) {
+        serverTriggerText.textContent = "Belum terhubung";
+    }
+    renderDatabaseDropdown([], "");
+    
+    // Clear UI state elements
+    const resultsBox = document.getElementById('query-results-box');
+    if (resultsBox) resultsBox.style.display = 'none';
+    
+    const resultsContainer = document.getElementById('query-results-tab-content-' + queryConsoleActiveTabId);
+    if (resultsContainer) resultsContainer.innerHTML = '';
+    
+    // If all tabs are disconnected, we should direct to the login gateway
+    const anyConnected = queryConsoleTabs.some(t => t.serverName);
+    if (!anyConnected) {
+        // Stop Monaco layout, hide editor main panel, show gateway login screen
+        document.getElementById('query-connect-panel').style.display = 'block';
+        document.getElementById('query-editor-main-panel').style.display = 'none';
+        
+        // Remove localStorage connection states
+        localStorage.removeItem('queryConsoleConnected');
+        localStorage.removeItem('queryConsoleServerName');
+        localStorage.removeItem('queryConsoleAuthType');
+        localStorage.removeItem('queryConsoleLogin');
+        localStorage.removeItem('queryConsolePassword');
+        localStorage.removeItem('queryConsoleActiveDatabase');
+    }
+    
+    // Redraw explorer and tabs
+    renderQueryTabs();
+    if (typeof rebuildSchemaExplorerTree === 'function') {
+        rebuildSchemaExplorerTree();
+    }
+}
+
+// ── Server Selector Dropdown Logic ─────────────────────────────────────────
+function toggleServerDropdown(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('query-server-dropdown');
+    if (!dropdown) return;
+    const isVisible = dropdown.style.display === 'block';
+    
+    // Close other dropdowns
+    const dbDropdown = document.getElementById('query-db-dropdown');
+    if (dbDropdown) dbDropdown.style.display = 'none';
+    
+    dropdown.style.display = isVisible ? 'none' : 'block';
+    if (!isVisible) {
+        renderServerDropdown();
+    }
+}
+
+function renderServerDropdown() {
+    const listContainer = document.getElementById('query-server-list');
+    if (!listContainer) return;
+
+    const keys = Object.keys(activeConnections);
+    if (keys.length === 0) {
+        listContainer.innerHTML = `<div style="padding: 0.5rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;">Belum ada sesi aktif</div>`;
+        return;
+    }
+
+    listContainer.innerHTML = keys.map(serverName => {
+        const isSelected = serverName === queryConsoleActiveServer;
+        const safeServerName = escapeHtml(serverName).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `
+            <div class="server-item ${isSelected ? 'selected' : ''}" 
+                 onclick="selectServer('${safeServerName}')" 
+                 title="${escapeHtml(serverName)}">
+                <i class="fa-solid fa-server" style="font-size: 0.72rem; margin-right: 0.3rem; color: ${isSelected ? '#0d1117' : 'var(--accent-teal)'};"></i>
+                ${escapeHtml(serverName)}
+            </div>
+        `;
+    }).join('');
+}
+
+async function selectServer(serverName) {
+    const conn = activeConnections[serverName];
+    if (!conn) return;
+
+    queryConsoleActiveServer = conn.serverName;
+    queryConsoleActiveAuth = conn.authType;
+    queryConsoleActiveLogin = conn.login;
+    queryConsoleActivePassword = conn.password;
+    
+    // Determine the database to select (first database or default database)
+    queryConsoleActiveDatabase = conn.databases && conn.databases.length > 0 ? conn.databases[0] : "master";
+
+    // Update current active tab connection settings
+    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+    if (activeTab) {
+        activeTab.serverName = conn.serverName;
+        activeTab.authType = conn.authType;
+        activeTab.login = conn.login;
+        activeTab.password = conn.password;
+        activeTab.database = queryConsoleActiveDatabase;
+    }
+
+    // Update UI trigger texts
+    const serverTriggerText = document.getElementById('query-server-trigger-text');
+    if (serverTriggerText) {
+        serverTriggerText.textContent = conn.serverName;
+    }
+    
+    const compatibilityBadge = document.getElementById('query-active-conn-info');
+    if (compatibilityBadge) {
+        compatibilityBadge.textContent = `${conn.serverName} (${queryConsoleActiveDatabase})`;
+    }
+
+    // Populate DB Selector Custom Dropdown
+    renderDatabaseDropdown(conn.databases, queryConsoleActiveDatabase);
+
+    // Close Server dropdown
+    const dropdown = document.getElementById('query-server-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+
+    // Reload autocomplete schema
+    await loadQueryConsoleSchema();
+
+    // Redraw Object Explorer tree
+    if (typeof rebuildSchemaExplorerTree === 'function') {
+        rebuildSchemaExplorerTree();
+    }
+}
+
+function openNewConnectionModalClick(event) {
+    if (event) event.stopPropagation();
+    
+    // Close Server dropdown
+    const dropdown = document.getElementById('query-server-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+    
+    // Open Connection Modal
+    openChangeConnectionModal();
+}
+
+
 
 
