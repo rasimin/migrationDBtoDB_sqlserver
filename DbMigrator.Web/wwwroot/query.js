@@ -1353,10 +1353,18 @@ function registerMonacoSqlAutocomplete() {
     function getReferencedTables(queryText) {
         const tables = [];
         const fromJoinRegex = /(?:from|join)\s+([a-zA-Z0-9_\[\]\.]+)(?:\s+(?:as\s+)?([a-zA-Z0-9_]+))?/gi;
+        const sqlKeywords = new Set([
+            "WHERE", "ORDER", "GROUP", "HAVING", "JOIN", "LEFT", "RIGHT", "INNER", "CROSS", "OUTER", "FULL",
+            "ON", "UNION", "LIMIT", "OFFSET", "USING", "FOR", "WITH", "AND", "OR", "SELECT", "INSERT", 
+            "UPDATE", "DELETE", "AS", "BY", "GO"
+        ]);
         let match;
         while ((match = fromJoinRegex.exec(queryText)) !== null) {
             const tableName = match[1];
-            const alias = match[2];
+            let alias = match[2];
+            if (alias && sqlKeywords.has(alias.toUpperCase())) {
+                alias = null;
+            }
             const isDuplicate = tables.some(t => 
                 cleanTableName(t.tableName).toLowerCase() === cleanTableName(tableName).toLowerCase() && 
                 (t.alias || '').toLowerCase() === (alias || '').toLowerCase()
