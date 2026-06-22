@@ -439,13 +439,21 @@ namespace DbMigrator.Web.Services
             }
         }
 
-        public async Task<IEnumerable<QueryExecutionLog>> GetExecutionLogsAsync()
+        public async Task<IEnumerable<QueryExecutionLog>> GetExecutionLogsAsync(string databaseName = null, string searchTerm = null)
         {
             using var conn = new SqlConnection(ConfigConnectionString);
             return await conn.QueryAsync<QueryExecutionLog>(@"
                 SELECT TOP 100 Id, ServerName, DatabaseName, QueryText, Status, ExecutionTimeMs, ErrorMessage, ResponseMessages, ExecutedAt
                 FROM dbo.QueryExecutionLogs
-                ORDER BY ExecutedAt DESC");
+                WHERE (@DatabaseName IS NULL OR @DatabaseName = '' OR DatabaseName LIKE @DatabasePattern)
+                  AND (@SearchTerm IS NULL OR @SearchTerm = '' OR QueryText LIKE @SearchPattern OR ServerName LIKE @SearchPattern)
+                ORDER BY ExecutedAt DESC",
+                new {
+                    DatabaseName = databaseName,
+                    DatabasePattern = $"%{databaseName}%",
+                    SearchTerm = searchTerm,
+                    SearchPattern = $"%{searchTerm}%"
+                });
         }
 
         public async Task<IEnumerable<dynamic>> GetSchemaObjectsAsync(QuerySchemaObjectsRequest request)
@@ -484,7 +492,12 @@ namespace DbMigrator.Web.Services
             {
                 if (request.SearchInContent)
                 {
-                    searchFilter = "AND (o.name LIKE @SearchPattern OR s.name LIKE @SearchPattern OR sm.definition LIKE @SearchPattern)";
+                    searchFilter = @"AND (
+                        o.name LIKE @SearchPattern 
+                        OR s.name LIKE @SearchPattern 
+                        OR sm.definition LIKE @SearchPattern 
+                        OR EXISTS (SELECT 1 FROM sys.columns c WHERE c.object_id = o.object_id AND c.name LIKE @SearchPattern)
+                    )";
                 }
                 else
                 {

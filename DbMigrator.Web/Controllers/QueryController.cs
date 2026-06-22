@@ -286,11 +286,11 @@ namespace DbMigrator.Web.Controllers
         }
 
         [HttpGet("execution-logs")]
-        public async Task<IActionResult> GetExecutionLogs()
+        public async Task<IActionResult> GetExecutionLogs([FromQuery] string databaseName = null, [FromQuery] string searchTerm = null)
         {
             try
             {
-                var logs = await _queryService.GetExecutionLogsAsync();
+                var logs = await _queryService.GetExecutionLogsAsync(databaseName, searchTerm);
                 return Ok(logs);
             }
             catch (Exception ex)

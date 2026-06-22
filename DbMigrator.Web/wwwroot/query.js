@@ -2861,6 +2861,13 @@ function toggleQueryToolbarDropdown(event, id) {
     }
 }
 
+function closeAllQueryToolbarDropdowns() {
+    document.querySelectorAll('.query-toolbar-dropdown').forEach(d => {
+        d.classList.remove('active');
+    });
+}
+
+
 // ── Change Connection Modal & Active Sessions Logic ────────────────────────
 function openChangeConnectionModal() {
     const modal = document.getElementById('query-connection-modal');

@@ -363,6 +363,10 @@ body.ui-dialog-open {
     height: calc(95vh - 250px) !important;
 }
 
+.modal-content.maximized #query-execution-log-split {
+    height: calc(95vh - 260px) !important;
+}
+
 @media (max-width: 860px) {
     .schema-diff-content {
         width: 96vw;

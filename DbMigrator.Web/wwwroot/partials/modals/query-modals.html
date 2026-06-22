@@ -357,17 +357,32 @@
                 <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Menampilkan 100 query terakhir yang dieksekusi.</p>
             </div>
             <div style="display: flex; align-items: center; gap: 0.65rem;">
+                <button onclick="toggleQueryExecutionLogMaximize()" title="Maximize / Restore" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; transition: color 0.15s ease;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='var(--text-muted)'">
+                    <i class="fa-solid fa-expand" id="query-execution-log-maximize-icon"></i>
+                </button>
                 <button class="close-btn" onclick="closeQueryExecutionLogModal()" style="margin: 0;">&times;</button>
             </div>
         </div>
         <div class="modal-body" style="padding: 1.25rem 1.75rem;">
-            <div style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;">
-                <button class="btn btn-secondary" onclick="loadQueryExecutionLogs()" style="height: 30px; width: auto; font-size: 0.75rem; padding: 0 0.85rem; display: inline-flex; align-items: center; gap: 0.35rem;">
-                    <i class="fa-solid fa-arrows-rotate"></i> Refresh Log
+            <!-- Filters row -->
+            <div style="display: flex; gap: 0.75rem; align-items: flex-end; margin-bottom: 1.25rem; flex-wrap: wrap; background: rgba(255, 255, 255, 0.02); padding: 0.75rem; border: 1px solid var(--border-flat); border-radius: 8px;">
+                <div class="form-group" style="width: 200px; margin-bottom: 0;">
+                    <label for="log-filter-db" style="font-size: 0.8rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Filter Database:</label>
+                    <input type="text" id="log-filter-db" class="form-control" placeholder="Nama database..." style="font-size: 0.85rem; height: 34px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;" onkeydown="if(event.key==='Enter') loadQueryExecutionLogs()">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+                    <label for="log-search-term" style="font-size: 0.8rem; font-weight: 600; color: #ffffff; display: block; margin-bottom: 0.4rem;">Pencarian Query / Server:</label>
+                    <input type="text" id="log-search-term" class="form-control" placeholder="Cari konten query atau server..." style="font-size: 0.85rem; height: 34px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); width: 100%; color: #ffffff; padding: 0 0.75rem;" onkeydown="if(event.key==='Enter') loadQueryExecutionLogs()">
+                </div>
+                <button class="btn btn-primary" onclick="loadQueryExecutionLogs()" style="height: 34px; width: auto; font-size: 0.8rem; padding: 0 1rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+                    <i class="fa-solid fa-magnifying-glass"></i> Cari
+                </button>
+                <button class="btn btn-secondary" onclick="resetQueryExecutionLogFilters()" style="height: 34px; width: auto; font-size: 0.8rem; padding: 0 1rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+                    <i class="fa-solid fa-arrows-rotate"></i> Reset
                 </button>
             </div>
             
-            <div style="display: flex; gap: 1.25rem; height: 450px;">
+            <div id="query-execution-log-split" style="display: flex; gap: 1.25rem; height: 450px;">
                 <!-- Left side: List of execution logs -->
                 <div style="width: 50%; border: 1px solid var(--border-flat); border-radius: 6px; overflow-y: auto; background: #07090d; display: flex; flex-direction: column;">
                     <table class="mapper-table" style="width: 100%; margin-bottom: 0; border-collapse: collapse;">

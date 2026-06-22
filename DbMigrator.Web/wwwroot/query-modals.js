@@ -1243,6 +1243,12 @@ function openQueryExecutionLogModal() {
     const modal = document.getElementById('query-execution-log-modal');
     if (!modal) return;
     
+    // Clear filters
+    const dbInput = document.getElementById('log-filter-db');
+    const searchInput = document.getElementById('log-search-term');
+    if (dbInput) dbInput.value = '';
+    if (searchInput) searchInput.value = '';
+    
     // Clear preview
     activeLogItem = null;
     document.getElementById('log-query-preview').innerHTML = '<div style="color: var(--text-muted); text-align: center; margin-top: 2rem;">Pilih log di sebelah kiri untuk melihat detail</div>';
@@ -1258,7 +1264,39 @@ function closeQueryExecutionLogModal() {
     const modal = document.getElementById('query-execution-log-modal');
     if (modal) {
         modal.classList.remove('active');
+        
+        // Reset maximize state
+        const content = modal.querySelector('.modal-content');
+        if (content) {
+            content.classList.remove('maximized');
+        }
+        const icon = document.getElementById('query-execution-log-maximize-icon');
+        if (icon) {
+            icon.className = 'fa-solid fa-expand';
+        }
     }
+}
+
+function toggleQueryExecutionLogMaximize() {
+    const modal = document.getElementById('query-execution-log-modal');
+    if (!modal) return;
+    const content = modal.querySelector('.modal-content');
+    const icon = document.getElementById('query-execution-log-maximize-icon');
+    
+    if (content) {
+        const isMaximized = content.classList.toggle('maximized');
+        if (icon) {
+            icon.className = isMaximized ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+        }
+    }
+}
+
+function resetQueryExecutionLogFilters() {
+    const dbInput = document.getElementById('log-filter-db');
+    const searchInput = document.getElementById('log-search-term');
+    if (dbInput) dbInput.value = '';
+    if (searchInput) searchInput.value = '';
+    loadQueryExecutionLogs();
 }
 
 async function loadQueryExecutionLogs() {
@@ -1266,11 +1304,24 @@ async function loadQueryExecutionLogs() {
     const emptyDiv = document.getElementById('execution-logs-empty');
     if (!listBody) return;
     
+    const dbInput = document.getElementById('log-filter-db');
+    const searchInput = document.getElementById('log-search-term');
+    const dbValue = dbInput ? dbInput.value.trim() : '';
+    const searchValue = searchInput ? searchInput.value.trim() : '';
+    
     listBody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--accent-teal);"><i class="fa-solid fa-spinner fa-spin"></i> Memuat log...</td></tr>';
     if (emptyDiv) emptyDiv.style.display = 'none';
     
     try {
-        const res = await fetch(`${API_BASE}/query/execution-logs`);
+        let url = `${API_BASE}/query/execution-logs`;
+        const params = [];
+        if (dbValue) params.push(`databaseName=${encodeURIComponent(dbValue)}`);
+        if (searchValue) params.push(`searchTerm=${encodeURIComponent(searchValue)}`);
+        if (params.length > 0) {
+            url += '?' + params.join('&');
+        }
+        
+        const res = await fetch(url);
         if (!res.ok) throw new Error("Gagal mengambil log dari server.");
         const logs = await res.json();
         
