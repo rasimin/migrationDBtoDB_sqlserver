@@ -1664,3 +1664,138 @@
     text-align: center;
     color: var(--accent-teal);
 }
+
+/* Responsive adjustments for Query Console on small screens */
+@media (max-width: 768px) {
+    body {
+        padding: 0.4rem !important;
+    }
+
+    .app-container {
+        gap: 0.5rem !important;
+    }
+
+    .top-nav-wrapper {
+        margin-bottom: 0.25rem !important;
+    }
+
+    .top-nav {
+        padding: 0.35rem !important;
+        gap: 0.25rem !important;
+    }
+
+    .nav-item {
+        padding: 0.4rem 0.6rem !important;
+        font-size: 0.76rem !important;
+        gap: 0.3rem !important;
+    }
+
+    .panel-card {
+        padding: 0.5rem !important;
+    }
+
+    /* Hide button labels in toolbar to fit icons only */
+    .query-toolbar .btn-text,
+    .query-results-wrapper .btn-text {
+        display: none !important;
+    }
+    
+    /* Make toolbar buttons more compact */
+    .query-toolbar .btn,
+    .query-toolbar .query-toolbar-dropdown button {
+        padding: 0 0.5rem !important;
+        gap: 0 !important;
+        height: 30px !important;
+        font-size: 0.74rem !important;
+    }
+    
+    /* Hide dividers in toolbar on mobile */
+    .query-toolbar > div[style*="width: 1px"] {
+        display: none !important;
+    }
+
+    /* Scale down Server and Database Custom Dropdowns */
+    .query-server-custom-select,
+    .query-db-custom-select {
+        min-width: 90px !important;
+        max-width: 120px !important;
+    }
+    #query-server-trigger,
+    #query-db-trigger {
+        font-size: 0.72rem !important;
+        height: 28px !important;
+        padding: 0 0.4rem !important;
+    }
+    #query-server-dropdown,
+    #query-db-dropdown {
+        width: 180px !important;
+        top: 32px !important;
+    }
+
+    /* Hide shortcut tips */
+    .query-shortcut-tip {
+        display: none !important;
+    }
+
+    /* Reduce gap in Split Workspace */
+    .query-split-workspace {
+        gap: 0.5rem !important;
+    }
+    
+    /* Narrow the Schema Explorer container */
+    .query-schema-explorer {
+        width: 150px !important;
+        padding: 0.4rem !important;
+        gap: 0.4rem !important;
+    }
+    
+    /* Adjust font size and padding of tree nodes */
+    .query-schema-explorer .se-item, 
+    .query-schema-explorer .se-folder,
+    .query-schema-explorer .se-server-folder,
+    .query-schema-explorer .se-db-folder {
+        padding-top: 0.15rem !important;
+        padding-bottom: 0.15rem !important;
+        font-size: 0.7rem !important;
+    }
+    
+    /* Scale down search bar and filter checkboxes */
+    #schema-exp-search {
+        font-size: 0.74rem !important;
+        height: 28px !important;
+        padding-left: 1.3rem !important;
+        padding-right: 0.3rem !important;
+    }
+    .query-schema-explorer .fa-magnifying-glass {
+        left: 0.35rem !important;
+        font-size: 0.65rem !important;
+    }
+    #btn-schema-exp-load {
+        height: 28px !important;
+        padding: 0 0.4rem !important;
+        font-size: 0.74rem !important;
+    }
+    .query-schema-explorer label {
+        font-size: 0.68rem !important;
+    }
+
+    /* Compact Tabs styling */
+    .query-console-tab {
+        padding: 0.35rem 0.5rem !important;
+        font-size: 0.72rem !important;
+        gap: 0.3rem !important;
+    }
+    .query-console-tab-close {
+        width: 12px !important;
+        height: 12px !important;
+        font-size: 0.65rem !important;
+        margin-left: 0.1rem !important;
+    }
+
+    /* Result grid cell compacting */
+    .query-results-table th,
+    .query-results-table td {
+        padding: 0.3rem 0.4rem !important;
+        font-size: 0.72rem !important;
+    }
+}

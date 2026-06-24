@@ -76,7 +76,7 @@
             <!-- Query Editor Main Panel (Hidden by default) -->
             <div id="query-editor-main-panel" style="display: none;">
                 <!-- Toolbar (SSMS Style) -->
-                <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 0; margin-bottom: 1.25rem; flex-wrap: wrap; background: rgba(255, 255, 255, 0.02); padding: 0.5rem 1rem; border: 1px solid var(--border-flat); border-radius: 8px;">
+                <div class="query-toolbar" style="display: flex; gap: 0.75rem; align-items: center; margin-top: 0; margin-bottom: 1.25rem; flex-wrap: wrap; background: rgba(255, 255, 255, 0.02); padding: 0.5rem 1rem; border: 1px solid var(--border-flat); border-radius: 8px;">
                     
                     <!-- Server Selector Custom Dropdown -->
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -92,7 +92,7 @@
                                 </div>
                                 <div style="border-top: 1px solid var(--border-flat); margin-top: 0.5rem; padding-top: 0.5rem;">
                                     <button type="button" class="btn btn-secondary" onclick="openNewConnectionModalClick(event)" style="width: 100%; height: 28px; font-size: 0.76rem; display: flex; align-items: center; justify-content: center; gap: 0.25rem; padding: 0; background: rgba(45, 212, 191, 0.1); border-color: rgba(45, 212, 191, 0.2); color: var(--accent-teal);">
-                                        <i class="fa-solid fa-plus"></i> Hubungkan Server Baru
+                                        <i class="fa-solid fa-plus"></i> <span class="btn-text">Hubungkan Server Baru</span>
                                     </button>
                                 </div>
                             </div>
@@ -120,17 +120,17 @@
                     <div style="height: 20px; width: 1px; background: var(--border-flat); margin: 0 0.25rem;"></div>
 
                     <button class="btn btn-primary" id="btn-execute-query" onclick="runQueryConsole()" style="width: auto; height: 32px; padding: 0 1rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Execute query (Ctrl+E)">
-                        <i class="fa-solid fa-play" style="font-size: 0.75rem;"></i> Execute
+                        <i class="fa-solid fa-play" style="font-size: 0.75rem;"></i> <span class="btn-text">Execute</span>
                     </button>
                     <button class="btn btn-secondary" onclick="clearQueryConsole()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;">
-                        <i class="fa-solid fa-trash-can" style="font-size: 0.75rem;"></i> Clear
+                        <i class="fa-solid fa-trash-can" style="font-size: 0.75rem;"></i> <span class="btn-text">Clear</span>
                     </button>
                     <button class="btn btn-secondary" onclick="toggleCommentSelection()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Remark / Unremark code (Ctrl+/)">
-                        <i class="fa-solid fa-comment" style="font-size: 0.75rem;"></i> Remark
+                        <i class="fa-solid fa-comment" style="font-size: 0.75rem;"></i> <span class="btn-text">Remark</span>
                     </button>
                     <div class="query-toolbar-dropdown" id="dropdown-insert-helpers">
                         <button class="btn btn-secondary" onclick="toggleQueryToolbarDropdown(event, 'dropdown-insert-helpers')" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Insert Tools & Helpers">
-                            <i class="fa-solid fa-code" style="font-size: 0.75rem;"></i> Insert Tools <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem; opacity: 0.7; margin-left: 0.2rem;"></i>
+                            <i class="fa-solid fa-code" style="font-size: 0.75rem;"></i> <span class="btn-text">Insert Tools</span> <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem; opacity: 0.7; margin-left: 0.2rem;"></i>
                         </button>
                         <div class="query-toolbar-dropdown-menu">
                             <button class="query-toolbar-dropdown-item" onclick="insertScopeIdentity(); closeAllQueryToolbarDropdowns();" title="Sisipkan DECLARE @NewID BIGINT = SCOPE_IDENTITY() di posisi kursor">
@@ -147,7 +147,7 @@
 
                     <div class="query-toolbar-dropdown" id="dropdown-query-storage">
                         <button class="btn btn-secondary" onclick="toggleQueryToolbarDropdown(event, 'dropdown-query-storage')" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Simpan & Riwayat Kueri">
-                            <i class="fa-solid fa-floppy-disk" style="font-size: 0.75rem;"></i> Query File <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem; opacity: 0.7; margin-left: 0.2rem;"></i>
+                            <i class="fa-solid fa-floppy-disk" style="font-size: 0.75rem;"></i> <span class="btn-text">Query File</span> <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem; opacity: 0.7; margin-left: 0.2rem;"></i>
                         </button>
                         <div class="query-toolbar-dropdown-menu">
                             <button class="query-toolbar-dropdown-item" onclick="saveQueryConsole(); closeAllQueryToolbarDropdowns();" title="Simpan query ke database">
@@ -165,10 +165,10 @@
                         </div>
                     </div>
                     <button class="btn btn-secondary" onclick="openQueryExecutionLogModal()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Cek Log Eksekusi Kueri">
-                        <i class="fa-solid fa-list-check" style="font-size: 0.75rem;"></i> Cek Log
+                        <i class="fa-solid fa-list-check" style="font-size: 0.75rem;"></i> <span class="btn-text">Cek Log</span>
                     </button>
                     <button class="btn btn-secondary" id="btn-toggle-schema-explorer" onclick="toggleSchemaExplorer()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Sembunyikan/Tampilkan Schema Explorer">
-                        <i class="fa-solid fa-folder-minus"></i> <span id="toggle-schema-exp-text">Hide Explorer</span>
+                        <i class="fa-solid fa-folder-minus"></i> <span id="toggle-schema-exp-text" class="btn-text">Hide Explorer</span>
                     </button>
 
                     <div style="height: 20px; width: 1px; background: var(--border-flat); margin: 0 0.25rem; flex-grow: 1; border: none;"></div>
@@ -177,12 +177,12 @@
                     <span id="query-active-conn-info" style="display: none;">Belum terhubung</span>
 
                     <button class="btn btn-secondary" onclick="disconnectQueryConsole()" style="width: auto; height: 32px; padding: 0 0.75rem; font-size: 0.8rem; color: #f43f5e; border-color: rgba(244, 63, 94, 0.2); background: rgba(244, 63, 94, 0.05); display: inline-flex; align-items: center; gap: 0.35rem;" title="Putuskan semua koneksi server">
-                        <i class="fa-solid fa-power-off" style="font-size: 0.75rem;"></i> Disconnect
+                        <i class="fa-solid fa-power-off" style="font-size: 0.75rem;"></i> <span class="btn-text">Disconnect</span>
                     </button>
                 </div>
 
                 <!-- Split Workspace: Schema Explorer on Left, Query Workspace on Right -->
-                <div style="display: flex; gap: 1.25rem; align-items: start; margin-top: 0.5rem;">
+                <div class="query-split-workspace" style="display: flex; gap: 1.25rem; align-items: start; margin-top: 0.5rem;">
                     <!-- LEFT COLUMN: Schema Explorer -->
                     <div class="query-schema-explorer" id="query-schema-explorer" style="width: 350px; flex-shrink: 0; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); border-radius: 8px; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; box-shadow: var(--shadow-flat);">
                         <div style="font-family: var(--font-heading); font-weight: 600; font-size: 0.9rem; color: #ffffff; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-flat); padding-bottom: 0.6rem;">
@@ -265,7 +265,7 @@
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 0.75rem; padding-right: 0.5rem; margin-left: auto;">
                                     <span id="query-schema-loader" style="font-size: 0.75rem; color: var(--accent-teal); display: none;"><i class="fa-solid fa-spinner fa-spin"></i> Memuat Skema Autocomplete...</span>
-                                    <span style="font-size: 0.72rem; color: var(--text-muted);">Tekan <strong style="color: var(--accent-teal);">Execute</strong> atau <kbd style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); padding: 1px 4px; border-radius: 4px; color: #fff;">Ctrl+E</kbd> untuk mengeksekusi</span>
+                                    <span class="query-shortcut-tip" style="font-size: 0.72rem; color: var(--text-muted);">Tekan <strong style="color: var(--accent-teal);">Execute</strong> atau <kbd style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); padding: 1px 4px; border-radius: 4px; color: #fff;">Ctrl+E</kbd> untuk mengeksekusi</span>
                                 </div>
                             </div>
                             <div id="query-editor" style="height: 300px; overflow: hidden; background: #07090d;"></div>
@@ -281,10 +281,10 @@
                                 <strong id="query-status-text">Query executed successfully.</strong>
                                 <div style="display: flex; align-items: center; gap: 0.6rem;">
                                     <button class="btn btn-secondary" onclick="copyQueryResultGrid()" style="width: auto; height: 28px; padding: 0 0.65rem; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.3rem;" title="Salin hasil tabel aktif ke clipboard (dengan header)">
-                                        <i class="fa-solid fa-copy"></i> Copy to Clipboard
+                                        <i class="fa-solid fa-copy"></i> <span class="btn-text">Copy to Clipboard</span>
                                     </button>
                                     <button class="btn btn-secondary" onclick="exportQueryResults()" style="width: auto; height: 28px; padding: 0 0.65rem; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.3rem;" title="Download hasil sebagai CSV">
-                                        <i class="fa-solid fa-file-csv" style="font-size: 0.75rem;"></i> Export CSV
+                                        <i class="fa-solid fa-file-csv" style="font-size: 0.75rem;"></i> <span class="btn-text">Export CSV</span>
                                     </button>
                                     <span id="query-rows-count" style="color: var(--text-muted);"></span>
                                 </div>
