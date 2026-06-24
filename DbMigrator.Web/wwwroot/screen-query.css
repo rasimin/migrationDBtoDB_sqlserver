@@ -1566,17 +1566,20 @@
 /* ─── Schema Explorer Item Quick Actions ────────────────────────────── */
 .se-item {
     position: relative;
-    padding-right: 65px !important; /* space for actions on hover */
+    padding-right: 8px !important;
 }
 
 .se-item-actions {
     display: none;
-    position: absolute;
+    position: sticky;
     right: 6px;
-    top: 50%;
-    transform: translateY(-50%);
-    gap: 0.25rem;
+    margin-left: auto;
     z-index: 10;
+    flex-shrink: 0;
+    background: #0d111c;
+    padding-left: 6px;
+    border-radius: 4px;
+    gap: 0.25rem;
 }
 
 .se-item:hover .se-item-actions,

@@ -1366,7 +1366,7 @@ async function loadQueryExecutionLogs() {
     const dbValue = dbInput ? dbInput.value.trim() : '';
     const searchValue = searchInput ? searchInput.value.trim() : '';
     
-    listBody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--accent-teal);"><i class="fa-solid fa-spinner fa-spin"></i> Memuat log...</td></tr>';
+    listBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem; color: var(--accent-teal);"><i class="fa-solid fa-spinner fa-spin"></i> Memuat log...</td></tr>';
     if (emptyDiv) emptyDiv.style.display = 'none';
     
     try {
@@ -1414,12 +1414,16 @@ async function loadQueryExecutionLogs() {
             
             const duration = log.ExecutionTimeMs !== null ? `${log.ExecutionTimeMs} ms` : '-';
             
+            const queryText = log.QueryText || log.queryText || '';
+            const querySnippet = queryText.replace(/[\r\n]+/g, ' ').substring(0, 80) + (queryText.length > 80 ? '...' : '');
+
             row.innerHTML = `
-                <td style="padding: 0.6rem 0.5rem; color: #ffffff; font-size: 0.78rem;">${timeStr}</td>
-                <td style="padding: 0.6rem 0.5rem; color: var(--text-muted); font-size: 0.78rem; word-break: break-all;">
+                <td style="padding: 0.6rem 0.5rem; color: #ffffff; font-size: 0.78rem; white-space: nowrap;">${timeStr}</td>
+                <td style="padding: 0.6rem 0.5rem; color: var(--text-muted); font-size: 0.78rem; word-break: break-all; min-width: 150px;">
                     <strong>${escapeHtml(log.ServerName || log.serverName)}</strong><br/>
                     <span style="opacity: 0.8;">[${escapeHtml(log.DatabaseName || log.databaseName)}]</span>
                 </td>
+                <td style="padding: 0.6rem 0.5rem; color: var(--text-muted); font-size: 0.78rem; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;" title="${escapeHtml(queryText)}">${escapeHtml(querySnippet)}</td>
                 <td style="padding: 0.6rem 0.5rem; text-align: center;">${statusBadge}</td>
                 <td style="padding: 0.6rem 0.5rem; text-align: right; color: var(--text-muted); font-size: 0.78rem;">${duration}</td>
             `;
@@ -1437,7 +1441,7 @@ async function loadQueryExecutionLogs() {
         
     } catch (err) {
         console.error("Error loading execution logs:", err);
-        listBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Gagal memuat log: ${escapeHtml(err.message)}</td></tr>`;
+        listBody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 2rem; color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Gagal memuat log: ${escapeHtml(err.message)}</td></tr>`;
     }
 }
 

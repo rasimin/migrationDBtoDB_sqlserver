@@ -382,14 +382,15 @@
                 </button>
             </div>
             
-            <div id="query-execution-log-split" style="display: flex; gap: 1.25rem; height: 450px;">
-                <!-- Left side: List of execution logs -->
-                <div style="width: 50%; border: 1px solid var(--border-flat); border-radius: 6px; overflow-y: auto; background: #07090d; display: flex; flex-direction: column;">
+            <div id="query-execution-log-split" style="display: flex; flex-direction: column; gap: 0.75rem; height: 530px;">
+                <!-- Top side: List of execution logs -->
+                <div style="flex: 1; min-height: 180px; border: 1px solid var(--border-flat); border-radius: 6px; overflow-y: auto; background: #07090d; display: flex; flex-direction: column;">
                     <table class="mapper-table" style="width: 100%; margin-bottom: 0; border-collapse: collapse;">
                         <thead>
                             <tr style="position: sticky; top: 0; z-index: 5; background: #07090d; border-bottom: 1px solid var(--border-flat);">
-                                <th style="padding: 0.6rem 0.5rem; color: var(--accent-teal); font-size: 0.75rem; text-align: left;">Waktu</th>
-                                <th style="padding: 0.6rem 0.5rem; color: var(--accent-teal); font-size: 0.75rem; text-align: left;">Server & DB</th>
+                                <th style="padding: 0.6rem 0.5rem; color: var(--accent-teal); font-size: 0.75rem; text-align: left; white-space: nowrap;">Waktu</th>
+                                <th style="padding: 0.6rem 0.5rem; color: var(--accent-teal); font-size: 0.75rem; text-align: left; min-width: 150px;">Server & DB</th>
+                                <th style="padding: 0.6rem 0.5rem; color: var(--accent-teal); font-size: 0.75rem; text-align: left; max-width: 320px;">Kueri</th>
                                 <th style="padding: 0.6rem 0.5rem; color: var(--accent-teal); font-size: 0.75rem; text-align: center; width: 80px;">Status</th>
                                 <th style="padding: 0.6rem 0.5rem; color: var(--accent-teal); font-size: 0.75rem; text-align: right; width: 60px;">Durasi</th>
                             </tr>
@@ -404,8 +405,8 @@
                     </div>
                 </div>
 
-                <!-- Right side: Execution details preview -->
-                <div style="flex: 1; display: flex; flex-direction: column; gap: 0.75rem; overflow: hidden;">
+                <!-- Bottom side: Execution details preview -->
+                <div style="width: 100%; height: 240px; display: flex; gap: 1.25rem; flex-shrink: 0; margin-top: 0.5rem;">
                     <!-- Query Text Preview -->
                     <div style="flex: 1; border: 1px solid var(--border-flat); border-radius: 6px; background: #07090d; display: flex; flex-direction: column; overflow: hidden; position: relative;">
                         <div style="background: rgba(255, 255, 255, 0.02); border-bottom: 1px solid var(--border-flat); padding: 0.4rem 0.75rem; display: flex; align-items: center; justify-content: space-between;">
@@ -415,12 +416,12 @@
                             </button>
                         </div>
                         <div style="flex: 1; overflow: auto; padding: 0.5rem; font-family: Consolas, Monaco, monospace; font-size: 0.8rem; white-space: pre-wrap; word-break: break-all; color: #cbd5e1; background: #07090d;" id="log-query-preview">
-                            <div style="color: var(--text-muted); text-align: center; margin-top: 2rem;">Pilih log di sebelah kiri untuk melihat detail</div>
+                            <div style="color: var(--text-muted); text-align: center; margin-top: 2rem;">Pilih log di atas untuk melihat detail</div>
                         </div>
                     </div>
 
                     <!-- Response / Error Preview -->
-                    <div style="height: 180px; border: 1px solid var(--border-flat); border-radius: 6px; background: #07090d; display: flex; flex-direction: column; overflow: hidden;">
+                    <div style="width: 45%; border: 1px solid var(--border-flat); border-radius: 6px; background: #07090d; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;">
                         <div style="background: rgba(255, 255, 255, 0.02); border-bottom: 1px solid var(--border-flat); padding: 0.4rem 0.75rem;">
                             <span style="font-size: 0.8rem; font-weight: 600; color: #ffffff;">Respon / Pesan Error</span>
                         </div>
@@ -429,9 +430,6 @@
                     </div>
                 </div>
             </div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-secondary" onclick="closeQueryExecutionLogModal()" style="width: auto;">Tutup</button>
         </div>
     </div>
 </div>
