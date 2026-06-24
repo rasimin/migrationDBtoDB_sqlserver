@@ -302,17 +302,17 @@ async function runQueryConsole() {
         let rowsCountText = '';
         if (tables.length > 1) {
             const totalRows = tables.reduce((acc, t) => acc + t.Rows.length, 0);
-            rowsCountText = `${tables.length} tabel dikembalikan (total ${totalRows} baris) dalam ${data.ExecutionTimeMs}ms`;
+            rowsCountText = `${tables.length} tabel dikembalikan (total ${totalRows} baris) (${formatExecutionTime(data.ExecutionTimeMs)})`;
         } else if (tables.length === 1) {
             const rowCount = tables[0]?.Rows.length ?? 0;
             const colCount = tables[0]?.Headers?.length ?? 0;
             if (rowCount > 150) {
-                rowsCountText = `${rowCount} baris (150 ditampilkan), ${colCount} kolom (${data.ExecutionTimeMs}ms)`;
+                rowsCountText = `${rowCount} baris (150 ditampilkan), ${colCount} kolom (${formatExecutionTime(data.ExecutionTimeMs)})`;
             } else {
-                rowsCountText = `${rowCount} baris, ${colCount} kolom (${data.ExecutionTimeMs}ms)`;
+                rowsCountText = `${rowCount} baris, ${colCount} kolom (${formatExecutionTime(data.ExecutionTimeMs)})`;
             }
         } else {
-            rowsCountText = `${data.ExecutionTimeMs}ms`;
+            rowsCountText = `(${formatExecutionTime(data.ExecutionTimeMs)})`;
         }
 
         if (isTruncated) {
@@ -514,7 +514,7 @@ function switchQueryTab(tabId, index) {
         
         const rowsCount = document.getElementById('query-rows-count');
         if (rowsCount) {
-            const msMatch = rowsCount.textContent.match(/\((\d+ms)\)/);
+            const msMatch = rowsCount.textContent.match(/\(([^)]+ms)\)/);
             const msStr = msMatch ? ` (${msMatch[1]})` : "";
             const colCount = activeTable.Headers ? activeTable.Headers.length : 0;
             const rowCount = activeTable.Rows.length;
@@ -702,7 +702,7 @@ function updateLoadedRowsDisplay(tabId, tableIndex, totalRows, renderedRowsCount
     
     // 1. Update status bar text if it is the currently active tab
     if (rowsCount && queryConsoleActiveTabId === tabId) {
-        const msMatch = rowsCount.textContent.match(/\((\d+ms)\)/);
+        const msMatch = rowsCount.textContent.match(/\(([^)]+ms)\)/);
         const msStr = msMatch ? ` (${msMatch[1]})` : "";
         
         let colCount = 0;
@@ -795,6 +795,28 @@ function insertScopeIdentity() {
     const op = {
         range: range,
         text: text,
+        forceMoveMarkers: true
+    };
+    queryConsoleEditor.executeEdits("insert-helper", [op]);
+}
+
+function insertCurrentDateTime() {
+    if (!queryConsoleEditor) return;
+
+    queryConsoleEditor.focus();
+    const selection = queryConsoleEditor.getSelection();
+    const range = new monaco.Range(
+        selection.startLineNumber,
+        selection.startColumn,
+        selection.endLineNumber,
+        selection.endColumn
+    );
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateString = `'${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}'`;
+    const op = {
+        range: range,
+        text: dateString,
         forceMoveMarkers: true
     };
     queryConsoleEditor.executeEdits("insert-helper", [op]);

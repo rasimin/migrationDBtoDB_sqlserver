@@ -1167,6 +1167,29 @@ function saveQueryRunResult(tabId, data) {
     tab.activeSubResultTabIdx = 0;
 }
 
+function formatExecutionTime(ms) {
+    if (ms === undefined || ms === null || isNaN(ms)) return '';
+    if (ms < 1000) {
+        return `${ms}ms`;
+    }
+    const totalSeconds = Math.floor(ms / 1000);
+    const remainingMs = ms % 1000;
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    
+    let parts = [];
+    if (hours > 0) parts.push(`${hours} jam`);
+    if (minutes > 0) parts.push(`${minutes} menit`);
+    if (seconds > 0) parts.push(`${seconds} detik`);
+    
+    let timeStr = parts.join(' ');
+    if (remainingMs > 0) {
+        timeStr += ` ${remainingMs}ms`;
+    }
+    return timeStr.trim();
+}
+
 function getQueryMessagesHtml(messages, executionTimeMs, isError) {
     const timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     let html = '';
@@ -1180,7 +1203,7 @@ function getQueryMessagesHtml(messages, executionTimeMs, isError) {
         });
     }
     if (executionTimeMs !== undefined && executionTimeMs !== null) {
-        html += `<div style="color: var(--text-muted); margin-top: 0.5rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.4rem; font-size: 0.78rem;">── Selesai pada ${timestamp} (${executionTimeMs}ms) ──</div>`;
+        html += `<div style="color: var(--text-muted); margin-top: 0.5rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.4rem; font-size: 0.78rem;">── Selesai pada ${timestamp} (${formatExecutionTime(executionTimeMs)}) ──</div>`;
     }
     return html || `<span style="color: var(--text-muted); font-style: italic;">Tidak ada pesan.</span>`;
 }
@@ -1196,6 +1219,12 @@ document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.code === 'KeyE' || e.key === 'e' || e.key === 'E')) {
         e.preventDefault();
         runQueryConsole();
+    }
+
+    // Ctrl + S: Save query console
+    if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.code === 'KeyS' || e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        saveQueryConsole();
     }
 
     // Ctrl + Alt + T: New Query Tab
@@ -1280,6 +1309,11 @@ function initMonacoQueryEditor() {
             fontFamily: 'Consolas, Monaco, monospace',
             lineHeight: 18,
             padding: { top: 8, bottom: 8 }
+        });
+
+        // Bind Ctrl+S shortcut to saveQueryConsole
+        queryConsoleEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
+            saveQueryConsole();
         });
 
         // Initialize tabs state

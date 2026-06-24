@@ -122,9 +122,6 @@
                     <button class="btn btn-primary" id="btn-execute-query" onclick="runQueryConsole()" style="width: auto; height: 32px; padding: 0 1rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Execute query (Ctrl+E)">
                         <i class="fa-solid fa-play" style="font-size: 0.75rem;"></i> <span class="btn-text">Execute</span>
                     </button>
-                    <button class="btn btn-secondary" onclick="clearQueryConsole()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;">
-                        <i class="fa-solid fa-trash-can" style="font-size: 0.75rem;"></i> <span class="btn-text">Clear</span>
-                    </button>
                     <button class="btn btn-secondary" onclick="toggleCommentSelection()" style="width: auto; height: 32px; padding: 0 0.85rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Remark / Unremark code (Ctrl+/)">
                         <i class="fa-solid fa-comment" style="font-size: 0.75rem;"></i> <span class="btn-text">Remark</span>
                     </button>
@@ -135,6 +132,9 @@
                         <div class="query-toolbar-dropdown-menu">
                             <button class="query-toolbar-dropdown-item" onclick="insertScopeIdentity(); closeAllQueryToolbarDropdowns();" title="Sisipkan DECLARE @NewID BIGINT = SCOPE_IDENTITY() di posisi kursor">
                                 <i class="fa-solid fa-key"></i> Scope Identity
+                            </button>
+                            <button class="query-toolbar-dropdown-item" onclick="insertCurrentDateTime(); closeAllQueryToolbarDropdowns();" title="Sisipkan tanggal dan jam saat ini">
+                                <i class="fa-solid fa-calendar-day"></i> Current Date & Time
                             </button>
                             <button class="query-toolbar-dropdown-item" onclick="openInsertMapperModal(); closeAllQueryToolbarDropdowns();" title="Buka Mapper Script INSERT untuk mengubah values dengan mudah">
                                 <i class="fa-solid fa-sliders"></i> Insert Mapper
