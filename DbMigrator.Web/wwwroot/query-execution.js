@@ -799,3 +799,78 @@ function insertScopeIdentity() {
     };
     queryConsoleEditor.executeEdits("insert-helper", [op]);
 }
+
+// Global listener for copying active results table selection with headers using Ctrl+Shift+C
+document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.key === 'c')) {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed) return;
+
+        let container = selection.getRangeAt(0).commonAncestorContainer;
+        if (container.nodeType === Node.TEXT_NODE) {
+            container = container.parentNode;
+        }
+
+        const table = container.closest('.query-results-table');
+        if (!table) return;
+
+        e.preventDefault();
+
+        const rows = table.querySelectorAll('tbody tr');
+        const selectedRows = [];
+        rows.forEach(tr => {
+            if (selection.containsNode(tr, true)) {
+                selectedRows.push(tr);
+            }
+        });
+
+        if (selectedRows.length === 0) return;
+
+        const selectedColsSet = new Set();
+        selectedRows.forEach(tr => {
+            const tds = tr.querySelectorAll('td');
+            tds.forEach((td, colIdx) => {
+                if (colIdx > 0 && selection.containsNode(td, true)) {
+                    selectedColsSet.add(colIdx);
+                }
+            });
+        });
+
+        const selectedCols = Array.from(selectedColsSet).sort((a, b) => a - b);
+        if (selectedCols.length === 0) return;
+
+        const ths = table.querySelectorAll('thead th');
+        const headerRowText = selectedCols.map(colIdx => {
+            const th = ths[colIdx];
+            return th ? th.textContent.trim() : "";
+        }).join("\t");
+
+        const dataRowsText = selectedRows.map(tr => {
+            const tds = tr.querySelectorAll('td');
+            return selectedCols.map(colIdx => {
+                const td = tds[colIdx];
+                return td ? td.textContent.trim() : "";
+            }).join("\t");
+        });
+
+        const finalTsv = [headerRowText, ...dataRowsText].join("\n");
+
+        navigator.clipboard.writeText(finalTsv)
+            .then(() => {
+                const statusText = document.getElementById('query-status-text');
+                if (statusText) {
+                    const origText = statusText.innerHTML;
+                    const origColor = statusText.style.color;
+                    statusText.innerHTML = '<i class="fa-solid fa-circle-check"></i> Baris terpilih berhasil disalin dengan header!';
+                    statusText.style.color = 'var(--accent-teal)';
+                    setTimeout(() => {
+                        statusText.innerHTML = origText;
+                        statusText.style.color = origColor;
+                    }, 2500);
+                }
+            })
+            .catch(err => {
+                console.error("Gagal menyalin dengan header:", err);
+            });
+    }
+});

@@ -553,6 +553,43 @@ async function searchSchemaObjects() {
             const objects = data.Objects || [];
             if (childrenEl) {
                 renderDatabaseObjects(conn.serverName, targetDb, childrenEl, objects);
+                
+                // Reset visibility and open parent folders/containers
+                childrenEl.style.display = '';
+                childrenEl.classList.add('open');
+                
+                const dbFolder = childrenEl.previousElementSibling;
+                if (dbFolder && dbFolder.classList.contains('se-folder')) {
+                    dbFolder.style.display = '';
+                    dbFolder.classList.add('open');
+                }
+                
+                let parentServerChildren = childrenEl.parentElement;
+                if (parentServerChildren && parentServerChildren.classList.contains('se-children')) {
+                    parentServerChildren.style.display = '';
+                    parentServerChildren.classList.add('open');
+                    
+                    const serverFolder = parentServerChildren.previousElementSibling;
+                    if (serverFolder && serverFolder.classList.contains('se-server-folder')) {
+                        serverFolder.style.display = '';
+                        serverFolder.classList.add('open');
+                    }
+                }
+                
+                // Force all category folders and items to be visible and open for server search results
+                childrenEl.querySelectorAll('.se-folder').forEach(folder => {
+                    folder.style.display = '';
+                    folder.classList.add('open');
+                    const folderChildren = folder.nextElementSibling;
+                    if (folderChildren && folderChildren.classList.contains('se-children')) {
+                        folderChildren.style.display = '';
+                        folderChildren.classList.add('open');
+                    }
+                });
+                
+                childrenEl.querySelectorAll('.se-item').forEach(item => {
+                    item.style.display = '';
+                });
             }
         }
     } catch (err) {

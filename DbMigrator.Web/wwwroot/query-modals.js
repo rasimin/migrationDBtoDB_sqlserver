@@ -526,6 +526,63 @@ async function saveAsQueryConsole() {
     }
 }
 
+async function exportQueryToFile() {
+    if (!queryConsoleEditor) return;
+    const activeTab = queryConsoleTabs.find(t => t.id === queryConsoleActiveTabId);
+    if (!activeTab) return;
+
+    const queryText = queryConsoleEditor.getValue();
+    if (!queryText.trim()) {
+        await uiAlert("Script kueri kosong, tidak ada yang bisa diekspor!");
+        return;
+    }
+
+    // Prepare default filename from tab name
+    let defaultFilename = activeTab.name || "query";
+    // Replace any invalid filename characters
+    defaultFilename = defaultFilename.replace(/[^a-zA-Z0-9_\-\s]/g, "");
+    if (!defaultFilename.toLowerCase().endsWith(".sql")) {
+        defaultFilename += ".sql";
+    }
+
+    // Prompt user for filename
+    const targetFilename = await uiPrompt("Masukkan nama file untuk ekspor:", {
+        title: "Ekspor Kueri ke File SQL",
+        defaultValue: defaultFilename,
+        placeholder: "Contoh: query_transaksi.sql"
+    });
+
+    if (targetFilename === null) {
+        return; // Cancelled
+    }
+
+    let finalName = targetFilename.trim();
+    if (!finalName) {
+        finalName = defaultFilename;
+    }
+    if (!finalName.toLowerCase().endsWith(".sql")) {
+        finalName += ".sql";
+    }
+
+    try {
+        const blob = new Blob([queryText], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = finalName;
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+    } catch (err) {
+        console.error("Gagal mengekspor file:", err);
+        await uiAlert("Gagal mengekspor file: " + err.message, { variant: "error" });
+    }
+}
+
 // ── Query History Modal & Functions ──────────────────────────────────────────
 let historyPreviewEditor = null;
 let activeHistoryQuery = null;

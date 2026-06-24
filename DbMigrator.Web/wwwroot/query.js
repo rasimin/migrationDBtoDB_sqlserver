@@ -292,7 +292,7 @@ async function connectQueryConsole(isSilent = false, targetDatabase = null) {
         // Re-initialize tabs if they were cleared after a disconnect
         if (queryConsoleTabs.length === 0 && queryConsoleEditor) {
             const savedQuery = localStorage.getItem('queryConsoleLastQuery');
-            const initialValue = savedQuery !== null ? savedQuery : "SELECT TOP 10 * FROM dbo.Customers ORDER BY Id DESC;";
+            const initialValue = savedQuery !== null ? savedQuery : "";
             
             const model = monaco.editor.createModel(initialValue, 'sql');
             queryConsoleEditor.setModel(model);
@@ -340,7 +340,7 @@ async function connectQueryConsole(isSilent = false, targetDatabase = null) {
             await uiAlert("Koneksi Gagal: " + err.message);
         } else {
             console.error("Auto-connect failed:", err.message);
-            disconnectQueryConsole();
+            disconnectQueryConsole(true);
         }
     } finally {
         if (btn) {
@@ -536,7 +536,16 @@ async function selectDatabase(dbName) {
     }
 }
 
-function disconnectQueryConsole() {
+async function disconnectQueryConsole(force = false) {
+    if (!force) {
+        const confirmed = await uiConfirm("Apakah Anda yakin ingin memutuskan semua koneksi? Semua tab kueri dan hasil kueri akan terhapus.", {
+            title: "Konfirmasi Disconnect All",
+            confirmText: "Ya, Putuskan",
+            cancelText: "Batal"
+        });
+        if (!confirmed) return;
+    }
+
     queryConsoleActiveServer = "";
     queryConsoleActiveAuth = "";
     queryConsoleActiveLogin = "";
@@ -661,14 +670,12 @@ function addNewQueryTab(initialValue = '', tabName = '', targetServer = null, ta
     
     // Fallback to default template query if no initialValue is provided
     let queryValue = initialValue;
-    if (!queryValue) {
-        // If it's the very first tab, try loading from localStorage
-        if (queryConsoleTabs.length === 0) {
-            const savedQuery = localStorage.getItem('queryConsoleLastQuery');
-            queryValue = savedQuery !== null ? savedQuery : "SELECT TOP 10 * FROM dbo.Customers ORDER BY Id DESC;";
-        } else {
-            queryValue = "SELECT TOP 10 * FROM dbo.Customers ORDER BY Id DESC;";
-        }
+    if (queryValue === undefined || queryValue === null) {
+        queryValue = "";
+    }
+    if (queryValue === '' && queryConsoleTabs.length === 0) {
+        const savedQuery = localStorage.getItem('queryConsoleLastQuery');
+        queryValue = savedQuery !== null ? savedQuery : "";
     }
 
     // Create a new Monaco model for this tab
@@ -886,11 +893,6 @@ function closeQueryTab(tabId, event) {
         event.preventDefault();
     }
 
-    if (queryConsoleTabs.length <= 1) {
-        uiAlert("Tidak dapat menutup tab terakhir! Silakan buat tab baru terlebih dahulu.");
-        return;
-    }
-
     const targetIdx = queryConsoleTabs.findIndex(t => t.id === tabId);
     if (targetIdx === -1) return;
 
@@ -914,13 +916,30 @@ function closeQueryTab(tabId, event) {
     // Remove from array
     queryConsoleTabs.splice(targetIdx, 1);
 
-    // If closing active tab, switch to another
-    if (queryConsoleActiveTabId === tabId) {
-        const nextActiveIdx = Math.max(0, targetIdx - 1);
-        const nextActiveTab = queryConsoleTabs[nextActiveIdx];
-        switchQueryTabActive(nextActiveTab.id);
+    if (queryConsoleTabs.length === 0) {
+        // Inherit connection context from closed tab
+        const inheritedServer = tabToClose.serverName;
+        const inheritedDatabase = tabToClose.database;
+        const inheritedAuth = tabToClose.authType;
+        const inheritedLogin = tabToClose.login;
+        const inheritedPassword = tabToClose.password;
+
+        queryConsoleActiveServer = inheritedServer || "";
+        queryConsoleActiveAuth = inheritedAuth || "SQL";
+        queryConsoleActiveLogin = inheritedLogin || "";
+        queryConsoleActivePassword = inheritedPassword || "";
+        queryConsoleActiveDatabase = inheritedDatabase || "master";
+
+        addNewQueryTab('', '', inheritedServer, inheritedDatabase);
     } else {
-        renderQueryTabs();
+        // If closing active tab, switch to another
+        if (queryConsoleActiveTabId === tabId) {
+            const nextActiveIdx = Math.max(0, targetIdx - 1);
+            const nextActiveTab = queryConsoleTabs[nextActiveIdx];
+            switchQueryTabActive(nextActiveTab.id);
+        } else {
+            renderQueryTabs();
+        }
     }
 }
 function renderQueryTabs() {
@@ -1248,7 +1267,7 @@ function initMonacoQueryEditor() {
         }
 
         const savedQuery = localStorage.getItem('queryConsoleLastQuery');
-        const initialValue = savedQuery !== null ? savedQuery : "SELECT TOP 10 * FROM dbo.Customers ORDER BY Id DESC;";
+        const initialValue = savedQuery !== null ? savedQuery : "";
 
         const initialModel = monaco.editor.createModel(initialValue, 'sql');
 

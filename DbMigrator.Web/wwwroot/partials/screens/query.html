@@ -1,12 +1,7 @@
     <div id="main-screen-query" class="main-screen" style="display: none;">
         <div class="panel-card">
-            <div class="panel-title" style="border-bottom: 1px solid var(--border-flat); padding-bottom: 0.75rem;">
-                <i class="fa-solid fa-terminal" style="color: var(--accent-teal);"></i>
-                <span>Database Query Console</span>
-            </div>
-
             <!-- Connection Panel (SSMS Login Style Gateway) -->
-            <div id="query-connect-panel" style="margin-top: 1.5rem; max-width: 550px; margin-left: auto; margin-right: auto; padding: 2rem; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); border-radius: 12px; backdrop-filter: blur(10px);">
+            <div id="query-connect-panel" style="margin-top: 0.5rem; max-width: 550px; margin-left: auto; margin-right: auto; padding: 2rem; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-flat); border-radius: 12px; backdrop-filter: blur(10px);">
                 <div style="text-align: center; margin-bottom: 1.5rem;">
                     <i class="fa-solid fa-plug" style="font-size: 2.5rem; color: var(--accent-teal); margin-bottom: 0.75rem;"></i>
                     <h3 style="margin: 0; font-family: var(--font-heading); color: #ffffff;">Connect to Server</h3>
@@ -81,7 +76,7 @@
             <!-- Query Editor Main Panel (Hidden by default) -->
             <div id="query-editor-main-panel" style="display: none;">
                 <!-- Toolbar (SSMS Style) -->
-                <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 1.25rem; margin-bottom: 1.25rem; flex-wrap: wrap; background: rgba(255, 255, 255, 0.02); padding: 0.5rem 1rem; border: 1px solid var(--border-flat); border-radius: 8px;">
+                <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 0; margin-bottom: 1.25rem; flex-wrap: wrap; background: rgba(255, 255, 255, 0.02); padding: 0.5rem 1rem; border: 1px solid var(--border-flat); border-radius: 8px;">
                     
                     <!-- Server Selector Custom Dropdown -->
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -160,6 +155,9 @@
                             </button>
                             <button class="query-toolbar-dropdown-item" onclick="saveAsQueryConsole(); closeAllQueryToolbarDropdowns();" title="Simpan query sebagai nama baru ke database">
                                 <i class="fa-solid fa-file-signature"></i> Save As
+                            </button>
+                            <button class="query-toolbar-dropdown-item" onclick="exportQueryToFile(); closeAllQueryToolbarDropdowns();" title="Ekspor kueri saat ini ke file fisik (.sql)">
+                                <i class="fa-solid fa-file-export"></i> Export to SQL
                             </button>
                             <button class="query-toolbar-dropdown-item" onclick="openQueryHistoryModal(); closeAllQueryToolbarDropdowns();" title="Buka riwayat kueri yang disimpan">
                                 <i class="fa-solid fa-clock-rotate-left"></i> Query History

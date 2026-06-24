@@ -739,7 +739,7 @@
     z-index: 2; /* sticky headers */
     border-bottom: 2px solid var(--border-flat);
     text-align: left;
-    user-select: none;
+    user-select: text;
 }
 
 /* Stable column resizer handle */
@@ -1415,6 +1415,7 @@
     background: rgba(255, 255, 255, 0.02) !important;
     font-weight: bold;
     border-right: 1px solid var(--border-flat) !important;
+    user-select: none !important;
 }
 
 /* ─── INSERT Statement Mapper Modal Styles ───────────────────────── */
