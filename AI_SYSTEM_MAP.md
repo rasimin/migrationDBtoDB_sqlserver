@@ -101,6 +101,7 @@ dbo.SavedQueries (Id INT PK, QueryName NVARCHAR, QueryText NVARCHAR, CreatedAt D
 | **GET** | `/api/jobs/{id}` | Retrieve detailed configuration of a specific job | - |
 | **POST** | `/api/jobs` | Create or update a migration job configuration | `MigrationJob` JSON |
 | **DELETE**| `/api/jobs/{id}` | Delete job along with all associated mappings | - |
+| **POST** | `/api/jobs/{id}/delete` | Delete job along with all associated mappings (IIS-safe alias for blocked DELETE methods) | - |
 | **POST** | `/api/jobs/test-connection`| Test dynamic raw connection strings | `{ ConnectionString: "..." }` |
 | **GET** | `/api/mappings/tables/{jobId}`| Retrieve all table mappings for a job | - |
 | **POST** | `/api/mappings/tables/{jobId}/reorder`| Save custom drag-and-drop sequence orders | `List<ReorderItemDto>` |
@@ -304,6 +305,10 @@ connection.on('ReceiveError', (errorObj) => {
 *   **Tab State Integration:** Added `savedQueryId` and `savedQueryName` metadata properties to console tab objects in the client-side state.
 *   **Save/Save As Controls:** Users can click **Save** (updates query if already saved, prompts for name if new) and **Save As** (prompts for new name and forks). Auto-generated names are timestamp-based (e.g., `Query_20260615_161618`).
 *   **Query History & Preview Panel:** Integrated `#query-history-modal` with search inputs (by name or content SQL) and date range filters. Left pane shows queries list, right pane lazy-loads a read-only Monaco editor preview. Scripts can be copied to clipboard or loaded into a new console tab instantly.
+
+### IIS-Safe Job Deletion Endpoint
+*   **POST Delete Alias:** Added `POST /api/jobs/{id}/delete` as an IIS-safe alias for job deletion while preserving the original `DELETE /api/jobs/{id}` route for compatibility.
+*   **Frontend Method Switch:** Updated the job delete handler in `migration.js` to call the POST alias, avoiding IIS/WebDAV/request-filtering environments that return `405 Method Not Allowed` for DELETE.
 
 ---
 

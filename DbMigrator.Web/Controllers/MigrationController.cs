@@ -72,6 +72,7 @@ namespace DbMigrator.Web.Controllers
         }
 
         [HttpDelete("/api/jobs/{id:int}")]
+        [HttpPost("/api/jobs/{id:int}/delete")]
         public async Task<IActionResult> DeleteJob(int id)
         {
             try

@@ -79,7 +79,7 @@ async function deleteJob(event, id, name) {
     if (!(await uiConfirm(`Apakah Anda yakin ingin menghapus Job [${name}] beserta seluruh konfigurasi tabel dan kolomnya? Tindakan ini tidak dapat dibatalkan!`))) return;
 
     try {
-        const res = await fetch(`${API_BASE}/jobs/${id}`, { method: 'DELETE' });
+        const res = await fetch(`${API_BASE}/jobs/${id}/delete`, { method: 'POST' });
         if (res.ok) {
             // Hapus cache pemindaian skema job yang dihapus
             localStorage.removeItem(`dbmigrator_schema_compare_results_${id}`);
