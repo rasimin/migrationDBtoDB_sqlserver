@@ -136,6 +136,11 @@ dbo.SavedQueries (Id INT PK, QueryName NVARCHAR, QueryText NVARCHAR, CreatedAt D
 | **GET** | `/api/query/saved-queries/{id}`| Retrieve details of a specific saved query | - |
 | **POST** | `/api/query/saved-queries`| Create or update a saved query script | `SavedQuery` JSON |
 | **DELETE**| `/api/query/saved-queries/{id}`| Delete a saved query from history | - |
+| **POST** | `/api/report-raider/connect` | Test direct SQL connection to SSRS ReportServer database and return root catalog folder | `{ ConnectionString }` |
+| **POST** | `/api/report-raider/root` | Retrieve root folder from SSRS `dbo.Catalog` | `{ ConnectionString }` |
+| **POST** | `/api/report-raider/children` | Retrieve child catalog items by parent folder ID | `{ ConnectionString, ParentId }` |
+| **POST** | `/api/report-raider/download` | Download one SSRS catalog item definition as RDL/RDS/RSD | `{ ConnectionString, ItemId }` |
+| **POST** | `/api/report-raider/download-zip` | Download selected SSRS catalog files/folders recursively as ZIP | `{ ConnectionString, ItemIds }` |
 
 ---
 
@@ -309,6 +314,14 @@ connection.on('ReceiveError', (errorObj) => {
 ### IIS-Safe Job Deletion Endpoint
 *   **POST Delete Alias:** Added `POST /api/jobs/{id}/delete` as an IIS-safe alias for job deletion while preserving the original `DELETE /api/jobs/{id}` route for compatibility.
 *   **Frontend Method Switch:** Updated the job delete handler in `migration.js` to call the POST alias, avoiding IIS/WebDAV/request-filtering environments that return `405 Method Not Allowed` for DELETE.
+
+### SSRS Raider Direct Catalog Browser
+*   **New Main Menu:** Added `SSRS Raider` as a separate top navigation screen beside the existing SOAP-based SSRS Explorer.
+*   **Direct ReportServer Flow:** Added `ReportRaiderController` and `ReportRaiderService` to connect directly to the SSRS ReportServer SQL database and read `dbo.Catalog` metadata with Dapper.
+*   **Connection String Builder:** Added an SSRS Raider-local builder modal that generates ReportServer SQL connection strings, parses existing input, supports trust/encrypt toggles, password visibility, and tests via the Raider connect endpoint.
+*   **Expandable Folder Tree:** Folder navigation uses a cached, lazy-loaded expand/collapse tree with active menu-style highlighting while the item table follows the selected folder.
+*   **Catalog Export:** Supports folder browsing, item filtering, single RDL/RDS/RSD download, and recursive multi-item ZIP export via POST endpoints that carry the browser-held connection string.
+*   **Current App Architecture:** Implemented as the existing static partial + vanilla JS + controller/service pattern, without introducing a separate project or ASP.NET Session dependency.
 
 ---
 

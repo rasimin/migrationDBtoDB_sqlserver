@@ -362,6 +362,8 @@ function switchMainTab(tabId) {
         }, 120);
     } else if (tabId === 'whiteboard') {
         initWhiteboardTab();
+    } else if (tabId === 'report-raider' && typeof initReportRaiderTab === 'function') {
+        initReportRaiderTab();
     }
 }
 

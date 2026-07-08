@@ -133,6 +133,7 @@ builder.Services.AddScoped<QueryService>();
 builder.Services.AddScoped<SsrsService>();
 builder.Services.AddScoped<WhiteboardService>();
 builder.Services.AddScoped<MigrationService>();
+builder.Services.AddScoped<ReportRaiderService>();
 
 var app = builder.Build();
 

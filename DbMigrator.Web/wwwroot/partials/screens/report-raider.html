@@ -1,0 +1,164 @@
+<div id="main-screen-report-raider" class="main-screen" style="display: none;">
+    <div class="raider-layout">
+        <section id="raider-connect-panel" class="raider-connect-card">
+            <div class="raider-connect-header">
+                <div class="raider-icon">
+                    <i class="fa-solid fa-crosshairs"></i>
+                </div>
+                <div>
+                    <h2>SSRS Raider</h2>
+                    <p>Jelajah database ReportServer dan unduh definisi laporan langsung dari katalog SSRS.</p>
+                </div>
+            </div>
+
+            <form id="raider-connect-form" onsubmit="event.preventDefault(); connectReportRaider();">
+                <div class="raider-field-heading">
+                    <label for="raider-conn-string">ReportServer SQL Connection String</label>
+                    <button type="button" class="btn btn-secondary raider-builder-open" onclick="openReportRaiderConnectionBuilder()" title="Buka Connection String Builder">
+                        <i class="fa-solid fa-wrench"></i> Builder
+                    </button>
+                </div>
+                <textarea id="raider-conn-string" class="form-control raider-conn-input" rows="4" spellcheck="false" placeholder="Server=SERVERNAME;Database=ReportServer;User Id=sa;Password=secret;TrustServerCertificate=True;"></textarea>
+                <div class="raider-connect-actions">
+                    <button type="button" class="btn btn-secondary" onclick="loadReportRaiderFromQueryState()" title="Ambil server/login aktif dari Query Console">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Prefill Query Console
+                    </button>
+                    <button type="submit" id="raider-btn-connect" class="btn btn-primary">
+                        <i class="fa-solid fa-plug"></i> Connect
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <section id="raider-workspace" class="raider-workspace" style="display: none;">
+            <div class="raider-toolbar">
+                <div class="raider-crumbs-wrap">
+                    <button type="button" id="raider-btn-up" class="raider-icon-btn" onclick="goUpReportRaiderFolder()" title="Ke folder induk">
+                        <i class="fa-solid fa-arrow-left"></i>
+                    </button>
+                    <div id="raider-breadcrumbs" class="raider-breadcrumbs"></div>
+                    <span id="raider-connection-badge" class="raider-connection-badge"></span>
+                </div>
+                <div class="raider-toolbar-actions">
+                    <div class="raider-search">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="raider-search" class="form-control" oninput="filterReportRaiderItems()" placeholder="Cari item...">
+                    </div>
+                    <button type="button" class="btn btn-secondary raider-action-btn" onclick="refreshReportRaiderFolder()" title="Refresh folder">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                    </button>
+                    <button type="button" class="btn btn-danger raider-action-btn" onclick="disconnectReportRaider()">
+                        <i class="fa-solid fa-power-off"></i> Disconnect
+                    </button>
+                </div>
+            </div>
+
+            <div class="raider-main">
+                <aside class="raider-tree-panel">
+                    <div class="raider-panel-header">
+                        <span><i class="fa-solid fa-folder-tree"></i> Folders</span>
+                    </div>
+                    <div id="raider-tree" class="raider-tree"></div>
+                </aside>
+
+                <main class="raider-items-panel">
+                    <div class="raider-panel-header">
+                        <span id="raider-current-title"><i class="fa-solid fa-table-list"></i> Catalog Items</span>
+                        <button type="button" id="raider-download-selected" class="btn btn-primary raider-action-btn" onclick="downloadReportRaiderSelected()" disabled>
+                            <i class="fa-solid fa-file-zipper"></i> Download Selected
+                        </button>
+                    </div>
+                    <div id="raider-loading" class="raider-loading" style="display: none;">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i>
+                        <span>Membaca katalog SSRS...</span>
+                    </div>
+                    <div class="raider-table-wrap">
+                        <table class="raider-table">
+                            <thead>
+                                <tr>
+                                    <th class="raider-check-cell"><input type="checkbox" id="raider-select-all" onchange="toggleReportRaiderSelectAll()"></th>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Path</th>
+                                    <th>Size</th>
+                                    <th class="raider-action-cell">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="raider-items-body">
+                                <tr><td colspan="6" class="raider-empty">Connect ke ReportServer untuk mulai menjelajah.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </main>
+            </div>
+        </section>
+    </div>
+
+    <div class="modal-overlay" id="raider-conn-builder-modal">
+        <div class="modal-content raider-builder-modal">
+            <div class="modal-header">
+                <div>
+                    <h3>
+                        <i class="fa-solid fa-wrench"></i>
+                        Connection String Builder
+                    </h3>
+                    <p>Konfigurasi koneksi SQL Server ReportServer - connection string dihasilkan otomatis</p>
+                </div>
+                <button class="close-btn" onclick="closeReportRaiderConnectionBuilder()">&times;</button>
+            </div>
+            <div class="modal-body raider-builder-body">
+                <div class="raider-builder-grid">
+                    <div class="form-group">
+                        <label for="raider-cb-server">Server Name</label>
+                        <input type="text" id="raider-cb-server" class="form-control" placeholder="RASIMIN\MSSQLSERVER2022" oninput="updateReportRaiderConnectionPreview()" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="raider-cb-database">Database Name</label>
+                        <input type="text" id="raider-cb-database" class="form-control" placeholder="ReportServer" oninput="updateReportRaiderConnectionPreview()" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="raider-cb-username">Username</label>
+                        <input type="text" id="raider-cb-username" class="form-control" placeholder="sa" oninput="updateReportRaiderConnectionPreview()" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="raider-cb-password">Password</label>
+                        <div class="raider-builder-password">
+                            <input type="password" id="raider-cb-password" class="form-control" placeholder="Password" oninput="updateReportRaiderConnectionPreview()" autocomplete="new-password">
+                            <button type="button" onclick="toggleReportRaiderBuilderPassword()" title="Tampilkan/sembunyikan password">
+                                <i class="fa-solid fa-eye" id="raider-cb-password-icon"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="raider-builder-options">
+                    <label>
+                        <input type="checkbox" id="raider-cb-trust-cert" checked onchange="updateReportRaiderConnectionPreview()">
+                        TrustServerCertificate=True
+                    </label>
+                    <label>
+                        <input type="checkbox" id="raider-cb-encrypt" onchange="updateReportRaiderConnectionPreview()">
+                        Encrypt=True
+                    </label>
+                </div>
+
+                <div class="form-group raider-builder-preview-group">
+                    <label>
+                        <span>Preview Connection String</span>
+                        <span>Realtime +</span>
+                    </label>
+                    <textarea id="raider-cb-preview" class="form-control" readonly rows="4" spellcheck="false"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-test-raider-conn" onclick="testReportRaiderBuilderConnection()">
+                    <i class="fa-solid fa-plug"></i> Test Connection
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="closeReportRaiderConnectionBuilder()">Batal</button>
+                <button type="button" class="btn btn-primary" onclick="useReportRaiderBuilderConnection()">
+                    <i class="fa-solid fa-check"></i> OK - Gunakan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
