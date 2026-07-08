@@ -1470,16 +1470,43 @@ function registerMonacoSqlAutocomplete() {
         return clean;
     }
 
+    function getInnermostQuery(textUntilPosition) {
+        // Find the last unclosed '('
+        let openParenIndices = [];
+        for (let i = 0; i < textUntilPosition.length; i++) {
+            if (textUntilPosition[i] === '(') {
+                openParenIndices.push(i);
+            } else if (textUntilPosition[i] === ')') {
+                openParenIndices.pop();
+            }
+        }
+        
+        if (openParenIndices.length > 0) {
+            const lastOpenIdx = openParenIndices[openParenIndices.length - 1];
+            const subText = textUntilPosition.substring(lastOpenIdx + 1);
+            if (subText.toLowerCase().includes('select')) {
+                return subText;
+            }
+        }
+        return textUntilPosition;
+    }
+
     function getReferencedTables(queryText) {
+        // Strip single line comments
+        let cleanQuery = queryText.replace(/--.*$/gm, '');
+        // Strip multi-line comments
+        cleanQuery = cleanQuery.replace(/\/\*[\s\S]*?\*\//g, '');
+
         const tables = [];
         const fromJoinRegex = /(?:from|join)\s+([a-zA-Z0-9_\[\]\.]+)(?:\s+(?:as\s+)?([a-zA-Z0-9_]+))?/gi;
         const sqlKeywords = new Set([
             "WHERE", "ORDER", "GROUP", "HAVING", "JOIN", "LEFT", "RIGHT", "INNER", "CROSS", "OUTER", "FULL",
             "ON", "UNION", "LIMIT", "OFFSET", "USING", "FOR", "WITH", "AND", "OR", "SELECT", "INSERT", 
-            "UPDATE", "DELETE", "AS", "BY", "GO"
+            "UPDATE", "DELETE", "AS", "BY", "GO", "BEGIN", "COMMIT", "ROLLBACK", "TRAN", "TRANSACTION",
+            "DECLARE", "EXEC", "EXECUTE", "SET", "MERGE", "INTO", "VALUES", "TRUNCATE", "DROP", "CREATE", "ALTER"
         ]);
         let match;
-        while ((match = fromJoinRegex.exec(queryText)) !== null) {
+        while ((match = fromJoinRegex.exec(cleanQuery)) !== null) {
             const tableName = match[1];
             let alias = match[2];
             if (alias && sqlKeywords.has(alias.toUpperCase())) {
@@ -1505,15 +1532,31 @@ function registerMonacoSqlAutocomplete() {
         const cursorLine = position.lineNumber;
         
         let startLine = cursorLine;
-        while (startLine > 1) {
-            const line = lines[startLine - 2];
-            if (line.toLowerCase().includes('select') && !line.trim().startsWith('--')) {
-                break;
+        const currentLineText = lines[cursorLine - 1];
+        if (currentLineText.toLowerCase().includes('select') && !currentLineText.trim().startsWith('--')) {
+            // Already at the start line of the statement
+        } else {
+            while (startLine > 1) {
+                const line = lines[startLine - 2];
+                if (line.toLowerCase().includes('select') && !line.trim().startsWith('--')) {
+                    startLine--;
+                    break;
+                }
+                if (line.includes(';')) {
+                    break;
+                }
+                const trimmedLower = line.trim().toLowerCase();
+                if (trimmedLower.startsWith('insert') ||
+                    trimmedLower.startsWith('update') ||
+                    trimmedLower.startsWith('delete') ||
+                    trimmedLower.startsWith('begin') ||
+                    trimmedLower.startsWith('commit') ||
+                    trimmedLower.startsWith('rollback') ||
+                    trimmedLower.startsWith('go')) {
+                    break;
+                }
+                startLine--;
             }
-            if (line.includes(';')) {
-                break;
-            }
-            startLine--;
         }
         
         let endLine = cursorLine;
@@ -1523,6 +1566,16 @@ function registerMonacoSqlAutocomplete() {
                 break;
             }
             if (line.toLowerCase().includes('select') && !line.trim().startsWith('--')) {
+                break;
+            }
+            const trimmedLower = line.trim().toLowerCase();
+            if (trimmedLower.startsWith('insert') ||
+                trimmedLower.startsWith('update') ||
+                trimmedLower.startsWith('delete') ||
+                trimmedLower.startsWith('begin') ||
+                trimmedLower.startsWith('commit') ||
+                trimmedLower.startsWith('rollback') ||
+                trimmedLower.startsWith('go')) {
                 break;
             }
             endLine++;
@@ -1631,6 +1684,9 @@ function registerMonacoSqlAutocomplete() {
             // General suggestions (Keywords, Tables, Views, Generic Columns)
             const suggestions = [];
 
+            // Check if user is in a table context (FROM, JOIN, etc.)
+            const isTableContext = /(?:from|join|into|update|truncate|table)\s+[a-zA-Z0-9_\[\]\.]*$/i.test(textUntilPosition);
+
             // 1. Keywords
             sqlKeywordsList.forEach(kw => {
                 suggestions.push({
@@ -1641,41 +1697,64 @@ function registerMonacoSqlAutocomplete() {
             });
 
             // 2. Tables & Views
-            if (queryConsoleSchema && queryConsoleSchema.Objects) {
-                queryConsoleSchema.Objects.forEach(obj => {
-                    const name = obj.Name || obj.name;
-                    const type = (obj.Type || obj.type || 'TABLE').toUpperCase();
-                    let kind = monaco.languages.CompletionItemKind.Class;
-                    if (type === 'VIEW') kind = monaco.languages.CompletionItemKind.Interface;
-                    else if (type === 'PROCEDURE') kind = monaco.languages.CompletionItemKind.Method;
-                    else if (type === 'FUNCTION') kind = monaco.languages.CompletionItemKind.Function;
+            if (isTableContext) {
+                if (queryConsoleSchema && queryConsoleSchema.Objects) {
+                    queryConsoleSchema.Objects.forEach(obj => {
+                        const name = obj.Name || obj.name;
+                        const type = (obj.Type || obj.type || 'TABLE').toUpperCase();
+                        let kind = monaco.languages.CompletionItemKind.Class;
+                        if (type === 'VIEW') kind = monaco.languages.CompletionItemKind.Interface;
+                        else if (type === 'PROCEDURE') kind = monaco.languages.CompletionItemKind.Method;
+                        else if (type === 'FUNCTION') kind = monaco.languages.CompletionItemKind.Function;
 
-                    suggestions.push({
-                        label: name,
-                        kind: kind,
-                        detail: type,
-                        insertText: name
+                        suggestions.push({
+                            label: name,
+                            kind: kind,
+                            detail: type,
+                            insertText: name
+                        });
                     });
-                });
+                }
+            } else {
+                // 3. Isolated Columns based on current query context/referenced tables
+                const activeScopeQuery = getInnermostQuery(textUntilPosition);
+                const tables = getReferencedTables(activeScopeQuery);
+
+                if (tables.length > 0 && queryConsoleSchema && queryConsoleSchema.Columns) {
+                    const referencedTableNames = new Set(tables.map(t => cleanTableName(t.tableName).toLowerCase()));
+                    
+                    queryConsoleSchema.Columns.forEach(c => {
+                        const cTable = cleanTableName(c.TableName || c.tableName).toLowerCase();
+                        if (referencedTableNames.has(cTable)) {
+                            const colName = c.ColumnName || c.columnName;
+                            const dataType = c.DataType || c.dataType || 'Column';
+                            suggestions.push({
+                                label: colName,
+                                kind: monaco.languages.CompletionItemKind.Field,
+                                detail: `${c.TableName || c.tableName} (${dataType})`,
+                                insertText: colName
+                            });
+                        }
+                    });
+                } else if (queryConsoleSchema && queryConsoleSchema.Columns) {
+                    // Fallback to all unique columns
+                    const uniqueCols = new Set();
+                    queryConsoleSchema.Columns.forEach(c => {
+                        const colName = c.ColumnName || c.columnName;
+                        if (colName) uniqueCols.add(colName);
+                    });
+                    
+                    uniqueCols.forEach(colName => {
+                        suggestions.push({
+                            label: colName,
+                            kind: monaco.languages.CompletionItemKind.Field,
+                            detail: 'Column',
+                            insertText: colName
+                        });
+                    });
+                }
             }
 
-            // 3. Generic Columns
-            if (queryConsoleSchema && queryConsoleSchema.Columns) {
-                const uniqueCols = new Set();
-                queryConsoleSchema.Columns.forEach(c => {
-                    const colName = c.ColumnName || c.columnName;
-                    if (colName) uniqueCols.add(colName);
-                });
-                
-                uniqueCols.forEach(colName => {
-                    suggestions.push({
-                        label: colName,
-                        kind: monaco.languages.CompletionItemKind.Field,
-                        detail: 'Column',
-                        insertText: colName
-                    });
-                });
-            }
             // 4. Custom Snippets (e.g. ssf)
             suggestions.push({
                 label: 'ssf',
