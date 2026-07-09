@@ -28,7 +28,7 @@ Selain itu, kami merancang **4 fitur baru** yang krusial untuk meningkatkan kean
        - Skema database configurator menggunakan `ON DELETE CASCADE` untuk relasi foreign key dari tabel `TableMappings`, `ColumnMappings`, dan `MigrationLogs` ke `MigrationJobs`. Pastikan penghapusan job secara otomatis menghapus seluruh data relasi tersebut di database secara aman.
        - Mengembalikan status `200 OK` jika berhasil, atau `404 NotFound` jika Job tidak ditemukan.
     2. **Frontend UI**:
-       - Di dalam kontainer daftar job (`job-list-container`) pada `wwwroot/app.js` dan `index.html`, tambahkan tombol/icon hapus (misalnya icon tong sampah `fa-solid fa-trash-can` berwarna merah) di samping setiap item Job.
+       - Di dalam kontainer daftar job (`job-list-container`) pada `wwwroot/app.js` and `index.html`, tambahkan tombol/icon hapus (misalnya icon tong sampah `fa-solid fa-trash-can` berwarna merah) di samping setiap item Job.
        - Tombol harus menghentikan event bubbling agar tidak men-trigger event `selectJob(id)` saat diklik.
        - Tampilkan dialog konfirmasi interaktif: `Apakah Anda yakin ingin menghapus Job [Nama Job] beserta seluruh konfigurasi tabel dan kolomnya? Tindakan ini tidak dapat dibatalkan!` sebelum memanggil API.
        - Jika sukses dihapus, refresh daftar job menggunakan `loadJobs()` dan bersihkan panel editor utama ke tampilan `welcome-panel`.
@@ -185,4 +185,3 @@ Selain itu, kami merancang **4 fitur baru** yang krusial untuk meningkatkan kean
        - Jika jumlah foreign key bernilai 0, engine dapat menggunakan perintah `TRUNCATE TABLE [NamaTabel]` untuk performa yang optimal.
        - Dengan cara ini, tidak akan ada error yang merusak status transaksi aktif, sehingga proses migrasi dapat berjalan lancar.
 *   **Status**: [x] Resolved
-
