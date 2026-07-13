@@ -9,6 +9,10 @@
     <PackageReference Include="Microsoft.Data.SqlClient" Version="*" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="auth-config.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>

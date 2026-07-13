@@ -8,7 +8,8 @@ const SCREEN_PARTIALS = [
     'partials/screens/beautifier.html',
     'partials/screens/whiteboard.html',
     'partials/screens/ssrs.html',
-    'partials/screens/report-raider.html'
+    'partials/screens/report-raider.html',
+    'partials/screens/settings.html'
 ];
 
 const MODAL_PARTIALS = [

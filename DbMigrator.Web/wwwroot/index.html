@@ -6,6 +6,7 @@
     <title>DbMigrator.NET - Premium Control Panel</title>
     <meta name="description" content="Dynamic Metadata-Driven SQL Server Database Migration Tool — kelola migrasi data dan objek DDL antar database secara visual.">
     <link rel="stylesheet" href="style.css?v=3.17">
+    <link rel="stylesheet" href="auth-settings.css?v=1.0">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -36,6 +37,12 @@
             </button>
             <button class="nav-item" id="main-nav-report-raider" onclick="switchMainTab('report-raider')">
                 <i class="fa-solid fa-crosshairs"></i> SSRS Raider
+            </button>
+            <button class="nav-item" id="main-nav-settings" onclick="switchMainTab('settings')">
+                <i class="fa-solid fa-gear"></i> Settings
+            </button>
+            <button class="nav-item nav-logout" id="global-logout-button" type="button" onclick="logoutApplication()" hidden>
+                <i class="fa-solid fa-right-from-bracket"></i> Logout
             </button>
         </nav>
         <button class="top-nav-toggle" id="top-nav-toggle-btn" onclick="toggleTopNav()" title="Sembunyikan Menu">
@@ -102,6 +109,7 @@
 <script src="whiteboard.js?v=1.0"></script>
 <script src="ssrs.js?v=1.2"></script>
 <script src="report-raider.js?v=1.0"></script>
+<script src="auth-settings.js?v=1.0"></script>
 
 </body>
 </html>

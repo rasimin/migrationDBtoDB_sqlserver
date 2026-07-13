@@ -128,12 +128,23 @@ builder.Services.AddControllers().AddJsonOptions(options =>
     options.JsonSerializerOptions.PropertyNamingPolicy = null;
 });
 
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.Cookie.Name = ".DbMigrator.Session";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.IdleTimeout = TimeSpan.FromHours(12);
+});
+
 // Register custom Service classes
 builder.Services.AddScoped<QueryService>();
 builder.Services.AddScoped<SsrsService>();
 builder.Services.AddScoped<WhiteboardService>();
 builder.Services.AddScoped<MigrationService>();
 builder.Services.AddScoped<ReportRaiderService>();
+builder.Services.AddSingleton<AuthConfigService>();
 
 var app = builder.Build();
 
@@ -384,6 +395,36 @@ using (var conn = new SqlConnection(builder.Configuration.GetConnectionString("C
 }
 
 app.UseCors("AllowAll");
+app.UseSession();
+
+app.Use(async (context, next) =>
+{
+    var authConfig = context.RequestServices.GetRequiredService<AuthConfigService>().Get();
+    var path = context.Request.Path;
+    var isPublicPath = path.Equals("/login.html", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/api/auth/login")
+        || path.StartsWithSegments("/api/auth/status");
+    var sessionUser = context.Session.GetString(DbMigrator.Web.Controllers.AuthController.SessionUserKey);
+    var isAuthenticated = !authConfig.LoginEnabled || sessionUser == authConfig.Username;
+
+    if (!isPublicPath && !isAuthenticated)
+    {
+        if (path.StartsWithSegments("/api") || path.StartsWithSegments("/migrationHub"))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new { Success = false, Message = "Sesi login tidak valid atau sudah berakhir." });
+            return;
+        }
+
+        var returnUrl = Uri.EscapeDataString($"{path}{context.Request.QueryString}");
+        context.Response.Redirect($"/login.html?returnUrl={returnUrl}");
+        return;
+    }
+
+    await next();
+});
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 

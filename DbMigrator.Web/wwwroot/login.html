@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - DbMigrator.NET</title>
+    <style>
+        :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; }
+        * { box-sizing: border-box; }
+        body {
+            min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px;
+            color: #eef4ff; background:
+                radial-gradient(circle at 15% 15%, rgba(65, 105, 225, .28), transparent 34%),
+                radial-gradient(circle at 85% 85%, rgba(0, 210, 180, .18), transparent 32%),
+                linear-gradient(145deg, #07111f, #0c1729 55%, #07101d);
+        }
+        .login-shell { width: min(100%, 430px); }
+        .brand { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; justify-content: center; }
+        .brand-mark { width: 45px; height: 45px; display: grid; place-items: center; border-radius: 14px; background: linear-gradient(135deg, #597cff, #00c9a7); font-weight: 900; box-shadow: 0 12px 34px rgba(64, 105, 225, .35); }
+        .brand strong { display: block; font-size: 20px; }
+        .brand span { display: block; color: #93a5c3; font-size: 12px; margin-top: 2px; }
+        .login-card { padding: 34px; border: 1px solid rgba(151, 174, 213, .18); border-radius: 24px; background: rgba(13, 27, 47, .78); box-shadow: 0 28px 70px rgba(0, 0, 0, .38); backdrop-filter: blur(18px); }
+        h1 { font-size: 25px; margin: 0 0 7px; }
+        .subtitle { color: #9caecb; font-size: 14px; line-height: 1.55; margin: 0 0 26px; }
+        label { display: block; color: #c9d5e9; font-size: 13px; font-weight: 650; margin: 0 0 8px; }
+        .field { margin-bottom: 18px; }
+        .input-wrap { position: relative; }
+        input { width: 100%; border: 1px solid rgba(150, 171, 208, .24); border-radius: 12px; background: rgba(3, 12, 25, .58); color: #f7faff; outline: none; padding: 13px 44px 13px 14px; font: inherit; transition: .2s; }
+        input:focus { border-color: #6689ff; box-shadow: 0 0 0 3px rgba(102, 137, 255, .13); }
+        .toggle-password { position: absolute; right: 8px; top: 7px; height: 32px; border: 0; background: transparent; color: #95a7c5; cursor: pointer; border-radius: 8px; }
+        .submit { width: 100%; border: 0; border-radius: 12px; padding: 13px 16px; margin-top: 4px; color: white; font: inherit; font-weight: 750; cursor: pointer; background: linear-gradient(135deg, #5275ee, #3564e7); box-shadow: 0 12px 28px rgba(53, 100, 231, .3); }
+        .submit:disabled { opacity: .6; cursor: wait; }
+        .message { display: none; margin: 0 0 18px; padding: 11px 13px; border-radius: 10px; font-size: 13px; line-height: 1.4; }
+        .message.error { display: block; color: #ffb8c0; border: 1px solid rgba(255, 90, 110, .26); background: rgba(164, 25, 47, .16); }
+        .footer { color: #71829f; text-align: center; font-size: 12px; margin-top: 18px; }
+    </style>
+</head>
+<body>
+    <main class="login-shell">
+        <div class="brand">
+            <div class="brand-mark">DB</div>
+            <div><strong>DbMigrator.NET</strong><span>Database Control Panel</span></div>
+        </div>
+        <section class="login-card">
+            <h1>Selamat datang</h1>
+            <p class="subtitle">Masuk menggunakan akun aplikasi untuk melanjutkan ke control panel.</p>
+            <div id="login-message" class="message" role="alert"></div>
+            <form id="login-form">
+                <div class="field">
+                    <label for="username">Username</label>
+                    <div class="input-wrap"><input id="username" name="username" autocomplete="username" required autofocus></div>
+                </div>
+                <div class="field">
+                    <label for="password">Password</label>
+                    <div class="input-wrap">
+                        <input id="password" name="password" type="password" autocomplete="current-password" required>
+                        <button class="toggle-password" id="toggle-password" type="button" aria-label="Tampilkan password">Lihat</button>
+                    </div>
+                </div>
+                <button class="submit" id="submit-button" type="submit">Masuk ke Aplikasi</button>
+            </form>
+        </section>
+        <div class="footer">Konfigurasi login dikelola dari menu Settings.</div>
+    </main>
+    <script>
+        const form = document.getElementById('login-form');
+        const message = document.getElementById('login-message');
+        const submitButton = document.getElementById('submit-button');
+        const passwordInput = document.getElementById('password');
+
+        function destination() {
+            const value = new URLSearchParams(location.search).get('returnUrl');
+            return value && value.startsWith('/') && !value.startsWith('//') ? value : '/';
+        }
+
+        document.getElementById('toggle-password').addEventListener('click', (event) => {
+            const visible = passwordInput.type === 'text';
+            passwordInput.type = visible ? 'password' : 'text';
+            event.currentTarget.textContent = visible ? 'Lihat' : 'Tutup';
+        });
+
+        fetch('/api/auth/status').then(response => response.json()).then(status => {
+            if (!status.LoginEnabled || status.IsAuthenticated) location.replace(destination());
+        }).catch(() => {});
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            message.className = 'message';
+            submitButton.disabled = true;
+            submitButton.textContent = 'Memverifikasi...';
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ Username: form.username.value, Password: form.password.value })
+                });
+                const result = await response.json();
+                if (!response.ok || !result.Success) throw new Error(result.Message || 'Login gagal.');
+                location.replace(destination());
+            } catch (error) {
+                message.textContent = error.message || 'Tidak dapat menghubungi server.';
+                message.className = 'message error';
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Masuk ke Aplikasi';
+            }
+        });
+    </script>
+</body>
+</html>

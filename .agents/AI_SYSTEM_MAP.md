@@ -62,6 +62,8 @@ graph TD
     *   *Startup Migrations (L141-L282)*: Dynamically alters and checks configurator table schemas (`dbo.CleanTargetTables`, `dbo.TableMappings`, `dbo.ObjectMigrationItems` with status columns `LastStatus`, `LastErrorMessage`, `LastRunAt`).
     *   *SignalR Hub Mapping (L937)*: Connects SignalR client websocket traffic to `/migrationHub`.
 *   **[MigrationHub.cs](file:///d:/Rasimin/Learn/HIbankQNB/DbMigrator.Web/MigrationHub.cs)**: Standard SignalR hub managing real-time websocket groups (`JobGroup_{jobId}`) to prevent progress data collisions.
+*   **[AuthConfigService.cs](file:///d:/Rasimin/Learn/HIbankQNB/DbMigrator.Web/Services/AuthConfigService.cs)**: Thread-safe reader/writer for `auth-config.json`, including live login-mode and credential updates.
+*   **[AuthController.cs](file:///d:/Rasimin/Learn/HIbankQNB/DbMigrator.Web/Controllers/AuthController.cs)**: Session login, logout, status, and authentication settings API.
 
 ### 🔹 Frontend Client Assets (`DbMigrator.Web/wwwroot/`)
 *   **[index.html](file:///d:/Rasimin/Learn/HIbankQNB/DbMigrator.Web/wwwroot/index.html)**: Main HTML dashboard. Contains three primary vertical tabs (book tabs): `inner-tab-data` (Data Migration), `inner-tab-object` (Object Migration), and `inner-tab-clean` (Clean Target Table).
@@ -141,6 +143,11 @@ dbo.SavedQueries (Id INT PK, QueryName NVARCHAR, QueryText NVARCHAR, CreatedAt D
 | **POST** | `/api/report-raider/children` | Retrieve child catalog items by parent folder ID | `{ ConnectionString, ParentId }` |
 | **POST** | `/api/report-raider/download` | Download one SSRS catalog item definition as RDL/RDS/RSD | `{ ConnectionString, ItemId }` |
 | **POST** | `/api/report-raider/download-zip` | Download selected SSRS catalog files/folders recursively as ZIP | `{ ConnectionString, ItemIds }` |
+| **GET** | `/api/auth/status` | Return login-mode and current session status; public endpoint | - |
+| **POST** | `/api/auth/login` | Validate JSON-configured credentials and create an HTTP session | `{ Username, Password }` |
+| **POST** | `/api/auth/logout` | Clear the current application session | - |
+| **GET** | `/api/auth/settings` | Read login mode and username without exposing the stored password | - |
+| **PUT** | `/api/auth/settings` | Persist login mode, username, and optional new password to `auth-config.json` | `{ LoginEnabled, Username, Password? }` |
 
 ---
 
@@ -330,6 +337,12 @@ connection.on('ReceiveError', (errorObj) => {
 *   **Expandable Folder Tree:** Folder navigation uses a cached, lazy-loaded expand/collapse tree with active menu-style highlighting while the item table follows the selected folder.
 *   **Catalog Export:** Supports folder browsing, item filtering, single RDL/RDS/RSD download, and recursive multi-item ZIP export via POST endpoints that carry the browser-held connection string.
 *   **Current App Architecture:** Implemented as the existing static partial + vanilla JS + controller/service pattern, without introducing a separate project or ASP.NET Session dependency.
+
+### F-18: JSON-Configured Application Login & Settings
+*   **Session Gate:** Added a 12-hour HTTP-only session and middleware that protects static application pages, REST APIs, and SignalR whenever `LoginEnabled` is true, while returning `401` for unauthenticated API traffic.
+*   **JSON Configuration:** Added root-level `DbMigrator.Web/auth-config.json` with editable `LoginEnabled`, `Username`, and `Password` values, managed through a synchronized atomic-write service.
+*   **Login UI:** Added a standalone responsive `login.html` that validates credentials via `/api/auth/login`, safely restores local return URLs, and automatically bypasses itself when login is disabled.
+*   **Settings & Global Logout:** Added a top-navigation Settings screen to turn login on/off, change username, and optionally replace the password. A global Logout action is available on every screen only while login is enabled; passwords are never returned by settings APIs.
 
 ---
 

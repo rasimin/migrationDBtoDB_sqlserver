@@ -1,0 +1,66 @@
+<section id="main-screen-settings" class="main-screen settings-screen" style="display:none;">
+    <div class="settings-page-header">
+        <div>
+            <span class="settings-eyebrow">Application Security</span>
+            <h1>Pengaturan Login</h1>
+            <p>Atur apakah aplikasi dapat langsung dibuka atau wajib menggunakan username dan password.</p>
+        </div>
+    </div>
+
+    <div class="settings-grid">
+        <form id="auth-settings-form" class="settings-card" onsubmit="saveAuthSettings(event)">
+            <div class="settings-card-title">
+                <span class="settings-card-icon"><i class="fa-solid fa-shield-halved"></i></span>
+                <div><h2>Akses Aplikasi</h2><p>Disimpan langsung ke <code>auth-config.json</code>.</p></div>
+            </div>
+
+            <label class="auth-mode-toggle" for="auth-login-enabled">
+                <span>
+                    <strong>Aktifkan halaman login</strong>
+                    <small id="auth-mode-description">Username dan password diperlukan sebelum aplikasi dapat dibuka.</small>
+                </span>
+                <span class="switch-control">
+                    <input id="auth-login-enabled" type="checkbox" onchange="updateAuthModePreview()">
+                    <span class="switch-slider"></span>
+                </span>
+            </label>
+
+            <div class="settings-form-grid">
+                <div class="settings-field">
+                    <label for="auth-username">Username</label>
+                    <input id="auth-username" class="form-control" type="text" minlength="3" autocomplete="off" required>
+                    <small>Minimal 3 karakter.</small>
+                </div>
+                <div class="settings-field">
+                    <label for="auth-password">Password baru</label>
+                    <div class="settings-password-wrap">
+                        <input id="auth-password" class="form-control" type="password" minlength="8" autocomplete="new-password" placeholder="Kosongkan jika tidak diubah">
+                        <button type="button" onclick="toggleAuthPassword()" title="Tampilkan/sembunyikan password"><i class="fa-solid fa-eye"></i></button>
+                    </div>
+                    <small>Minimal 8 karakter. Password lama tidak ditampilkan.</small>
+                </div>
+            </div>
+
+            <div id="auth-settings-status" class="settings-inline-status" aria-live="polite"></div>
+            <div class="settings-actions">
+                <button id="auth-settings-save" type="submit" class="btn btn-primary">
+                    <i class="fa-solid fa-floppy-disk"></i> Simpan Pengaturan
+                </button>
+            </div>
+        </form>
+
+        <aside class="settings-card settings-info-card">
+            <span class="settings-card-icon info"><i class="fa-solid fa-circle-info"></i></span>
+            <h2>Cara kerja mode akses</h2>
+            <div class="settings-mode-item">
+                <i class="fa-solid fa-lock"></i>
+                <div><strong>Login aktif</strong><p>Semua halaman, API, dan koneksi SignalR hanya dapat digunakan setelah login.</p></div>
+            </div>
+            <div class="settings-mode-item">
+                <i class="fa-solid fa-door-open"></i>
+                <div><strong>Bypass login</strong><p>Aplikasi terbuka langsung tanpa meminta username atau password.</p></div>
+            </div>
+            <div class="settings-warning"><i class="fa-solid fa-triangle-exclamation"></i><span>File JSON memuat password dalam teks biasa sesuai konfigurasi lokal. Batasi akses file dan jangan publikasikan kredensial produksi.</span></div>
+        </aside>
+    </div>
+</section>

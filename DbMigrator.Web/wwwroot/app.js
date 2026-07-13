@@ -312,11 +312,6 @@ function joinJobGroupSignalR(jobId) {
 // TOP NAVIGATION TAB SWITCHING & NEW SCREENS LOGIC
 // ============================================================================
 function switchMainTab(tabId) {
-    // Redirect legacy settings tab to new beautifier tool
-    if (tabId === 'settings') {
-        tabId = 'beautifier';
-    }
-
     // 1. Remove active class from all main nav items
     document.querySelectorAll('.top-nav .nav-item').forEach(btn => {
         btn.classList.remove('active');
@@ -364,6 +359,8 @@ function switchMainTab(tabId) {
         initWhiteboardTab();
     } else if (tabId === 'report-raider' && typeof initReportRaiderTab === 'function') {
         initReportRaiderTab();
+    } else if (tabId === 'settings' && typeof loadAuthSettings === 'function') {
+        loadAuthSettings(true);
     }
 }
 
