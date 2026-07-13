@@ -4,6 +4,7 @@ using System.Data;
 using Microsoft.Data.SqlClient;
 using System.IO;
 using System.IO.Compression;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -101,7 +102,9 @@ namespace DbMigrator.Web.Services
                 {
                     Name = el.Element(ns + "Name")?.Value ?? "",
                     Path = el.Element(ns + "Path")?.Value ?? "",
-                    TypeName = el.Element(ns + "TypeName")?.Value ?? ""
+                    TypeName = el.Element(ns + "TypeName")?.Value ?? "",
+                    CreationDate = ParseSsrsDate(el.Element(ns + "CreationDate")),
+                    ModifiedDate = ParseSsrsDate(el.Element(ns + "ModifiedDate"))
                 })
                 .OrderBy(i => i.TypeName != "Folder") // Folders first
                 .ThenBy(i => i.Name)
@@ -150,7 +153,9 @@ namespace DbMigrator.Web.Services
                 {
                     Name = el.Element(ns + "Name")?.Value ?? "",
                     Path = el.Element(ns + "Path")?.Value ?? "",
-                    TypeName = el.Element(ns + "TypeName")?.Value ?? ""
+                    TypeName = el.Element(ns + "TypeName")?.Value ?? "",
+                    CreationDate = ParseSsrsDate(el.Element(ns + "CreationDate")),
+                    ModifiedDate = ParseSsrsDate(el.Element(ns + "ModifiedDate"))
                 })
                 .ToList();
 
@@ -521,6 +526,22 @@ namespace DbMigrator.Web.Services
             }
             
             return await response.Content.ReadAsStringAsync();
+        }
+
+        private static DateTimeOffset? ParseSsrsDate(XElement? element)
+        {
+            if (element == null || string.IsNullOrWhiteSpace(element.Value))
+            {
+                return null;
+            }
+
+            return DateTimeOffset.TryParse(
+                element.Value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeLocal,
+                out var parsed)
+                ? parsed
+                : null;
         }
 
         private (string Name, string Type) MapFileToSsrsItem(string filename)

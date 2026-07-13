@@ -11,8 +11,8 @@ namespace DbMigrator.Core
         public string TargetConnectionString { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? LastRunAt { get; set; }
-        public string PostMigrationScript { get; set; }
-        public string BackupPath { get; set; }
+        public string? PostMigrationScript { get; set; }
+        public string? BackupPath { get; set; }
     }
 
     public class TableMapping
@@ -25,12 +25,12 @@ namespace DbMigrator.Core
         public bool TruncateTarget { get; set; }
         public bool IsEnabled { get; set; }
         public string MappingMode { get; set; } = "TABLE"; // TABLE, NATIVE_SQL
-        public string NativeSqlScript { get; set; }
+        public string? NativeSqlScript { get; set; }
         public List<ColumnMapping> Columns { get; set; } = new List<ColumnMapping>();
-        public string PostMigrationScript { get; set; }
-        public string WhereClause { get; set; }
+        public string? PostMigrationScript { get; set; }
+        public string? WhereClause { get; set; }
         public string LastStatus { get; set; } = "Pending"; // Pending, InProgress, Completed, Failed
-        public string LastErrorMessage { get; set; }
+        public string? LastErrorMessage { get; set; }
         public DateTime? LastRunAt { get; set; }
         public int LastRowsMigrated { get; set; }
     }
@@ -39,16 +39,16 @@ namespace DbMigrator.Core
     {
         public int Id { get; set; }
         public int TableMappingId { get; set; }
-        public string SourceColumnName { get; set; }
-        public string TargetColumnName { get; set; }
+        public string? SourceColumnName { get; set; }
+        public string? TargetColumnName { get; set; }
         public string MappingType { get; set; } // Direct, Constant, Lookup, Expression, Ignore
-        public string ConstantValue { get; set; }
-        public string LookupTable { get; set; }
-        public string LookupKeyColumn { get; set; }
-        public string LookupValueColumn { get; set; }
-        public string ExpressionSQL { get; set; }
-        public string IfNullAction { get; set; }  // Null | GetDate | Constant | RandomNumber | RandomLetters | RandomAlphanumeric | Expression
-        public string IfNullParam { get; set; }   // length (int as string), constant text, or SQL expression
+        public string? ConstantValue { get; set; }
+        public string? LookupTable { get; set; }
+        public string? LookupKeyColumn { get; set; }
+        public string? LookupValueColumn { get; set; }
+        public string? ExpressionSQL { get; set; }
+        public string? IfNullAction { get; set; }  // Null | GetDate | Constant | RandomNumber | RandomLetters | RandomAlphanumeric | Expression
+        public string? IfNullParam { get; set; }   // length (int as string), constant text, or SQL expression
     }
 
     public class MigrationLog
@@ -61,7 +61,7 @@ namespace DbMigrator.Core
         public int TotalRows { get; set; }
         public int RowsMigrated { get; set; }
         public string Status { get; set; } // InProgress, Completed, Failed
-        public string ErrorMessage { get; set; }
+        public string? ErrorMessage { get; set; }
     }
 
     // ============================================================================
@@ -76,11 +76,11 @@ namespace DbMigrator.Core
         public int JobId { get; set; }   // FK → dbo.MigrationJobs.Id
         public string ObjectName { get; set; }
         public string ObjectType { get; set; } // PROCEDURE, FUNCTION, VIEW, TABLE, NATIVE_SQL
-        public string NativeSqlScript { get; set; }
+        public string? NativeSqlScript { get; set; }
         public int ExecutionOrder { get; set; }
         public bool IsEnabled { get; set; }
         public string LastStatus { get; set; } = "Pending"; // Pending, InProgress, Completed, Failed
-        public string LastErrorMessage { get; set; }
+        public string? LastErrorMessage { get; set; }
         public DateTime? LastRunAt { get; set; }
         public bool AllowDropColumns { get; set; } = false;
     }
@@ -102,7 +102,7 @@ namespace DbMigrator.Core
         public string Action { get; set; } // BACKUP, DROP, CREATE, ALTER, NATIVE_SQL
         public string Status { get; set; } // Completed, Failed
         public DateTime ExecutedAt { get; set; }
-        public string ErrorMessage { get; set; }
+        public string? ErrorMessage { get; set; }
     }
 
     public class CleanTargetTable
@@ -112,7 +112,7 @@ namespace DbMigrator.Core
         public string TableName { get; set; }
         public int ExecutionOrder { get; set; }
         public string LastStatus { get; set; } = "Pending"; // Pending, InProgress, Completed, Failed
-        public string LastErrorMessage { get; set; }
+        public string? LastErrorMessage { get; set; }
         public DateTime? LastCleanedAt { get; set; }
     }
 

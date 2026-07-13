@@ -5,6 +5,15 @@
 let ssrsConnection = null; // Stores { Url, Username, Password, Domain }
 let currentSsrsPath = '/';
 let ssrsItemsCache = [];
+const SSRS_VIEW_MODES = new Set(['grid', 'list']);
+const SSRS_SORT_FIELDS = new Set(['name', 'type', 'creationDate', 'modifiedDate']);
+let ssrsViewMode = SSRS_VIEW_MODES.has(localStorage.getItem('dbmigrator_ssrs_view_mode'))
+    ? localStorage.getItem('dbmigrator_ssrs_view_mode')
+    : 'grid';
+let ssrsSortField = SSRS_SORT_FIELDS.has(localStorage.getItem('dbmigrator_ssrs_sort_field'))
+    ? localStorage.getItem('dbmigrator_ssrs_sort_field')
+    : 'name';
+let ssrsSortDirection = localStorage.getItem('dbmigrator_ssrs_sort_direction') === 'desc' ? 'desc' : 'asc';
 
 // Handle Switch Tab lifecycle hook
 window.addEventListener('DOMContentLoaded', async () => {
@@ -121,7 +130,9 @@ async function connectSsrs() {
             const connInfoEl = document.getElementById('ssrs-active-conn-info');
             if (connInfoEl) {
                 const cleanUrl = getSsrsBaseReportUrl(url).replace("http://", "").replace("https://", "");
-                connInfoEl.textContent = domain ? `${domain}\\${username} @ ${cleanUrl}` : `${username} @ ${cleanUrl}`;
+                const connectionLabel = domain ? `${domain}\\${username} @ ${cleanUrl}` : `${username} @ ${cleanUrl}`;
+                connInfoEl.textContent = connectionLabel;
+                connInfoEl.title = connectionLabel;
             }
             
             await browseSsrs('/');
@@ -235,9 +246,158 @@ function renderSsrsBreadcrumbs(path) {
     });
 }
 
-function renderSsrsItems(items) {
+function renderSsrsItems(items = ssrsItemsCache) {
+    const visibleItems = getVisibleSsrsItems(items);
+    syncSsrsViewControls();
+
+    if (ssrsViewMode === 'list') {
+        renderSsrsListItems(visibleItems);
+    } else {
+        renderSsrsGridItems(visibleItems);
+    }
+}
+
+function getVisibleSsrsItems(items) {
+    const searchTerm = (document.getElementById('ssrs-search-input')?.value || '').toLowerCase().trim();
+    const filteredItems = searchTerm
+        ? items.filter(item => {
+            const name = (item.Name || item.name || '').toLowerCase();
+            const type = (item.TypeName || item.typeName || '').toLowerCase();
+            return name.includes(searchTerm) || type.includes(searchTerm);
+        })
+        : [...items];
+
+    return filteredItems.sort(compareSsrsItems);
+}
+
+function compareSsrsItems(left, right) {
+    const leftIsFolder = getSsrsItemType(left).toLowerCase() === 'folder';
+    const rightIsFolder = getSsrsItemType(right).toLowerCase() === 'folder';
+    if (leftIsFolder !== rightIsFolder) return leftIsFolder ? -1 : 1;
+
+    let comparison = 0;
+    if (ssrsSortField === 'creationDate' || ssrsSortField === 'modifiedDate') {
+        const leftDate = getSsrsItemDate(left, ssrsSortField);
+        const rightDate = getSsrsItemDate(right, ssrsSortField);
+        const leftTime = leftDate ? Date.parse(leftDate) : Number.NaN;
+        const rightTime = rightDate ? Date.parse(rightDate) : Number.NaN;
+        const leftMissing = Number.isNaN(leftTime);
+        const rightMissing = Number.isNaN(rightTime);
+
+        if (leftMissing !== rightMissing) return leftMissing ? 1 : -1;
+        if (!leftMissing) comparison = leftTime - rightTime;
+    } else {
+        const leftValue = ssrsSortField === 'type'
+            ? getSsrsItemType(left)
+            : getSsrsItemName(left);
+        const rightValue = ssrsSortField === 'type'
+            ? getSsrsItemType(right)
+            : getSsrsItemName(right);
+        comparison = leftValue.localeCompare(rightValue, 'id', { numeric: true, sensitivity: 'base' });
+    }
+
+    if (comparison === 0) {
+        comparison = getSsrsItemName(left).localeCompare(
+            getSsrsItemName(right),
+            'id',
+            { numeric: true, sensitivity: 'base' }
+        );
+    }
+
+    return ssrsSortDirection === 'desc' ? -comparison : comparison;
+}
+
+function getSsrsItemName(item) {
+    return item.Name || item.name || '';
+}
+
+function getSsrsItemType(item) {
+    return item.TypeName || item.typeName || '';
+}
+
+function getSsrsItemDate(item, field) {
+    if (field === 'creationDate') return item.CreationDate || item.creationDate || '';
+    return item.ModifiedDate || item.modifiedDate || '';
+}
+
+function formatSsrsDate(value) {
+    if (!value) return '-';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '-';
+    return new Intl.DateTimeFormat('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    }).format(parsed);
+}
+
+function escapeSsrsHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function setSsrsViewMode(mode) {
+    if (!SSRS_VIEW_MODES.has(mode)) return;
+    ssrsViewMode = mode;
+    localStorage.setItem('dbmigrator_ssrs_view_mode', mode);
+    renderSsrsItems(ssrsItemsCache);
+}
+
+function setSsrsSortField(field) {
+    if (!SSRS_SORT_FIELDS.has(field)) return;
+    ssrsSortField = field;
+    localStorage.setItem('dbmigrator_ssrs_sort_field', field);
+    renderSsrsItems(ssrsItemsCache);
+}
+
+function setSsrsSort(field) {
+    if (!SSRS_SORT_FIELDS.has(field)) return;
+    if (ssrsSortField === field) {
+        ssrsSortDirection = ssrsSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        ssrsSortField = field;
+        ssrsSortDirection = 'asc';
+    }
+    localStorage.setItem('dbmigrator_ssrs_sort_field', ssrsSortField);
+    localStorage.setItem('dbmigrator_ssrs_sort_direction', ssrsSortDirection);
+    renderSsrsItems(ssrsItemsCache);
+}
+
+function toggleSsrsSortDirection() {
+    ssrsSortDirection = ssrsSortDirection === 'asc' ? 'desc' : 'asc';
+    localStorage.setItem('dbmigrator_ssrs_sort_direction', ssrsSortDirection);
+    renderSsrsItems(ssrsItemsCache);
+}
+
+function syncSsrsViewControls() {
+    document.getElementById('ssrs-view-grid-btn')?.classList.toggle('active', ssrsViewMode === 'grid');
+    document.getElementById('ssrs-view-list-btn')?.classList.toggle('active', ssrsViewMode === 'list');
+
+    const sortField = document.getElementById('ssrs-sort-field');
+    if (sortField) sortField.value = ssrsSortField;
+
+    const directionButton = document.getElementById('ssrs-sort-direction-btn');
+    if (directionButton) {
+        const ascending = ssrsSortDirection === 'asc';
+        directionButton.innerHTML = `<i class="fa-solid ${ascending ? 'fa-arrow-up-a-z' : 'fa-arrow-down-z-a'}"></i>`;
+        directionButton.title = ascending ? 'Urutan naik' : 'Urutan turun';
+        directionButton.setAttribute('aria-label', directionButton.title);
+    }
+}
+
+function renderSsrsGridItems(items) {
     const container = document.getElementById('ssrs-grid-container');
     if (!container) return;
+
+    container.className = 'ssrs-grid';
 
     if (items.length === 0) {
         container.innerHTML = `
@@ -372,17 +532,153 @@ function renderSsrsItems(items) {
     }).join('');
 }
 
-function filterSsrsGrid() {
-    const val = document.getElementById('ssrs-search-input').value.toLowerCase().trim();
-    if (!val) {
-        renderSsrsItems(ssrsItemsCache);
-        return;
+function renderSsrsListItems(items) {
+    const container = document.getElementById('ssrs-grid-container');
+    if (!container) return;
+
+    container.className = 'ssrs-list-wrap';
+    const rows = items.length
+        ? items.map(buildSsrsListRow).join('')
+        : `<tr><td colspan="5" class="ssrs-list-empty">
+               <i class="fa-regular fa-folder-open"></i>
+               <span>Folder ini kosong atau tidak ada item yang cocok.</span>
+           </td></tr>`;
+
+    container.innerHTML = `
+        <table class="ssrs-list-table">
+            <thead>
+                <tr>
+                    ${buildSsrsSortableHeader('name', 'Nama')}
+                    ${buildSsrsSortableHeader('type', 'Tipe')}
+                    ${buildSsrsSortableHeader('creationDate', 'Date Created')}
+                    ${buildSsrsSortableHeader('modifiedDate', 'Date Modified')}
+                    <th class="ssrs-list-action-column">Aksi</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+}
+
+function buildSsrsSortableHeader(field, label) {
+    const ariaSort = ssrsSortField === field
+        ? (ssrsSortDirection === 'asc' ? 'ascending' : 'descending')
+        : 'none';
+    const indicator = ssrsSortField === field
+        ? `<i class="fa-solid ${ssrsSortDirection === 'asc' ? 'fa-sort-up' : 'fa-sort-down'}"></i>`
+        : '<i class="fa-solid fa-sort ssrs-sort-muted"></i>';
+
+    return `<th aria-sort="${ariaSort}">
+        <button type="button" class="ssrs-sort-header" onclick="setSsrsSort('${field}')">
+            <span>${label}</span>${indicator}
+        </button>
+    </th>`;
+}
+
+function buildSsrsListRow(item) {
+    const itemName = getSsrsItemName(item);
+    const itemPath = item.Path || item.path || '';
+    const type = getSsrsItemType(item);
+    const normalizedType = type.toLowerCase();
+    const isFolder = normalizedType === 'folder';
+    const encodedPath = encodeURIComponent(itemPath);
+    const encodedName = encodeURIComponent(itemName);
+    const encodedType = encodeURIComponent(type);
+    const creationDate = getSsrsItemDate(item, 'creationDate');
+    const modifiedDate = getSsrsItemDate(item, 'modifiedDate');
+
+    let iconClass = 'fa-file-code';
+    let iconTone = 'report';
+    if (isFolder) {
+        iconClass = 'fa-folder';
+        iconTone = 'folder';
+    } else if (normalizedType === 'dataset') {
+        iconClass = 'fa-database';
+        iconTone = 'dataset';
+    } else if (normalizedType === 'datasource') {
+        iconClass = 'fa-network-wired';
+        iconTone = 'datasource';
     }
-    const filtered = ssrsItemsCache.filter(item => {
-        const name = (item.Name || item.name || '').toLowerCase();
-        return name.includes(val);
-    });
-    renderSsrsItems(filtered);
+
+    let rowAction;
+    if (isFolder) {
+        rowAction = `browseSsrs(decodeURIComponent('${encodedPath}'))`;
+    } else if (normalizedType === 'report') {
+        rowAction = `openSsrsReportDirectly(event, decodeURIComponent('${encodedPath}'))`;
+    } else if (normalizedType === 'datasource') {
+        rowAction = `openSsrsDataSourceModal(event, decodeURIComponent('${encodedPath}'), decodeURIComponent('${encodedName}'))`;
+    } else {
+        rowAction = `viewSsrsReportDefinition(event, decodeURIComponent('${encodedPath}'), decodeURIComponent('${encodedType}'))`;
+    }
+
+    return `
+        <tr class="ssrs-list-row ${isFolder ? 'folder-row' : ''}" onclick="${rowAction}">
+            <td>
+                <div class="ssrs-list-name-cell">
+                    <span class="ssrs-list-icon ${iconTone}"><i class="fa-solid ${iconClass}"></i></span>
+                    <span class="ssrs-list-name" title="${escapeSsrsHtml(itemName)}">${escapeSsrsHtml(itemName)}</span>
+                </div>
+            </td>
+            <td><span class="ssrs-list-type">${escapeSsrsHtml(type || '-')}</span></td>
+            <td class="ssrs-list-date" title="${escapeSsrsHtml(creationDate)}">${formatSsrsDate(creationDate)}</td>
+            <td class="ssrs-list-date" title="${escapeSsrsHtml(modifiedDate)}">${formatSsrsDate(modifiedDate)}</td>
+            <td class="ssrs-list-action-column">${buildSsrsListActions(item, encodedPath, encodedName, encodedType)}</td>
+        </tr>
+    `;
+}
+
+function buildSsrsListActions(item, encodedPath, encodedName, encodedType) {
+    const normalizedType = getSsrsItemType(item).toLowerCase();
+    let actions = '';
+
+    if (normalizedType === 'folder') {
+        actions = `
+            <button class="ssrs-dropdown-item" onclick="downloadSsrsFolder(event, decodeURIComponent('${encodedPath}'))">
+                <i class="fa-solid fa-file-zipper" style="color: var(--accent-indigo);"></i> Unduh ZIP
+            </button>
+            <button class="ssrs-dropdown-item danger" onclick="deleteSsrsItem(event, decodeURIComponent('${encodedPath}'), decodeURIComponent('${encodedName}'))">
+                <i class="fa-solid fa-trash-can"></i> Hapus Folder
+            </button>`;
+    } else {
+        if (normalizedType === 'report') {
+            actions += `
+                <button class="ssrs-dropdown-item" onclick="openSsrsReportDirectly(event, decodeURIComponent('${encodedPath}'))">
+                    <i class="fa-solid fa-share-from-square" style="color: var(--accent-teal);"></i> Buka Laporan
+                </button>`;
+        }
+
+        if (normalizedType === 'datasource') {
+            actions += `
+                <button class="ssrs-dropdown-item" onclick="openSsrsDataSourceModal(event, decodeURIComponent('${encodedPath}'), decodeURIComponent('${encodedName}'))">
+                    <i class="fa-solid fa-pen-to-square" style="color: #fb923c;"></i> Edit Data Source
+                </button>`;
+        } else {
+            actions += `
+                <button class="ssrs-dropdown-item" onclick="viewSsrsReportDefinition(event, decodeURIComponent('${encodedPath}'), decodeURIComponent('${encodedType}'))">
+                    <i class="fa-solid fa-code" style="color: var(--accent-indigo);"></i> Lihat Source XML
+                </button>`;
+        }
+
+        actions += `
+            <button class="ssrs-dropdown-item" onclick="downloadSsrsItem(event, decodeURIComponent('${encodedPath}'), decodeURIComponent('${encodedType}'))">
+                <i class="fa-solid fa-download" style="color: var(--accent-teal);"></i> Unduh Definisi
+            </button>
+            <button class="ssrs-dropdown-item danger" onclick="deleteSsrsItem(event, decodeURIComponent('${encodedPath}'), decodeURIComponent('${encodedName}'))">
+                <i class="fa-solid fa-trash-can"></i> Hapus Berkas
+            </button>`;
+    }
+
+    return `
+        <div class="ssrs-dropdown">
+            <button type="button" class="btn-icon ssrs-dropdown-btn" onclick="toggleSsrsDropdown(event, this)" title="Pilihan" aria-label="Pilihan item">
+                <i class="fa-solid fa-ellipsis-vertical"></i>
+            </button>
+            <div class="ssrs-dropdown-content">${actions}</div>
+        </div>`;
+}
+
+function filterSsrsGrid() {
+    renderSsrsItems(ssrsItemsCache);
 }
 
 async function downloadSsrsItem(event, path, typeName) {
@@ -1281,13 +1577,13 @@ function toggleSsrsDropdown(event, element) {
     const dropdown = element.closest('.ssrs-dropdown');
     if (!dropdown) return;
     
-    const card = element.closest('.ssrs-card');
+    const card = element.closest('.ssrs-card, .ssrs-list-row');
     
     // Close all other dropdowns and remove dropdown-active class from other cards
     document.querySelectorAll('.ssrs-dropdown').forEach(dd => {
         if (dd !== dropdown) {
             dd.classList.remove('active');
-            const c = dd.closest('.ssrs-card');
+            const c = dd.closest('.ssrs-card, .ssrs-list-row');
             if (c) c.classList.remove('dropdown-active');
         }
     });
@@ -1303,9 +1599,8 @@ window.addEventListener('click', (e) => {
     if (!e.target.closest('.ssrs-dropdown')) {
         document.querySelectorAll('.ssrs-dropdown').forEach(dd => {
             dd.classList.remove('active');
-            const c = dd.closest('.ssrs-card');
+            const c = dd.closest('.ssrs-card, .ssrs-list-row');
             if (c) c.classList.remove('dropdown-active');
         });
     }
 });
-

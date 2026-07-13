@@ -312,6 +312,13 @@ connection.on('ReceiveError', (errorObj) => {
 *   **Save/Save As Controls:** Users can click **Save** (updates query if already saved, prompts for name if new) and **Save As** (prompts for new name and forks). Auto-generated names are timestamp-based (e.g., `Query_20260615_161618`).
 *   **Query History & Preview Panel:** Integrated `#query-history-modal` with search inputs (by name or content SQL) and date range filters. Left pane shows queries list, right pane lazy-loads a read-only Monaco editor preview. Scripts can be copied to clipboard or loaded into a new console tab instantly.
 
+### F-17: SSRS Explorer List View & Catalog Date Sorting
+*   **SOAP Catalog Metadata:** Extended `CatalogItemDto` and `SsrsService.BrowseAsync()` to expose nullable `CreationDate` and `ModifiedDate` values returned by the SSRS `ListChildren` SOAP response.
+*   **Dual Grid/List Rendering:** Added persistent Grid and List view controls to SSRS Explorer. List mode displays Name, Type, Date Created, Date Modified, and the existing contextual actions without changing folder/report navigation behavior.
+*   **Client-Side Sorting:** Added folder-pinned sorting by Name, Type, Date Created, or Date Modified with ascending/descending controls and sortable list headers. Missing dates remain at the bottom.
+*   **Unified Search Pipeline:** Search, sorting, and rendering now share `ssrsItemsCache`, so switching view or order does not trigger another SSRS request. View and sort preferences persist in browser `localStorage`.
+*   **Two-Level Responsive Toolbar:** Separated breadcrumb/connection navigation from display, search, and file actions. Long breadcrumb paths wrap naturally without a horizontal scrollbar, while connection details truncate with a full-value tooltip and action groups wrap independently on narrower screens.
+
 ### IIS-Safe Job Deletion Endpoint
 *   **POST Delete Alias:** Added `POST /api/jobs/{id}/delete` as an IIS-safe alias for job deletion while preserving the original `DELETE /api/jobs/{id}` route for compatibility.
 *   **Frontend Method Switch:** Updated the job delete handler in `migration.js` to call the POST alias, avoiding IIS/WebDAV/request-filtering environments that return `405 Method Not Allowed` for DELETE.

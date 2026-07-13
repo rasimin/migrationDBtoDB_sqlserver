@@ -1,5 +1,5 @@
 @import url('base.css');
 @import url('components.css');
 @import url('screen-query.css');
-@import url('screen-migration.css');
+@import url('screen-migration.css?v=3.17');
 @import url('screen-report-raider.css');

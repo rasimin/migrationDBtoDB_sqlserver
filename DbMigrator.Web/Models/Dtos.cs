@@ -259,6 +259,8 @@ namespace DbMigrator.Web.Models
         public string Name { get; set; } = "";
         public string Path { get; set; } = "";
         public string TypeName { get; set; } = "";
+        public DateTimeOffset? CreationDate { get; set; }
+        public DateTimeOffset? ModifiedDate { get; set; }
     }
 
     public class SavedSsrsConnection

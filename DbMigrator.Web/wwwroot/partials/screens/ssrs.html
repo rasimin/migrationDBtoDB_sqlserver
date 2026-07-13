@@ -68,15 +68,18 @@
     <!-- EXPLORER PANEL -->
     <div id="ssrs-explorer-panel" style="display: none; display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1rem;">
         <!-- TOP TOOLBAR & NAV -->
-        <div style="background: var(--bg-card); border: 1px solid var(--border-flat); border-radius: 12px; padding: 1rem 1.5rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; box-shadow: var(--shadow-flat);">
+        <div class="ssrs-explorer-toolbar" style="background: var(--bg-card); border: 1px solid var(--border-flat); border-radius: 12px; padding: 1rem 1.5rem; box-shadow: var(--shadow-flat);">
             <!-- Breadcrumbs & Connection Badge -->
-            <div style="display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 280px; overflow-x: auto; white-space: nowrap; padding-bottom: 0.25rem;">
+            <div class="ssrs-navigation-row">
+                <div class="ssrs-path-area">
                 <button type="button" id="ssrs-btn-back" onclick="goUpSsrsFolder()" title="Kembali ke Folder Induk (Go Up)" class="btn-icon" style="width: 28px; height: 28px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-flat); display: flex; align-items: center; justify-content: center; color: var(--text-muted); cursor: pointer; transition: all 0.2s; flex-shrink: 0; opacity: 0.3; pointer-events: none;">
                     <i class="fa-solid fa-arrow-left" style="font-size: 0.8rem;"></i>
                 </button>
                 <div id="ssrs-breadcrumbs" class="ssrs-breadcrumbs-container" style="display: flex; align-items: center; gap: 0.55rem; font-size: 0.9rem;">
                     <!-- Dynamically generated breadcrumbs -->
                 </div>
+                </div>
+                <div class="ssrs-connection-tools">
                 <div id="ssrs-active-conn-badge" style="display: inline-flex; align-items: center; gap: 0.4rem; background: rgba(79, 70, 229, 0.1); border: 1px solid rgba(79, 70, 229, 0.25); color: #c7d2fe; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.78rem; font-weight: 500; font-family: Consolas, monospace;">
                     <i class="fa-solid fa-server" style="color: var(--accent-indigo); font-size: 0.8rem;"></i>
                     <span id="ssrs-active-conn-info">Not Connected</span>
@@ -84,16 +87,41 @@
                 <button type="button" id="ssrs-credentials-show-btn" class="btn-icon" onclick="showSsrsCredentialsPopup()" title="Tampilkan Kredensial Koneksi" style="width: 28px; height: 28px; border-radius: 6px; background: rgba(79, 70, 229, 0.15); border: 1px solid rgba(79, 70, 229, 0.3); display: none; align-items: center; justify-content: center; color: var(--accent-teal); cursor: pointer; transition: all 0.2s;">
                     <i class="fa-solid fa-key" style="font-size: 0.8rem;"></i>
                 </button>
+                </div>
             </div>
 
             <!-- Toolbar Actions -->
-            <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div class="ssrs-toolbar-actions">
+                <div class="ssrs-display-tools">
+                <!-- View & sorting controls -->
+                <div class="ssrs-view-controls" role="group" aria-label="Mode tampilan SSRS">
+                    <button type="button" id="ssrs-view-grid-btn" class="btn-icon ssrs-view-btn" onclick="setSsrsViewMode('grid')" title="Tampilan grid" aria-label="Tampilan grid">
+                        <i class="fa-solid fa-grip"></i>
+                    </button>
+                    <button type="button" id="ssrs-view-list-btn" class="btn-icon ssrs-view-btn" onclick="setSsrsViewMode('list')" title="Tampilan list" aria-label="Tampilan list">
+                        <i class="fa-solid fa-list"></i>
+                    </button>
+                </div>
+                <div class="ssrs-sort-controls">
+                    <label for="ssrs-sort-field" class="sr-only">Urutkan item SSRS</label>
+                    <select id="ssrs-sort-field" class="form-control" onchange="setSsrsSortField(this.value)" title="Urutkan item">
+                        <option value="name">Nama</option>
+                        <option value="type">Tipe</option>
+                        <option value="creationDate">Date Created</option>
+                        <option value="modifiedDate">Date Modified</option>
+                    </select>
+                    <button type="button" id="ssrs-sort-direction-btn" class="btn-icon" onclick="toggleSsrsSortDirection()" title="Balik arah pengurutan" aria-label="Balik arah pengurutan">
+                        <i class="fa-solid fa-arrow-up-a-z"></i>
+                    </button>
+                </div>
                 <!-- Search -->
                 <div class="search-container" style="position: relative; width: 200px;">
                     <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.8rem;"></i>
                     <input type="text" id="ssrs-search-input" oninput="filterSsrsGrid()" placeholder="Cari item di folder ini..." class="form-control" style="padding-left: 2rem; font-size: 0.82rem; height: 34px; border-radius: 8px;">
                 </div>
 
+                </div>
+                <div class="ssrs-file-actions">
                 <button class="btn btn-secondary" onclick="downloadCurrentFolderZip()" style="width: auto; height: 34px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="Unduh seluruh isi folder ini sebagai ZIP">
                     <i class="fa-solid fa-file-zipper"></i> ZIP Folder Ini
                 </button>
@@ -110,6 +138,7 @@
                 <button class="btn btn-danger" onclick="disconnectSsrs()" style="width: auto; height: 34px; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.35rem; background: #dc2626; border-color: #dc2626;">
                     <i class="fa-solid fa-power-off"></i> Disconnect
                 </button>
+                </div>
             </div>
         </div>
 
@@ -120,7 +149,7 @@
                 <span style="font-size: 0.9rem; color: var(--text-primary);">Mengambil data dari server...</span>
             </div>
 
-            <div id="ssrs-grid-container" class="ssrs-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem;">
+            <div id="ssrs-grid-container" class="ssrs-grid">
                 <!-- Dynamically rendered folder and file items -->
             </div>
         </div>
